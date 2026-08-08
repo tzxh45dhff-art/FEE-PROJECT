@@ -1,0 +1,597 @@
+@import 'tailwindcss';
+
+/* ═══════════════════════════════════════════════════════════════
+   SyncRoom design tokens
+   Defined once here so the whole app (landing page today, room
+   shell later) pulls from the same palette, type scale and motion.
+   ═══════════════════════════════════════════════════════════════ */
+@theme {
+  /* ── Type ─────────────────────────────────────────────────── */
+  --font-display: 'Archivo', 'Helvetica Neue', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', monospace;
+
+  /* ── The two anchors ──────────────────────────────────────────
+     Used raw where they earn it: navy carries the dark, red is the
+     signal. Everything below is derived from these two.           */
+  --color-navy: #000080;
+  --color-red: #ff0000;
+
+  /* ── Surfaces: pure neutral dark, no colour cast ──────────────
+     Colour comes from the two ambient gradients and the red accent,
+     never from the surfaces themselves.                           */
+  --color-void: #000000;
+  --color-abyss: #070707;
+  --color-deep: #0d0d0f;
+  --color-surface: #141416;
+  --color-elevated: #1c1c1f;
+  --color-line: #2a2a2e;
+
+  /* ── Text: neutral greys ──────────────────────────────────── */
+  --color-chalk: #fafafa;
+  --color-mist: #a4a4ab;
+  --color-dusk: #6e6e77;
+
+  /* ── Signal ───────────────────────────────────────────────────
+     Red, reserved for live / synced state: presence dots, the
+     shared playhead, live cursors, hover + focus glow. Pure
+     #ff0000 only for lights and dots — `bright` for any text,
+     since pure red on navy fails contrast at small sizes.        */
+  --color-signal: #ff0000;
+  --color-signal-bright: #ff5a5a;
+  --color-signal-deep: #8f0000;
+
+  /* ── Canvas ───────────────────────────────────────────────────
+     The page sits on warm off-white now, with neon linework drifting
+     across it. Every panel, card and the navbar stay dark glass —
+     dark UI floating in bright space.                             */
+  --color-canvas: #f2efe9;
+  --color-canvas-deep: #e6e1d8;
+
+  /* Type that sits *on* the canvas rather than inside a dark panel. The
+     chalk/mist/dusk scale is for light-on-dark and is unreadable out here. */
+  --color-ink: #14141a;
+  --color-ink-soft: #4c4c58;
+  --color-ink-faint: #83838f;
+
+  /* Neon inks for the flow lines. Saturated, because glow only
+     reads as glow against dark — on off-white it has to be pigment. */
+  --color-neon-red: #ff1f3d;
+  --color-neon-blue: #2b3bff;
+  --color-neon-violet: #a01aff;
+  --color-neon-teal: #00c2b8;
+
+  /* ── Ambient light: red and navy only ─────────────────────────
+     A violet third light drags the whole page purple, so the third
+     blob is a deep crimson instead — red and navy stay dominant.  */
+  --color-glow-warm: #ff0000;
+  --color-glow-cool: #1b1bd6;
+  --color-glow-violet: #b00020;
+
+  /* ── Poster colour grades (CSS fallback only) ─────────────── */
+  --color-grade-blue: #060a34;
+  --color-grade-red: #35030a;
+  --color-grade-green: #08281b;
+  --color-grade-amber: #3a2408;
+  --color-grade-violet: #1c0838;
+  --color-grade-teal: #06222a;
+
+  /* ── Radii ────────────────────────────────────────────────── */
+  --radius-poster: 0.625rem;
+  --radius-card: 1.25rem;
+  --radius-panel: 1.75rem;
+
+  /* ── Easing ───────────────────────────────────────────────── */
+  --ease-glass: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-drift: cubic-bezier(0.45, 0, 0.55, 1);
+
+  /* ── Resting-state animation ──────────────────────────────── */
+  --animate-marquee: marquee var(--marquee-duration, 90s) linear infinite;
+  --animate-screen-drift: screen-drift 26s var(--ease-drift) infinite;
+  --animate-mesh-a: mesh-drift-a 34s linear infinite;
+  --animate-mesh-b: mesh-drift-b 52s linear infinite;
+  --animate-mesh-c: mesh-drift-c 74s linear infinite;
+  --animate-spin-slow: turn 26s linear infinite;
+  --animate-spin-slower: turn 48s linear infinite;
+  --animate-orbit: turn var(--orbit-duration, 14s) linear infinite;
+  --animate-signal-pulse: signal-pulse 2.6s var(--ease-drift) infinite;
+  --animate-disc-pulse: disc-pulse 4.5s var(--ease-drift) infinite;
+  --animate-glow-shift: glow-shift var(--glow-duration, 16s) var(--ease-drift) infinite;
+
+  @keyframes marquee {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(-50%, 0, 0);
+    }
+  }
+
+  /*
+   * Ambient mesh drift. Each layer is a repeating radial-gradient tile on an
+   * oversized element, translated by exactly one tile — so the loop is
+   * genuinely seamless, and it runs on the compositor rather than repainting.
+   * Tiles share a 1 : 1.3 aspect, which fixes every layer to the same ~52°
+   * heading while their different sizes give them different speeds.
+   */
+  @keyframes mesh-drift-a {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(50vw, -65vw, 0);
+    }
+  }
+
+  @keyframes mesh-drift-b {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(76vw, -98.8vw, 0);
+    }
+  }
+
+  @keyframes mesh-drift-c {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(112vw, -145.6vw, 0);
+    }
+  }
+
+  /* Slow Ken Burns on device screens, so a still still reads as playing. */
+  @keyframes screen-drift {
+    0%,
+    100% {
+      transform: scale(1.06) translate3d(-1%, 0, 0);
+    }
+    50% {
+      transform: scale(1.14) translate3d(1.5%, -1.5%, 0);
+    }
+  }
+
+  @keyframes turn {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes signal-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-signal) 55%, transparent);
+    }
+    50% {
+      opacity: 0.72;
+      box-shadow: 0 0 0 7px color-mix(in oklab, var(--color-signal) 0%, transparent);
+    }
+  }
+
+  @keyframes disc-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.9;
+    }
+    50% {
+      transform: scale(1.055);
+      opacity: 1;
+    }
+  }
+
+  @keyframes glow-shift {
+    0%,
+    100% {
+      filter: blur(var(--glow-blur, 90px)) hue-rotate(0deg);
+      opacity: var(--glow-min, 0.5);
+    }
+    50% {
+      filter: blur(var(--glow-blur, 90px)) hue-rotate(var(--glow-hue, 22deg));
+      opacity: var(--glow-max, 0.85);
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Utilities
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Glass materials ──────────────────────────────────────────────
+   Three distinct families so the floating objects don't read as six
+   copies of the same blob. Each object also varies `--glass-tint` and
+   `--glass-fill` to push its hue and density further apart.
+   ─────────────────────────────────────────────────────────────────── */
+
+/* Frosted. The default: soft, milky, light-catching. */
+@utility glass {
+  --glass-tint: white;
+  --glass-fill: 11%;
+  --glass-edge: 14%;
+  background: linear-gradient(
+    145deg,
+    color-mix(in oklab, var(--glass-tint) var(--glass-fill), transparent),
+    color-mix(in oklab, var(--glass-tint) calc(var(--glass-fill) / 3.5), transparent) 45%,
+    color-mix(in oklab, var(--glass-tint) calc(var(--glass-fill) / 1.8), transparent)
+  );
+  backdrop-filter: blur(14px) saturate(130%);
+  border: 1px solid color-mix(in oklab, var(--glass-tint) var(--glass-edge), transparent);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in oklab, white 26%, transparent),
+    inset 0 -14px 28px -18px color-mix(in oklab, white 22%, transparent),
+    0 24px 60px -24px rgb(0 0 0 / 0.85);
+}
+
+/* Obsidian. Dark polished lacquer — for the vinyl, which should read
+   as a black record, not a white frosted disc. */
+@utility glass-obsidian {
+  background: linear-gradient(
+    150deg,
+    rgb(255 255 255 / 0.12),
+    rgb(6 8 14 / 0.74) 38%,
+    rgb(2 3 6 / 0.88)
+  );
+  backdrop-filter: blur(8px) saturate(120%);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.24),
+    0 22px 55px -22px rgb(0 0 0 / 0.95);
+}
+
+/* Clear. Thin, sharp, barely there — a shard rather than a solid. */
+@utility glass-clear {
+  --glass-tint: white;
+  background: linear-gradient(
+    160deg,
+    color-mix(in oklab, var(--glass-tint) 8%, transparent),
+    transparent 55%,
+    color-mix(in oklab, var(--glass-tint) 5%, transparent)
+  );
+  backdrop-filter: blur(20px) saturate(145%);
+  border: 1px solid color-mix(in oklab, var(--glass-tint) 18%, transparent);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.3),
+    0 16px 40px -18px rgb(0 0 0 / 0.7);
+}
+
+/* Procedural film grain. Keeps the poster placeholders from reading as flat CSS. */
+@utility grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 220px 220px;
+}
+
+/* Faint technical grid — gives the darker sections structure without noise. */
+@utility grid-lines {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--color-line) 42%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-line) 42%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 72px 72px;
+}
+
+@layer components {
+  /*
+   * The pointer droplet. Same lens trick as the navbar, tuned smaller and
+   * rounder, plus a hue shift so colour visibly changes through it — that
+   * shift is the thing that reads as "looking through water".
+   */
+  .cursor-drop {
+    background: radial-gradient(
+      circle at 32% 28%,
+      rgb(255 255 255 / 0.42),
+      rgb(255 255 255 / 0.08) 46%,
+      rgb(255 255 255 / 0.02) 70%
+    );
+    backdrop-filter: blur(0.5px) saturate(210%) brightness(1.15) hue-rotate(28deg);
+    backdrop-filter: blur(0.5px) saturate(210%) brightness(1.15) hue-rotate(28deg)
+      url(#liquid-lens);
+    box-shadow:
+      inset 0 1px 1px 0 rgb(255 255 255 / 0.75),
+      inset 0 -2px 3px 0 rgb(255 255 255 / 0.3),
+      inset 0 0 0 1px rgb(255 255 255 / 0.28),
+      0 4px 14px -4px rgb(0 0 0 / 0.5);
+    transition: opacity 240ms var(--ease-glass);
+  }
+
+  /*
+   * Hover fill for buttons. Scales from the top edge instead of fading the
+   * whole surface at once, so the colour arrives like liquid filling the
+   * shape rather than the element switching state.
+   */
+  .button-wash {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    background: var(--wash, transparent);
+    transform: scaleY(0);
+    transform-origin: top;
+    transition:
+      transform 520ms var(--ease-glass),
+      opacity 320ms var(--ease-glass);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .group\/flip:hover .button-wash,
+  .group\/flip:focus-visible .button-wash {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+
+  /* Leaving drains it back out of the bottom rather than retracting upward. */
+  .group\/flip:not(:hover) .button-wash {
+    transform-origin: bottom;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .button-wash {
+      transition: opacity 200ms linear;
+      transform: scaleY(1);
+    }
+  }
+
+  /*
+   * Per-letter flip for button labels. Each character is a two-faced card:
+   * the visible face sits half a line-height toward the viewer, the incoming
+   * face is hinged 90° below it. Rotating the wrapper swaps them.
+   *
+   * The stagger lives in `--i`, set per character, so the label ripples
+   * instead of snapping as one block — that's the whole point of the effect.
+   */
+  .flip-char {
+    display: inline-block;
+    position: relative;
+    line-height: 1;
+    perspective: 420px;
+  }
+
+  .flip-char__inner {
+    display: inline-block;
+    transform-style: preserve-3d;
+    transition: transform 420ms var(--ease-glass);
+    transition-delay: calc(var(--i, 0) * 24ms);
+  }
+
+  .flip-char__face {
+    display: block;
+    backface-visibility: hidden;
+    transform: translateZ(0.5em);
+  }
+
+  .flip-char__face--incoming {
+    position: absolute;
+    inset: 0;
+    transform: rotateX(-90deg) translateZ(0.5em);
+  }
+
+  .group\/flip:hover .flip-char__inner,
+  .group\/flip:focus-visible .flip-char__inner {
+    transform: rotateX(90deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .flip-char__inner {
+      transition: none;
+    }
+    .group\/flip:hover .flip-char__inner,
+    .group\/flip:focus-visible .flip-char__inner {
+      transform: none;
+    }
+  }
+}
+
+/* Capsule chrome for the floating navbar. Heavy blur, hairline edge,
+   light caught along the top like a real cylinder. */
+@utility glass-pill {
+  background: linear-gradient(to bottom, rgb(255 255 255 / 0.09), rgb(255 255 255 / 0.03));
+  backdrop-filter: blur(22px) saturate(160%);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.16),
+    inset 0 -1px 0 0 rgb(0 0 0 / 0.3),
+    0 12px 40px -12px rgb(0 0 0 / 0.8);
+}
+
+/*
+ * The stacked demo windows. Opaque on purpose: these sit on top of each other,
+ * so any translucency lets the window underneath read straight through — two
+ * URL bars, two sidebars. The glass is faked with an edge highlight and a
+ * diagonal sheen instead, and there is deliberately no backdrop-filter, which
+ * on four stacked full-size elements is what makes the scroll chug.
+ */
+@utility screen-panel {
+  background:
+    linear-gradient(200deg, rgb(255 255 255 / 0.06), transparent 38%),
+    linear-gradient(170deg, #17171c, #09090c);
+  border: 1px solid rgb(255 255 255 / 0.11);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.14),
+    0 40px 90px -30px rgb(0 0 0 / 0.9);
+}
+
+/* Liquid glass: blurred, tinted, and actually refracting what's behind it.
+   The second declaration only survives in engines that accept a filter
+   reference in backdrop-filter; everywhere else the first one stands, so the
+   bar degrades to plain frosted glass instead of losing its background. */
+@utility glass-liquid {
+  /* Driven from the header: 0 over the hero, 1 once you're into the page, so
+     the bar materialises with scroll instead of switching on at a threshold. */
+  --glass-alpha: 1;
+  background: linear-gradient(
+    to bottom,
+    rgb(255 255 255 / calc(0.14 * var(--glass-alpha))),
+    rgb(255 255 255 / calc(0.04 * var(--glass-alpha)))
+  );
+  border: 1px solid rgb(255 255 255 / calc(0.18 * var(--glass-alpha)));
+  /* Brightness and saturation lift are what make it read as *glass* rather
+     than a grey scrim — real glass concentrates the light it passes. */
+  backdrop-filter: blur(calc(7px * var(--glass-alpha))) saturate(185%) brightness(1.12);
+  backdrop-filter: blur(calc(7px * var(--glass-alpha))) saturate(185%) brightness(1.12)
+    url(#liquid-bar);
+  box-shadow:
+    /* Bright top edge, dark bottom edge — the classic lit-from-above read. */
+    inset 0 1px 0.5px 0 rgb(255 255 255 / calc(0.55 * var(--glass-alpha))),
+    inset 0 -1px 0.5px 0 rgb(0 0 0 / calc(0.4 * var(--glass-alpha))),
+    inset 1px 0 0.5px 0 rgb(255 255 255 / calc(0.14 * var(--glass-alpha))),
+    inset -1px 0 0.5px 0 rgb(255 255 255 / calc(0.14 * var(--glass-alpha))),
+    0 18px 50px -18px rgb(0 0 0 / calc(0.75 * var(--glass-alpha)));
+}
+
+/* Same capsule, inverted for the off-white app canvas. The light-tinted
+   version above disappears out here — white glass on a white page. */
+@utility glass-pill-ink {
+  background: linear-gradient(to bottom, rgb(24 24 29 / 0.94), rgb(11 11 15 / 0.94));
+  backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid rgb(255 255 255 / 0.09);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.13),
+    0 20px 55px -20px rgb(0 0 0 / 0.55);
+}
+
+/* The big frosted surfaces — device screens and anything over live colour. */
+@utility glass-panel {
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0.02));
+  backdrop-filter: blur(28px) saturate(150%);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.14),
+    0 50px 110px -40px rgb(0 0 0 / 0.95);
+}
+
+/* Hairline border that catches light at the top edge, like real glass. */
+@utility panel {
+  background: linear-gradient(
+    170deg,
+    color-mix(in oklab, var(--color-elevated) 70%, transparent),
+    color-mix(in oklab, var(--color-deep) 88%, transparent)
+  );
+  border: 1px solid color-mix(in oklab, white 8%, transparent);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in oklab, white 12%, transparent),
+    0 40px 90px -50px rgb(0 0 0 / 0.95);
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Horizontal card rows fade at the edges instead of hard-cutting.
+   `--mask-edge` should match the row's horizontal padding so the first and
+   last cards are never dimmed at either end of the scroll. */
+@utility mask-edges-x {
+  --mask-edge: 1.5rem;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--mask-edge),
+    black calc(100% - var(--mask-edge)),
+    transparent 100%
+  );
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    /* Lenis owns scrolling; native smooth behaviour would fight it. When Lenis
+       is off (reduced motion) the `.lenis` class is absent and this applies. */
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* The droplet replaces the pointer outright, so the system one goes away —
+     except over text entry, where the caret target still matters. */
+  html.liquid-cursor,
+  html.liquid-cursor * {
+    cursor: none;
+  }
+
+  html.liquid-cursor input,
+  html.liquid-cursor textarea,
+  html.liquid-cursor select {
+    cursor: auto;
+  }
+
+  /* Lenis runtime hooks */
+  html.lenis,
+  html.lenis body {
+    height: auto;
+  }
+
+  /* Guard on `.lenis` itself, not `.lenis-smooth` — that class isn't always
+     applied, and native smooth scrolling fights Lenis on every anchor jump. */
+  html.lenis {
+    scroll-behavior: auto !important;
+  }
+
+  .lenis [data-lenis-prevent] {
+    overscroll-behavior: contain;
+  }
+
+  .lenis.lenis-stopped {
+    overflow: hidden;
+  }
+
+  body {
+    @apply bg-void font-sans text-mist antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-signal) 30%, transparent);
+    color: var(--color-chalk);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 3px;
+  }
+}
+
+@layer utilities {
+  /* Rides alongside Tailwind's generated `.font-display` (which sets the
+     family) and adds the width-axis setting that gives headlines presence. */
+  .font-display {
+    font-variation-settings: 'wdth' 112;
+    font-optical-sizing: auto;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Reduced motion — background layers fall back to a static, still
+   well-composed version rather than freezing mid-animation.
+   ═══════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .marquee-track {
+    animation: none !important;
+    transform: translate3d(-8%, 0, 0);
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

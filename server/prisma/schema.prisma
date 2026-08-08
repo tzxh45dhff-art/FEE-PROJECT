@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  /// bcrypt hash — never the plaintext, and never returned by the API
+  passwordHash String
+  createdAt    DateTime     @default(now())
+
+  ownedRooms   Room[]       @relation("RoomOwner")
+  memberships  Membership[]
+}
+
+model Room {
+  id        String       @id @default(cuid())
+  /// Short, URL-safe handle used in room links
+  slug      String       @unique
+  name      String
+  /// friends | couple | study | family | team — see ROOM_TYPES on the client
+  type      String
+  createdAt DateTime     @default(now())
+
+  ownerId   String
+  owner     User         @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members   Membership[]
+
+  @@index([ownerId])
+}
+
+model Membership {
+  id       String   @id @default(cuid())
+  role     String   @default("member")
+  joinedAt DateTime @default(now())
+  /// Touched whenever the member is seen in the room, so the dashboard can
+  /// sort by "last active" without a separate events table.
+  lastSeen DateTime @default(now())
+
+  userId   String
+  roomId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  room     Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roomId])
+  @@index([roomId])
+}
