@@ -7,10 +7,13 @@ import { SignInPage, SignUpPage } from '@/pages/AuthPages'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { LandingPage } from '@/pages/LandingPage'
 import { RequireAuth } from '@/pages/RequireAuth'
+import { useLiquidPointer } from '@/hooks/useLiquidPointer'
 import { useSmoothScroll } from '@/hooks/useSmoothScroll'
 
 export default function App() {
   useSmoothScroll()
+  /* One listener for every liquid-glass control on the page. */
+  useLiquidPointer()
   const { pathname } = useLocation()
 
   /*

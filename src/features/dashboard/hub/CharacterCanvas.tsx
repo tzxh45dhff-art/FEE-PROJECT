@@ -168,8 +168,17 @@ function Character({
 
 /** Rendered height of a character, plus a little headroom above the crown. */
 const FRAME_HEIGHT = 1.95
-/** Shoulder-to-shoulder allowance either side of the outermost character. */
-const BODY_WIDTH = 0.85
+/**
+ * Silhouette width to keep clear around the outermost character.
+ *
+ * Generous on purpose. A standing idle swings the arms out well past the
+ * shoulders, and the cost of guessing low is an arm sliced off at the canvas
+ * edge — which is exactly what a tight value produced once the side panel
+ * narrowed the stage.
+ */
+const BODY_WIDTH = 1.2
+/** Breathing room on top of the computed fit, so nothing grazes the edge. */
+const FIT_MARGIN = 1.07
 
 /**
  * Frames the party as large as the canvas allows.
@@ -191,7 +200,7 @@ function Rig({ count }: { count: number }) {
     const forHeight = FRAME_HEIGHT / 2 / halfV
     const forWidth = width / 2 / (halfV * (size.width / size.height))
 
-    lens.position.set(0, 0.95, Math.max(forHeight, forWidth) * 1.03)
+    lens.position.set(0, 0.95, Math.max(forHeight, forWidth) * FIT_MARGIN)
     lens.lookAt(0, 0.9, 0)
     lens.updateProjectionMatrix()
   }, [camera, count, size.width, size.height])
@@ -236,7 +245,17 @@ export default function CharacterCanvas({
       <Suspense fallback={null}>
         {members.map((member, index) => (
           <Character
-            key={member.id}
+            /*
+             * Keyed by the model too, not just the person.
+             *
+             * The animation mixer resolves its bone bindings once, against the
+             * scene under this group. Swapping the model without remounting
+             * leaves those bindings pointing at nodes that are no longer there,
+             * so the new character renders in its bind pose — a T-pose that
+             * only fixed itself on reload. Changing the key rebuilds the mixer
+             * with the model it belongs to.
+             */
+            key={`${member.id}:${member.url}`}
             member={member}
             index={index}
             count={members.length}

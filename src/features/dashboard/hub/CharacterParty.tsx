@@ -56,11 +56,14 @@ export function CharacterParty({
   members,
   tilt,
   ground,
+  insetRight = 0,
 }: {
   members: HubMember[]
   tilt: PointerTilt
   /** The scene's ground line, as a fraction of viewport height. */
   ground: number
+  /** Rem of space the side panel is occupying, so the party stays centred. */
+  insetRight?: number
 }) {
   const reduced = usePrefersReducedMotion()
 
@@ -76,7 +79,10 @@ export function CharacterParty({
   const showFlats = !useCanvas
 
   return (
-    <div className="pointer-events-none absolute inset-0">
+    <div
+      className="pointer-events-none absolute inset-y-0 left-0 transition-[right] duration-500 ease-glass"
+      style={{ right: `${insetRight}rem` }}
+    >
       {/* The stage's floor is pinned to the scene's ground line, not to the
           bottom of the viewport — that is what stops the party hovering over
           water in one backdrop and sinking into a path in another. */}

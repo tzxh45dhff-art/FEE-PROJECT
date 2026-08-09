@@ -17,6 +17,8 @@ model User {
 
   ownedRooms   Room[]       @relation("RoomOwner")
   memberships  Membership[]
+  queued       QueueItem[]
+  messages     Message[]
 }
 
 model Room {
@@ -31,8 +33,50 @@ model Room {
   ownerId   String
   owner     User         @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members   Membership[]
+  queue     QueueItem[]
+  messages  Message[]
 
   @@index([ownerId])
+}
+
+/// Room chat. Persisted, because a conversation people expect to scroll back
+/// through is not the same kind of state as "who is online right now".
+model Message {
+  id        String   @id @default(cuid())
+  body      String
+  createdAt DateTime @default(now())
+
+  roomId    String
+  authorId  String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+}
+
+/// The room's watch queue. Persisted, unlike playback position — what you lined
+/// up should survive everyone closing the tab; where you were up to should not.
+model QueueItem {
+  id        String   @id @default(cuid())
+  /// youtube | file | external — see WATCH_SOURCES on the client
+  source    String
+  /// A YouTube video id, a direct media URL, or a free-text title for external.
+  ref       String
+  title     String
+  /// Seconds. Null when unknown, which external titles always are.
+  duration  Int?
+  thumbnail String?
+  /// Sort key within the room. Rewritten on reorder rather than fractionally
+  /// interpolated — a queue is short enough that the simpler thing wins.
+  position  Int
+  createdAt DateTime @default(now())
+
+  roomId    String
+  addedById String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  addedBy   User     @relation(fields: [addedById], references: [id], onDelete: Cascade)
+
+  @@index([roomId, position])
 }
 
 model Membership {

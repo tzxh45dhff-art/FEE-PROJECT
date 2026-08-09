@@ -146,7 +146,7 @@ export function Header() {
           {user ? (
             <>
               {pathname !== '/dashboard' && (
-                <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+                <Button asChild variant="ghost" size="sm" flat className="hidden sm:inline-flex">
                   <Link to="/dashboard">Dashboard</Link>
                 </Button>
               )}
@@ -160,6 +160,7 @@ export function Header() {
               <Button
                 variant="outline"
                 size="sm"
+                flat
                 onClick={async () => {
                   await signOut()
                   navigate('/')
@@ -170,10 +171,10 @@ export function Header() {
             </>
           ) : (
             <>
-              <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+              <Button asChild variant="ghost" size="sm" flat className="hidden sm:inline-flex">
                 <Link to="/signin">Sign in</Link>
               </Button>
-              <Button asChild variant="outline" size="sm">
+              <Button asChild variant="outline" size="sm" flat>
                 <Link to="/signup">Create room</Link>
               </Button>
             </>

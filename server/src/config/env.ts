@@ -22,6 +22,11 @@ export const env = {
   jwtSecret: required('JWT_SECRET'),
   port: Number(process.env.PORT ?? 4000),
   isProd: process.env.NODE_ENV === 'production',
+  /**
+   * Optional. Only YouTube *search* needs it — adding by link goes through the
+   * public oEmbed endpoint, so the watch feature works without a key at all.
+   */
+  youtubeApiKey: process.env.YOUTUBE_API_KEY ?? '',
 }
 
 /** Name of the httpOnly cookie carrying the session token. */

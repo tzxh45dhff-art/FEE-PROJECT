@@ -10,6 +10,8 @@ export type RailItem = {
   icon: LucideIcon
   onClick: () => void
   active?: boolean
+  /** Something is happening in here right now, even if you aren't in it. */
+  live?: boolean
   /** Leaving a room is destructive-ish; it should not look like the others. */
   danger?: boolean
 }
@@ -28,20 +30,29 @@ export function HubRail({
   side,
   items,
   className,
+  insetRight = 0,
 }: {
   side: 'left' | 'right'
   items: RailItem[]
   className?: string
+  /** Rem the side panel occupies. The right rail slides in front of it. */
+  insetRight?: number
 }) {
   if (items.length === 0) return null
 
   return (
     <motion.nav
       className={cn(
-        'pointer-events-auto absolute top-1/2 z-20 flex w-[15.5rem] max-w-[42vw] -translate-y-1/2 flex-col gap-3',
-        side === 'left' ? 'left-4 md:left-8' : 'right-4 items-end md:right-8',
+        'pointer-events-auto absolute top-1/2 z-20 flex w-[15.5rem] max-w-[42vw] flex-col gap-3',
+        'transition-[right] duration-500 ease-glass',
+        side === 'left' ? 'left-4 md:left-8' : 'items-end',
         className,
       )}
+      style={
+        side === 'right'
+          ? { right: `calc(${insetRight}rem + 1rem)`, translate: '0 -50%' }
+          : { translate: '0 -50%' }
+      }
       initial="hidden"
       animate="visible"
       variants={{
@@ -80,10 +91,7 @@ export function HubRail({
                * both in the same frame. The scrim is what guarantees white text
                * reads anywhere the scene puts it.
                */
-              'border border-white/20 bg-black/30 backdrop-blur-xl backdrop-saturate-150',
-              'shadow-[inset_0_1px_0_0_rgb(255_255_255/0.22),0_14px_40px_-18px_rgb(0_0_0/0.85)]',
-              'transition-[box-shadow,border-color,background-color] duration-500 ease-glass',
-              'hover:border-white/35 hover:bg-black/40 hover:shadow-[inset_0_1px_0_0_rgb(255_255_255/0.28),0_20px_50px_-22px_rgb(0_0_0/0.9)]',
+              'liquid-btn is-scrim',
               'focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-signal',
               item.active && 'border-signal/50 shadow-[0_0_0_1px_color-mix(in_oklab,var(--color-signal)_35%,transparent)]',
               item.danger && 'hover:border-signal/55',
@@ -99,9 +107,17 @@ export function HubRail({
             >
               <Icon aria-hidden className="size-[1.05rem]" />
             </span>
-            <span className="min-w-0">
-              <span className="block truncate font-display text-[0.95rem] font-semibold tracking-[-0.015em] text-chalk">
-                {item.label}
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1.5">
+                <span className="truncate font-display text-[0.95rem] font-semibold tracking-[-0.015em] text-chalk">
+                  {item.label}
+                </span>
+                {item.live && (
+                  <span
+                    aria-hidden
+                    className="size-1.5 shrink-0 animate-signal-pulse rounded-full bg-emerald-400"
+                  />
+                )}
               </span>
               {item.hint && (
                 <span className="block truncate text-[0.72rem] text-mist">{item.hint}</span>

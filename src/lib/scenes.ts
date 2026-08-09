@@ -74,6 +74,9 @@ function parse(base: string): { id: string; layer: LayerName } {
 }
 
 function prettify(id: string) {
+  /* Numbered files are the fast way to add backdrops — `1.png`, `2.png`. */
+  if (/^\d+$/.test(id)) return `Scene ${Number(id)}`
+
   const words = id.replace(/[-_]+/g, ' ').trim()
   return words.charAt(0).toUpperCase() + words.slice(1)
 }

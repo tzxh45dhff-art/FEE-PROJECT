@@ -595,3 +595,211 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Liquid glass controls
+   ───────────────────────────────────────────────────────────────
+   Every on-screen button (not the navbar, which has its own WebGL
+   lens) is a slab of glass sitting over live artwork.
+
+   Two things make it read as glass rather than as a frosted panel:
+   the backdrop is *bent* through `#liquid-pill`, not merely blurred,
+   and the rim picks up an iridescent sheen that follows the pointer
+   — light catching an edge, which is the whole tell of a thick
+   transparent object.
+
+   `--lg-*` are written by `useLiquidPointer`, one delegated listener
+   for the whole document.
+   ═══════════════════════════════════════════════════════════════ */
+@layer components {
+  .liquid-btn {
+    --lg-angle: 90deg;
+    --lg-edge: 0;
+    --lg-x: 50%;
+    --lg-y: 50%;
+
+    position: relative;
+    isolation: isolate;
+    border: 1px solid rgb(255 255 255 / 0.16);
+    background:
+      linear-gradient(
+        152deg,
+        rgb(255 255 255 / 0.15),
+        rgb(255 255 255 / 0.045) 46%,
+        rgb(255 255 255 / 0.1)
+      );
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.34),
+      inset 0 -12px 26px -18px rgb(255 255 255 / 0.28),
+      0 14px 34px -18px rgb(0 0 0 / 0.85);
+    backdrop-filter: blur(11px) saturate(165%) brightness(1.05);
+    transition:
+      transform 460ms var(--ease-glass),
+      border-color 460ms var(--ease-glass),
+      box-shadow 460ms var(--ease-glass);
+  }
+
+  /* The real thing where it's supported; the blur above is the floor. */
+  @supports (backdrop-filter: url("#liquid-pill")) {
+    .liquid-btn {
+      backdrop-filter: url("#liquid-pill") blur(7px) saturate(170%) brightness(1.05);
+    }
+  }
+
+  .liquid-btn:hover,
+  .liquid-btn:focus-visible {
+    transform: scale(1.035);
+    border-color: rgb(255 255 255 / 0.3);
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.45),
+      inset 0 -12px 26px -16px rgb(255 255 255 / 0.35),
+      0 20px 46px -20px rgb(0 0 0 / 0.9);
+  }
+
+  .liquid-btn:active {
+    transform: scale(0.985);
+  }
+
+  /* The rim. A conic sweep rotated to the pointer, masked to the border
+     only — so it lights the edge nearest your cursor and fades around. */
+  .liquid-btn::before {
+    content: "";
+    position: absolute;
+    /* Inside the box, not straddling it: the button clips its own overflow to
+       contain the wash, and a rim at -1px would be sliced off. */
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: conic-gradient(
+      from var(--lg-angle) at 50% 50%,
+      #ff2d6f 0deg,
+      #ff8a3d 52deg,
+      #ffe86b 108deg,
+      #52ffb8 164deg,
+      #3fd0ff 220deg,
+      #8a6bff 276deg,
+      #ff2d6f 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 2;
+    transition: opacity 420ms var(--ease-glass);
+  }
+
+  /* Brighter the closer the pointer is to an edge — the bloom belongs to
+     the rim, so pointing at the middle should barely light it. */
+  .liquid-btn:hover::before,
+  .liquid-btn:focus-visible::before {
+    opacity: calc(0.4 + 0.6 * var(--lg-edge));
+  }
+
+  /* Interior bloom: colour spilling in from where the light hits, plus the
+     project's grain so it stays filmic instead of looking like plastic.
+     Negative z-index keeps it above the fill and behind the label. */
+  .liquid-btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      radial-gradient(
+        130% 150% at var(--lg-x) var(--lg-y),
+        rgb(255 130 195 / 0.3),
+        transparent 58%
+      ),
+      conic-gradient(
+        from var(--lg-angle) at var(--lg-x) var(--lg-y),
+        rgb(255 90 140 / 0.22),
+        rgb(255 205 90 / 0.18),
+        rgb(90 255 200 / 0.18),
+        rgb(90 190 255 / 0.22),
+        rgb(170 120 255 / 0.22),
+        rgb(255 90 140 / 0.22)
+      );
+    filter: blur(7px);
+    mix-blend-mode: screen;
+    opacity: 0;
+    pointer-events: none;
+    z-index: -1;
+    transition: opacity 420ms var(--ease-glass);
+  }
+
+  .liquid-btn:hover::after,
+  .liquid-btn:focus-visible::after {
+    opacity: calc(0.5 + 0.5 * var(--lg-edge));
+  }
+
+  /* Reduced motion keeps the glass and the sheen, drops the movement. */
+  @media (prefers-reduced-motion: reduce) {
+    .liquid-btn:hover,
+    .liquid-btn:focus-visible,
+    .liquid-btn:active {
+      transform: none;
+    }
+  }
+}
+
+@layer components {
+  /* The primary action. Same glass, tinted — hierarchy without breaking the
+     material. */
+  .liquid-btn.is-accent {
+    border-color: color-mix(in oklab, var(--color-signal) 48%, transparent);
+    background: linear-gradient(
+      152deg,
+      color-mix(in oklab, var(--color-signal) 46%, transparent),
+      color-mix(in oklab, var(--color-signal) 18%, transparent) 46%,
+      color-mix(in oklab, var(--color-signal) 36%, transparent)
+    );
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.4),
+      0 16px 40px -18px color-mix(in oklab, var(--color-signal) 70%, transparent);
+  }
+
+  .liquid-btn.is-accent:hover,
+  .liquid-btn.is-accent:focus-visible {
+    border-color: color-mix(in oklab, var(--color-signal) 70%, transparent);
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.5),
+      0 22px 52px -20px color-mix(in oklab, var(--color-signal) 85%, transparent);
+  }
+}
+
+@layer components {
+  /*
+   * Glass over photographs.
+   *
+   * The hub's rails sit on backdrops that hold bright sky and dark water in one
+   * frame, and clear glass simply vanishes against half of that. This keeps the
+   * dark scrim that guarantees white text is legible anywhere, while still
+   * bending the backdrop and catching the rim light — the readable compromise
+   * between a solid chip and a pane you can't read through.
+   */
+  .liquid-btn.is-scrim {
+    border-color: rgb(255 255 255 / 0.2);
+    background: linear-gradient(
+      152deg,
+      rgb(0 0 0 / 0.36),
+      rgb(0 0 0 / 0.26) 46%,
+      rgb(0 0 0 / 0.33)
+    );
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.22),
+      0 14px 40px -18px rgb(0 0 0 / 0.85);
+  }
+
+  .liquid-btn.is-scrim:hover,
+  .liquid-btn.is-scrim:focus-visible {
+    border-color: rgb(255 255 255 / 0.36);
+    box-shadow:
+      inset 0 1px 0 0 rgb(255 255 255 / 0.3),
+      0 22px 52px -22px rgb(0 0 0 / 0.92);
+  }
+}

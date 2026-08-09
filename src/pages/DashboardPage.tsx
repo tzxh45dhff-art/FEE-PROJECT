@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { DoorOpen, LogOut, Plus, Settings2, Users } from 'lucide-react'
+import { DoorOpen, LogOut, MessagesSquare, Plus, Settings2, Users } from 'lucide-react'
 
 import { useAuth } from '@/features/auth/AuthContext'
 import { ActivityStage } from '@/features/dashboard/hub/ActivityStage'
@@ -15,8 +15,14 @@ import { RoomList } from '@/features/dashboard/hub/RoomList'
 import { SceneBackdrop } from '@/features/dashboard/hub/SceneBackdrop'
 import { groundFor, usePreferences } from '@/features/dashboard/hub/usePreferences'
 import { VoiceButton } from '@/features/dashboard/hub/VoiceButton'
+import { RoomPanel, PANEL_WIDTH_REM } from '@/features/room-panel/RoomPanel'
+import { useChat } from '@/features/room-panel/useChat'
+import { useMeshCall } from '@/features/room-panel/useMeshCall'
+import { useWatchPulse } from '@/features/watch/useWatchPulse'
+import { WatchInvite } from '@/features/watch/WatchInvite'
+import { WatchStage } from '@/features/watch/WatchStage'
 import { CreateRoomForm } from '@/features/dashboard/components/CreateRoomForm'
-import { usePresence } from '@/features/rooms/usePresence'
+import { usePresence, type Present } from '@/features/rooms/usePresence'
 import { useRooms } from '@/features/rooms/useRooms'
 import { useEntrance } from '@/features/transition/EntranceContext'
 import { usePointerTilt } from '@/hooks/usePointerTilt'
@@ -50,6 +56,22 @@ export function DashboardPage() {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null)
   const [panel, setPanel] = useState<Panel | null>(null)
   const [activity, setActivity] = useState<ActivityId | null>(null)
+  const [sideOpen, setSideOpen] = useState(false)
+
+  /*
+   * Chat and the call are mounted for as long as you are in the room, not for
+   * as long as the panel is open — closing the panel must not drop the call or
+   * stop messages arriving, it just hides them.
+   */
+  const chat = useChat(activeRoomId)
+  const call = useMeshCall(activeRoomId)
+
+  /* Nothing to talk to once you have left. */
+  useEffect(() => {
+    if (!activeRoomId) setSideOpen(false)
+  }, [activeRoomId])
+
+  const inset = sideOpen ? PANEL_WIDTH_REM : 0
 
   /*
    * Presence follows the room you are *standing in*, not every room you belong
@@ -61,14 +83,44 @@ export function DashboardPage() {
    * only had a tab open. Walking in is the signal.
    */
   const presenceRooms = useMemo(() => (activeRoomId ? [activeRoomId] : []), [activeRoomId])
-  usePresence(presenceRooms, setOnline)
+
+  /**
+   * Who is in the room right now, straight from presence.
+   *
+   * Kept separately from `room.members` on purpose. That list is fetched once
+   * when the page loads, so anyone who joins the room afterwards is present but
+   * missing from it — and filtering presence through a stale cache is what made
+   * two people in the same room see different parties depending on who loaded
+   * first. Presence carries names, so it can stand on its own.
+   */
+  const [roster, setRoster] = useState<Record<string, Present[]>>({})
+
+  const handlePresence = useCallback(
+    (roomId: string, present: Present[]) => {
+      setRoster((current) => ({ ...current, [roomId]: present }))
+      setOnline(
+        roomId,
+        present.map((person) => person.userId),
+      )
+    },
+    [setOnline],
+  )
+
+  /* Resolved, not the raw preference — with nothing chosen the hub derives a
+     character from your user id, and that is what others must be told. */
+  const myCharacter = user ? characterFor(user.id, preferences.characterId)?.id : undefined
+
+  usePresence(presenceRooms, handlePresence, myCharacter)
 
   /* Leaving stops the updates, so the last-known list would otherwise stick
      around and keep showing a live count for a room you walked out of. */
   const lastPresenced = useRef<string | null>(null)
   useEffect(() => {
     const previous = lastPresenced.current
-    if (previous && previous !== activeRoomId) setOnline(previous, [])
+    if (previous && previous !== activeRoomId) {
+      setOnline(previous, [])
+      setRoster((current) => ({ ...current, [previous]: [] }))
+    }
     lastPresenced.current = activeRoomId
   }, [activeRoomId, setOnline])
 
@@ -106,31 +158,43 @@ export function DashboardPage() {
 
     if (!activeRoom) return [you]
 
-    const others = activeRoom.members
-      .filter((member) => member.id !== user.id && activeRoom.online.includes(member.id))
+    /* Ownership still comes from the room — presence knows who is here, not
+       what they are to the room. */
+    const others = (roster[activeRoom.id] ?? [])
+      .filter((person) => person.userId !== user.id)
       .slice(0, MAX_ON_STAGE - 1)
-      .map<HubMember>((member) => ({
-        id: member.id,
-        name: member.name,
+      .map<HubMember>((person) => ({
+        id: person.userId,
+        name: person.name,
         status: 'here',
-        owner: member.role === 'owner',
+        owner: activeRoom.ownerId === person.userId,
         you: false,
-        character: characterFor(member.id),
+        /* Their choice, carried on presence. Falls back to the id-derived one
+           for anyone on an older client that isn't announcing it. */
+        character: characterFor(person.userId, person.characterId),
       }))
 
     /* You stand in the middle of your own party rather than at one end. */
     const line = [...others]
     line.splice(Math.floor(line.length / 2), 0, you)
     return line
-  }, [user, activeRoom, preferences.characterId])
+  }, [user, activeRoom, roster, preferences.characterId])
+
+  /* Watching is a room event, not a private toggle — the hub has to know a
+     session is live so it can badge the button and offer the way in. */
+  const watch = useWatchPulse(activeRoomId)
 
   const leftItems: RailItem[] = activeRoom
     ? ACTIVITIES.map((entry) => ({
         key: entry.id,
         label: entry.label,
-        hint: entry.hint,
+        hint:
+          entry.id === 'watch' && watch.viewers.length > 0
+            ? `${watch.viewers.length} watching`
+            : entry.hint,
         icon: entry.icon,
         active: activity === entry.id,
+        live: entry.id === 'watch' && watch.viewers.length > 0,
         onClick: () => setActivity(entry.id),
       }))
     : [
@@ -151,6 +215,24 @@ export function DashboardPage() {
       ]
 
   const rightItems: RailItem[] = [
+    ...(activeRoom
+      ? [
+          {
+            key: 'talk',
+            label: 'Chat & call',
+            hint:
+              call.othersOnCall > 0
+                ? `${call.othersOnCall} on the call`
+                : chat.unread > 0
+                  ? `${chat.unread} new`
+                  : 'Talk to the room',
+            icon: MessagesSquare,
+            active: sideOpen,
+            live: call.othersOnCall > 0 || chat.unread > 0,
+            onClick: () => setSideOpen((open) => !open),
+          } satisfies RailItem,
+        ]
+      : []),
     {
       key: 'rooms',
       label: activeRoom ? 'Switch room' : 'Your rooms',
@@ -199,12 +281,20 @@ export function DashboardPage() {
 
       {revealed && (
         <>
-          <CharacterParty members={party} tilt={tilt} ground={groundFor(preferences, scene?.id)} />
+          <CharacterParty
+            members={party}
+            tilt={tilt}
+            ground={groundFor(preferences, scene?.id)}
+            insetRight={inset}
+          />
 
           <HubRail side="left" items={leftItems} />
-          <HubRail side="right" items={rightItems} />
+          <HubRail side="right" items={rightItems} insetRight={inset} />
 
-          <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex flex-wrap items-center justify-center gap-3 px-6">
+          <div
+            className="pointer-events-none absolute bottom-6 left-0 z-20 flex flex-wrap items-center justify-center gap-3 px-6 transition-[right] duration-500 ease-glass"
+            style={{ right: `${inset}rem` }}
+          >
             {activeRoom && (
               <>
                 <RoomChip room={activeRoom} />
@@ -237,7 +327,50 @@ export function DashboardPage() {
       )}
 
       <AnimatePresence>
-        {activity && <ActivityStage id={activity} onClose={() => setActivity(null)} />}
+        {revealed && watch.invite && activity !== 'watch' && (
+          <WatchInvite
+            key="watch-invite"
+            name={watch.invite.name}
+            onJoin={() => {
+              setActivity('watch')
+              watch.dismiss()
+            }}
+            onDismiss={watch.dismiss}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {activity === 'watch' && activeRoom && (
+          <WatchStage
+            key="watch"
+            roomId={activeRoom.id}
+            selfId={user?.id}
+            onClose={() => setActivity(null)}
+            insetRight={inset}
+            panelOpen={sideOpen}
+            unread={chat.unread}
+            onTogglePanel={() => setSideOpen((open) => !open)}
+          />
+        )}
+
+        {/* The other three are still stubs, and say so rather than miming. */}
+        {activity && activity !== 'watch' && (
+          <ActivityStage id={activity} onClose={() => setActivity(null)} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {sideOpen && activeRoom && (
+          <RoomPanel
+            key="room-panel"
+            chat={chat}
+            call={call}
+            selfId={user?.id}
+            selfName={user?.name ?? 'You'}
+            onClose={() => setSideOpen(false)}
+          />
+        )}
       </AnimatePresence>
 
       <AnimatePresence>

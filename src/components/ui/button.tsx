@@ -20,10 +20,13 @@ const buttonVariants = cva(
     variants: {
       variant: {
         /* The cinematic "play" button: solid light, washing to the accent. */
-        primary:
-          'bg-chalk text-void shadow-[0_18px_45px_-18px_rgb(255_255_255/0.45)] [--wash:var(--color-signal)] hover:text-white hover:shadow-[0_22px_55px_-16px_color-mix(in_oklab,var(--color-signal)_60%,transparent)] active:scale-[0.98]',
+        /* Also glass, but tinted with the accent so it still reads as the
+           primary action rather than as one more transparent pill. */
+        primary: 'liquid-btn is-accent text-white [--wash:transparent]',
+        /* Glass by default. The wash and the border are dropped: the sheen and
+           the rim come from `.liquid-btn`, and stacking both reads as muddy. */
         outline:
-          'border border-white/15 bg-white/5 text-chalk backdrop-blur-md [--wash:color-mix(in_oklab,var(--color-signal)_55%,transparent)] hover:border-signal/40 hover:text-white active:scale-[0.98]',
+          'liquid-btn text-chalk [--wash:transparent] hover:text-white',
         ghost:
           'text-mist [--wash:rgb(255_255_255/0.09)] hover:text-chalk active:scale-[0.98]',
         link: 'h-auto overflow-visible rounded-none px-0 text-mist underline-offset-4 hover:text-chalk hover:underline',
@@ -47,6 +50,13 @@ type ButtonProps = ComponentProps<'button'> &
     asChild?: boolean
     /** Opt out of the per-letter flip (icon-only buttons, or when nesting). */
     plain?: boolean
+    /**
+     * Opt out of the liquid glass.
+     *
+     * For the navbar, which sits on its own WebGL lens — two refracting
+     * surfaces stacked on each other read as smeared, not as thicker glass.
+     */
+    flat?: boolean
   }
 
 function Button({
@@ -55,10 +65,20 @@ function Button({
   size,
   asChild = false,
   plain = false,
+  flat = false,
   children,
   ...props
 }: ButtonProps) {
   const Comp = asChild ? Slot : 'button'
+
+  /* Stripped by name rather than by branching the variant table, so the glass
+     stays the default and opting out is the exception it should be. */
+  const surface = flat
+    ? cn(
+        buttonVariants({ variant, size }).replace(/\bliquid-btn\b|\bis-accent\b/g, ''),
+        'border border-white/15 bg-white/5 backdrop-blur-md',
+      )
+    : buttonVariants({ variant, size })
 
   /*
    * Only plain strings get the flip. With `asChild` the string is one level
@@ -92,7 +112,7 @@ function Button({
   if (asChild && isValidElement(content)) {
     const slotted = content as ReactElement<{ children?: unknown }>
     return (
-      <Slot data-slot="button" className={cn(buttonVariants({ variant, size }), className)} {...props}>
+      <Slot data-slot="button" className={cn(surface, className)} {...props}>
         {cloneElement(
           slotted,
           undefined,
@@ -108,7 +128,7 @@ function Button({
   }
 
   return (
-    <Comp data-slot="button" className={cn(buttonVariants({ variant, size }), className)} {...props}>
+    <Comp data-slot="button" className={cn(surface, className)} {...props}>
       {inner}
     </Comp>
   )

@@ -42,6 +42,10 @@ function basename(filePath: string) {
 }
 
 function prettify(id: string) {
+  /* Numbered files are the fast way to add a roster — `1.glb`, `2.glb` — so
+     they get a readable name instead of a bare digit. */
+  if (/^\d+$/.test(id)) return `Character ${Number(id)}`
+
   return id
     .replace(/[-_]+/g, ' ')
     .trim()

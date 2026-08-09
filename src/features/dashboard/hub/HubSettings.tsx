@@ -1,11 +1,16 @@
-import { Suspense, lazy } from 'react'
-import { Check } from 'lucide-react'
+import { Suspense, lazy, useState } from 'react'
+import { Shuffle } from 'lucide-react'
 
 import { ModelBoundary } from '@/components/background/ModelBoundary'
+import { Button } from '@/components/ui/button'
+import { PickerPanel, type PickerKind } from '@/features/dashboard/hub/PickerPanel'
 import { groundFor, type HubPreferences } from '@/features/dashboard/hub/usePreferences'
 import { ROSTER, type Character } from '@/lib/characters'
 import { SCENES, type Scene } from '@/lib/scenes'
-import { cn } from '@/lib/utils'
+
+const CharacterPreviewCanvas = lazy(
+  () => import('@/features/dashboard/hub/CharacterPreviewCanvas'),
+)
 
 function Empty({ what, folder, naming }: { what: string; folder: string; naming: string }) {
   return (
@@ -20,52 +25,54 @@ function Empty({ what, folder, naming }: { what: string; folder: string; naming:
   )
 }
 
-function Tile({
-  selected,
-  onClick,
+/** A stand-in with the right silhouette, shown while the model streams in. */
+function Waiting() {
+  return (
+    <span className="grid size-full place-items-end justify-center pb-2">
+      <span className="glass h-[72%] w-[26%] animate-pulse rounded-t-full ring-1 ring-inset ring-white/20" />
+    </span>
+  )
+}
+
+/**
+ * What is currently chosen, and the way to change it.
+ *
+ * Just the one it is, not the whole set — browsing happens in the picker that
+ * opens below. A panel this narrow can show a grid of thumbnails or it can
+ * show them large enough to tell apart, and the second is more useful.
+ */
+function Current({
   label,
-  badge,
+  name,
+  detail,
+  onChange,
   children,
 }: {
-  selected: boolean
-  onClick: () => void
   label: string
-  badge?: string
+  name: string
+  detail?: string
+  onChange: () => void
   children: React.ReactNode
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
-      className={cn(
-        'group/tile relative overflow-hidden rounded-card border text-left outline-none',
-        'transition-[border-color,transform] duration-400 ease-glass',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
-        selected
-          ? 'border-signal/60'
-          : 'border-white/[0.1] hover:-translate-y-0.5 hover:border-white/30',
-      )}
-    >
-      <span className="relative block aspect-[4/3] w-full overflow-hidden bg-deep">
+    <div className="overflow-hidden rounded-card border border-white/[0.1]">
+      <span className="relative block aspect-[16/10] w-full overflow-hidden bg-deep">
         {children}
       </span>
 
-      {selected && (
-        <span className="absolute right-2 top-2 grid size-6 place-items-center rounded-full bg-signal text-white">
-          <Check aria-hidden className="size-3.5" />
-        </span>
-      )}
-
-      <span className="flex items-center justify-between gap-2 px-3 py-2">
-        <span className="truncate text-[0.8rem] font-medium text-chalk">{label}</span>
-        {badge && (
-          <span className="shrink-0 rounded-full border border-white/[0.12] px-1.5 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-dusk">
-            {badge}
+      <span className="flex items-center gap-3 px-4 py-3">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[0.65rem] uppercase tracking-[0.16em] text-dusk">{label}</span>
+          <span className="mt-0.5 block truncate font-display text-[0.95rem] font-semibold text-chalk">
+            {name}
           </span>
-        )}
+          {detail && <span className="mt-0.5 block truncate text-[0.72rem] text-mist">{detail}</span>}
+        </span>
+        <Button variant="outline" size="sm" onClick={onChange}>
+          Change
+        </Button>
       </span>
-    </button>
+    </div>
   )
 }
 
@@ -78,8 +85,7 @@ function ScenePreview({ scene }: { scene: Scene }) {
     )
   }
 
-  /* Every plane stacked, so the tile previews the composite you'll actually
-     see rather than just the sky. */
+  /* Every plane stacked, so it previews the composite rather than just sky. */
   return (
     <>
       {scene.layers.map((layer) => (
@@ -93,27 +99,8 @@ function ScenePreview({ scene }: { scene: Scene }) {
   )
 }
 
-const CharacterPreviewCanvas = lazy(
-  () => import('@/features/dashboard/hub/CharacterPreviewCanvas'),
-)
-
-/** A stand-in with the right silhouette, shown while the model streams in. */
-function Waiting() {
-  return (
-    <span className="grid size-full place-items-end justify-center pb-2">
-      <span className="glass h-[72%] w-[26%] animate-pulse rounded-t-full ring-1 ring-inset ring-white/20" />
-    </span>
-  )
-}
-
-function CharacterPreview({ character, live }: { character: Character; live: boolean }) {
-  /*
-   * A rigged character gets a real turntable of itself. Rendering every tile at
-   * once would be one WebGL context each — browsers cap those around sixteen —
-   * so only the selected tile goes live and the rest keep the cutout or the
-   * silhouette.
-   */
-  if (character.glb && live) {
+function CharacterPreview({ character }: { character: Character }) {
+  if (character.glb) {
     return (
       <span className="absolute inset-0">
         <ModelBoundary fallback={<Waiting />}>
@@ -158,7 +145,10 @@ export function HubSettings({
    */
   activeCharacterId?: string
 }) {
-  const activeScene = preferences.sceneId ?? SCENES[0]?.id
+  const [picking, setPicking] = useState<PickerKind | null>(null)
+  const activeSceneId = preferences.sceneId ?? SCENES[0]?.id
+  const scene = SCENES.find((entry) => entry.id === activeSceneId)
+  const character = ROSTER.find((entry) => entry.id === activeCharacterId) ?? ROSTER[0]
 
   return (
     <div className="flex flex-col gap-9">
@@ -171,41 +161,48 @@ export function HubSettings({
         </p>
 
         <div className="mt-4">
-          {SCENES.length === 0 ? (
+          {!scene ? (
             <Empty
               what="scenes"
               folder="src/assets/scenes/"
-              naming="Name them lake-far.png, lake-mid.png, lake-near.png to get three depth planes — or just lake.png for one."
+              naming="Numbered files like 1.png work. Name them lake-far.png, lake-mid.png, lake-near.png to get three depth planes instead of one."
             />
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {SCENES.map((scene) => (
-                <Tile
-                  key={scene.id}
-                  label={scene.label}
-                  badge={
-                    scene.video
-                      ? 'video'
-                      : scene.layers.length > 1
-                        ? `${scene.layers.length} planes`
-                        : undefined
-                  }
-                  selected={scene.id === activeScene}
-                  onClick={() => onChange({ sceneId: scene.id })}
-                >
-                  <ScenePreview scene={scene} />
-                </Tile>
-              ))}
+            <Current
+              label="Backdrop"
+              name={scene.label}
+              detail={
+                scene.video
+                  ? 'Moving backdrop'
+                  : scene.layers.length > 1
+                    ? `${scene.layers.length} depth planes`
+                    : 'Still backdrop'
+              }
+              onChange={() => setPicking((current) => (current === 'scene' ? null : 'scene'))}
+            >
+              <ScenePreview scene={scene} />
+            </Current>
+          )}
+
+          {picking === 'scene' && (
+            <div className="mt-3">
+              <PickerPanel
+                kind="scene"
+                onPick={(id) => {
+                  onChange({ sceneId: id })
+                  setPicking(null)
+                }}
+              />
             </div>
           )}
         </div>
 
-        {activeScene && (
+        {activeSceneId && (
           <label className="mt-5 block">
             <span className="flex items-baseline justify-between gap-3">
               <span className="text-[0.85rem] font-medium text-chalk">Ground line</span>
               <span className="font-mono text-[0.75rem] text-dusk">
-                {Math.round(groundFor(preferences, activeScene) * 100)}%
+                {Math.round(groundFor(preferences, activeSceneId) * 100)}%
               </span>
             </span>
             <span className="mt-1 block text-[0.78rem] leading-relaxed text-mist">
@@ -216,12 +213,12 @@ export function HubSettings({
               min={50}
               max={95}
               step={1}
-              value={Math.round(groundFor(preferences, activeScene) * 100)}
+              value={Math.round(groundFor(preferences, activeSceneId) * 100)}
               onChange={(event) =>
                 onChange({
                   ground: {
                     ...preferences.ground,
-                    [activeScene]: Number(event.target.value) / 100,
+                    [activeSceneId]: Number(event.target.value) / 100,
                   },
                 })
               }
@@ -240,29 +237,52 @@ export function HubSettings({
         </p>
 
         <div className="mt-4">
-          {ROSTER.length === 0 ? (
+          {!character ? (
             <Empty
               what="characters"
               folder="src/assets/characters/"
-              naming="arjun.glb for a rigged character, arjun.png for a flat cutout. Both together means the cutout covers the moment before the model loads."
+              naming="Numbered files like 1.glb work. A matching 1.png is optional — it covers the moment before the model loads."
             />
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {ROSTER.map((character) => (
-                <Tile
-                  key={character.id}
-                  label={character.label}
-                  badge={character.glb ? '3D' : undefined}
-                  selected={character.id === activeCharacterId}
-                  onClick={() => onChange({ characterId: character.id })}
-                >
-                  <CharacterPreview
-                    character={character}
-                    live={character.id === activeCharacterId}
+            <>
+              <Current
+                label="Character"
+                name={character.label}
+                detail={character.glb ? 'Rigged 3D' : 'Flat cutout'}
+                onChange={() =>
+                  setPicking((current) => (current === 'character' ? null : 'character'))
+                }
+              >
+                <CharacterPreview character={character} />
+              </Current>
+
+              {picking === 'character' && (
+                <div className="mt-3">
+                  <PickerPanel
+                    kind="character"
+                    onPick={(id) => {
+                      onChange({ characterId: id })
+                      setPicking(null)
+                    }}
                   />
-                </Tile>
-              ))}
-            </div>
+                </div>
+              )}
+
+              {ROSTER.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const others = ROSTER.filter((entry) => entry.id !== character.id)
+                    const pick = others[Math.floor(Math.random() * others.length)]
+                    if (pick) onChange({ characterId: pick.id })
+                  }}
+                  className="mt-3 flex items-center gap-2 text-[0.8rem] text-mist outline-none transition-colors hover:text-chalk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                >
+                  <Shuffle aria-hidden className="size-3.5" />
+                  Surprise me
+                </button>
+              )}
+            </>
           )}
         </div>
       </section>
