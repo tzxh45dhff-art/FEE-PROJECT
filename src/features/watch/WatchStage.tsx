@@ -9,6 +9,7 @@ import { ExternalBeacon } from '@/features/watch/players/ExternalBeacon'
 import { FilePlayer } from '@/features/watch/players/FilePlayer'
 import { YouTubePlayer } from '@/features/watch/players/YouTubePlayer'
 import { QueuePanel } from '@/features/watch/QueuePanel'
+import { SourcePicker } from '@/features/watch/SourcePicker'
 import type { PlayerHandle, QueueItem } from '@/features/watch/types'
 import { useDriftCorrection } from '@/features/watch/useDriftCorrection'
 import { useWatchSession } from '@/features/watch/useWatchSession'
@@ -59,6 +60,8 @@ export function WatchStage({
   const [needsGesture, setNeedsGesture] = useState(false)
   const [position, setPosition] = useState(0)
   const [duration, setDuration] = useState(0)
+  /** Set when the picker queues something, so it starts without a second click. */
+  const [autoPlayNewest, setAutoPlayNewest] = useState(false)
 
   const item = snapshot?.item ?? null
   const embeddable = item?.source === 'youtube' || item?.source === 'file'
@@ -149,6 +152,20 @@ export function WatchStage({
 
   const playNow = useCallback((next: QueueItem) => send('watch:load', { itemId: next.id }), [send])
 
+  /*
+   * Choosing something should play it.
+   *
+   * The add is REST and the queue comes back over the socket, so the new item
+   * is not in hand at the moment of choosing — this waits for it to arrive and
+   * then loads it, which is why picking a video doesn't need a second click.
+   */
+  useEffect(() => {
+    if (!autoPlayNewest || queue.length === 0) return
+    const newest = queue[queue.length - 1]
+    if (newest) playNow(newest)
+    setAutoPlayNewest(false)
+  }, [autoPlayNewest, queue, playNow])
+
   const skip = useCallback(() => {
     if (!snapshot) return
     send('watch:ended', { seq: snapshot.seq })
@@ -212,18 +229,33 @@ export function WatchStage({
                     <Clapperboard aria-hidden className="size-6" />
                   </span>
                   <h2 className="mt-5 font-display text-[clamp(1.5rem,3.5vw,2.2rem)] font-semibold tracking-[-0.03em] text-chalk">
-                    Nothing playing
+                    What are we watching?
                   </h2>
                   <p className="mt-2.5 text-[0.92rem] leading-relaxed text-mist">
-                    {queue.length > 0
-                      ? 'There is something queued — put it on and everyone sees it at the same moment.'
-                      : 'Search or paste a link, and it plays for everyone in the room at once.'}
+                    Whatever you pick plays for everyone in the room, in sync.
                   </p>
-                  <div className="mt-6 flex gap-2">
-                    {first && <Button onClick={() => playNow(first)}>Play “{first.title}”</Button>}
-                    <Button variant={first ? 'outline' : 'primary'} onClick={() => setQueueOpen(true)}>
-                      {first ? 'Open queue' : 'Add something'}
-                    </Button>
+
+                  {first && (
+                    <div className="mt-5 w-full">
+                      <Button className="w-full" onClick={() => playNow(first)}>
+                        Resume “{first.title}”
+                      </Button>
+                      <p className="mt-3 text-[0.72rem] uppercase tracking-[0.16em] text-dusk">
+                        or start something new
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mt-5 w-full">
+                    <SourcePicker
+                      roomId={roomId}
+                      canSearch={canSearch}
+                      onQueued={(playImmediately) => {
+                        /* Queue state arrives over the socket; the newest item
+                           is the one they just chose, so put it on. */
+                        if (playImmediately) setAutoPlayNewest(true)
+                      }}
+                    />
                   </div>
                 </div>
               </div>

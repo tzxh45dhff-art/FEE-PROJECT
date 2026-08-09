@@ -34,7 +34,8 @@ export const WATCH_ACTIONS = [
 ] as const
 export type WatchAction = (typeof WATCH_ACTIONS)[number]
 
-type Viewer = { name: string; sockets: number }
+/** Keyed by socket id in `Session.viewers`; see `addViewer`. */
+type Viewer = { userId: string; name: string }
 
 type Session = {
   item: WatchItem | null
@@ -128,44 +129,81 @@ export function snapshot(roomId: string): WatchSnapshot {
     seq: state.seq,
     epoch: state.epoch,
     by: state.by,
-    viewers: [...state.viewers.entries()].map(([id, viewer]) => ({ id, name: viewer.name })),
+    /* One entry per person, not per socket — a second tab must not appear as
+       a second viewer. */
+    viewers: [
+      ...new Map(
+        [...state.viewers.values()].map((viewer) => [viewer.userId, viewer]),
+      ).values(),
+    ].map((viewer) => ({ id: viewer.userId, name: viewer.name })),
     serverTime: Date.now(),
   }
 }
 
+/** Distinct people, not sockets — two tabs is one person watching. */
+function distinctViewers(state: Session) {
+  return new Set([...state.viewers.values()].map((viewer) => viewer.userId)).size
+}
+
 export function isWatching(roomId: string) {
-  return sessions.get(roomId)?.viewers.size ? true : false
-}
-
-/** Somebody opened the stage. Counted per socket, so two tabs are one viewer. */
-export function addViewer(roomId: string, userId: string, name: string) {
-  const state = session(roomId)
-  const existing = state.viewers.get(userId)
-  if (existing) existing.sockets += 1
-  else state.viewers.set(userId, { name, sockets: 1 })
-  return state.viewers.size
-}
-
-export function removeViewer(roomId: string, userId: string) {
   const state = sessions.get(roomId)
-  const viewer = state?.viewers.get(userId)
-  if (!state || !viewer) return 0
+  return state ? distinctViewers(state) > 0 : false
+}
 
-  viewer.sockets -= 1
-  if (viewer.sockets <= 0) state.viewers.delete(userId)
+/**
+ * Park the video where it is.
+ *
+ * Called when the stage empties. Freezing the projected position rather than
+ * clearing it is what makes walking back in resume from the same frame instead
+ * of restarting — and it has to happen the moment the last person leaves, or
+ * the video "plays" to an empty room and everyone returns to find it minutes
+ * ahead of where they left it.
+ */
+function park(state: Session) {
+  state.position = project(state)
+  state.playing = false
+  state.at = Date.now()
+}
 
-  /*
-   * The last person out pauses the room rather than wiping it. Coming back to
-   * a video parked where you left it is the friendlier default, and the queue
-   * it belongs to is in the database anyway.
-   */
-  if (state.viewers.size === 0) {
-    state.position = project(state)
-    state.playing = false
-    state.at = Date.now()
+/**
+ * Somebody opened the stage.
+ *
+ * Keyed by socket id, deliberately. The obvious version keeps a per-user count
+ * and increments it — but the open handler awaits a membership check, so a
+ * close arriving mid-flight no-ops and the retried open increments twice. The
+ * count then never falls back to zero: the room shows phantom viewers forever
+ * and, worse, never parks the video because "everyone left" never becomes true.
+ * A socket id is idempotent, so the whole failure mode disappears.
+ */
+export function addViewer(roomId: string, socketId: string, userId: string, name: string) {
+  const state = session(roomId)
+  state.viewers.set(socketId, { userId, name })
+  return distinctViewers(state)
+}
+
+export function removeViewer(roomId: string, socketId: string) {
+  const state = sessions.get(roomId)
+  if (!state) return 0
+
+  state.viewers.delete(socketId)
+  const remaining = distinctViewers(state)
+  if (remaining === 0) park(state)
+
+  return remaining
+}
+
+/** Forget a socket in every room. The disconnect safety net. */
+export function dropSocket(socketId: string): string[] {
+  const touched: string[] = []
+
+  for (const [roomId, state] of sessions) {
+    if (state.viewers.delete(socketId)) {
+      touched.push(roomId)
+      if (distinctViewers(state) === 0) park(state)
+    }
   }
 
-  return state.viewers.size
+  return touched
 }
 
 export function dropRoom(roomId: string) {

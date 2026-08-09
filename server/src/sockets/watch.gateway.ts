@@ -118,7 +118,7 @@ export function attachWatchGateway(io: Server) {
       if (!staged.has(roomId)) return
       staged.delete(roomId)
       void socket.leave(stageRoom(roomId))
-      watch.removeViewer(roomId, self.id)
+      watch.removeViewer(roomId, socket.id)
       pushViewers(roomId)
       /* Emptying the stage pauses the room, so tell whoever is left. */
       pushState(roomId)
@@ -151,7 +151,7 @@ export function attachWatchGateway(io: Server) {
         return
       }
 
-      const first = watch.addViewer(roomId, self.id, self.name) === 1
+      const first = watch.addViewer(roomId, socket.id, self.id, self.name) === 1
       /* Only the first person opening it is news. After that the stage is
          already live and the badge in the hub says so. */
       if (first) {
@@ -273,10 +273,13 @@ export function attachWatchGateway(io: Server) {
     })
 
     socket.on('disconnecting', () => {
-      for (const roomId of staged) {
-        watch.removeViewer(roomId, self.id)
-        io.to(roomId).emit('watch:viewers', { roomId, viewers: watch.snapshot(roomId).viewers })
-        io.to(stageRoom(roomId)).emit('watch:state', watch.snapshot(roomId))
+      /* Swept by socket id across every room, not just the ones this
+         connection thinks it staged — a close that never landed would
+         otherwise leave a phantom viewer holding the room open forever. */
+      for (const roomId of watch.dropSocket(socket.id)) {
+        const state = watch.snapshot(roomId)
+        io.to(roomId).emit('watch:viewers', { roomId, viewers: state.viewers })
+        io.to(stageRoom(roomId)).emit('watch:state', state)
       }
       staged.clear()
     })

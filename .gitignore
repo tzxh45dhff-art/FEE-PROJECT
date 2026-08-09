@@ -27,3 +27,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Uploaded room videos — user content, not source
+server/uploads/

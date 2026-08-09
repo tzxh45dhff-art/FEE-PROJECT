@@ -1,5 +1,8 @@
+import path from 'node:path'
 import type { Request, Response } from 'express'
 import { z } from 'zod'
+
+import { UPLOAD_ROUTE } from '../services/upload.service.js'
 
 import * as queueModel from '../models/queue.model.js'
 import { resolveSource, searchAvailable, searchYouTube } from '../services/sources.service.js'
@@ -49,6 +52,31 @@ export async function resolve(req: Request, res: Response) {
   }
 
   res.json({ resolved: await resolveSource(parsed.data.input) })
+}
+
+/**
+ * A local file, now hosted.
+ *
+ * Returns the same shape as `resolve`, so the client can hand it straight to
+ * the queue without a second code path for uploads.
+ */
+export async function upload(req: Request, res: Response) {
+  await gate(req)
+
+  const file = (req as Request & { file?: Express.Multer.File }).file
+  if (!file) throw HttpError.badRequest('No file was uploaded')
+
+  const title = path.parse(file.originalname).name || 'Uploaded video'
+
+  res.status(201).json({
+    resolved: {
+      source: 'file' as const,
+      ref: `${UPLOAD_ROUTE}/${file.filename}`,
+      title,
+      duration: null,
+      thumbnail: null,
+    },
+  })
 }
 
 export async function queue(req: Request, res: Response) {

@@ -17,6 +17,8 @@ export default defineConfig({
     proxy: {
       '/api': { target: 'http://localhost:4000', changeOrigin: true },
       '/socket.io': { target: 'http://localhost:4000', ws: true, changeOrigin: true },
+      /* Uploaded room videos are served by the API, not by Vite. */
+      '/uploads': { target: 'http://localhost:4000', changeOrigin: true },
     },
   },
   resolve: {

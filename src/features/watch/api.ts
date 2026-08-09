@@ -34,6 +34,55 @@ export function resolveInput(roomId: string, input: string) {
     .then((response) => response.resolved)
 }
 
+/**
+ * Send a local file to the server so the whole room can play it.
+ *
+ * Uses XHR rather than fetch purely for `upload.onprogress` — a video is big
+ * enough that a spinner with no percentage feels broken.
+ */
+export function uploadVideo(
+  roomId: string,
+  file: File,
+  onProgress?: (fraction: number) => void,
+): Promise<ResolvedSource> {
+  return new Promise((resolve, reject) => {
+    const body = new FormData()
+    body.append('video', file)
+
+    const request = new XMLHttpRequest()
+    request.open('POST', `/api/rooms/${roomId}/watch/upload`)
+    request.withCredentials = true
+
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(event.loaded / event.total)
+    }
+
+    request.onload = () => {
+      let parsed: unknown = null
+      try {
+        parsed = JSON.parse(request.responseText)
+      } catch {
+        /* Falls through to the generic message below. */
+      }
+
+      if (request.status >= 200 && request.status < 300) {
+        resolve((parsed as { resolved: ResolvedSource }).resolved)
+      } else {
+        const message =
+          parsed && typeof parsed === 'object' && 'error' in parsed
+            ? String((parsed as { error: unknown }).error)
+            : 'Upload failed'
+        reject(new Error(message))
+      }
+    }
+
+    request.onerror = () => reject(new Error('Upload failed — is the server running?'))
+    request.onabort = () => reject(new Error('Upload cancelled'))
+
+    request.send(body)
+  })
+}
+
 export function fetchQueue(roomId: string) {
   return api.get<{ items: QueueItem[] }>(`/rooms/${roomId}/watch/queue`).then((r) => r.items)
 }
