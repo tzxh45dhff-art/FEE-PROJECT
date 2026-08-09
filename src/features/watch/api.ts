@@ -1,5 +1,5 @@
 import { api } from '@/lib/api'
-import { API_BASE, getToken } from '@/lib/config'
+import { API_BASE, API_HEADERS, getToken } from '@/lib/config'
 import { getSocket } from '@/lib/socket'
 import type { QueueItem, ResolvedSource, SearchResult } from '@/features/watch/types'
 
@@ -56,6 +56,9 @@ export function uploadVideo(
     /* Same dual-carrier auth as the fetch client — see lib/config. */
     const token = getToken()
     if (token) request.setRequestHeader('Authorization', `Bearer ${token}`)
+    for (const [key, value] of Object.entries(API_HEADERS)) {
+      request.setRequestHeader(key, value)
+    }
 
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress?.(event.loaded / event.total)

@@ -60,6 +60,20 @@ export async function findRoomsForUser(userId: string): Promise<RoomWithMembers[
   return memberships.map((membership) => membership.room)
 }
 
+/**
+ * Every room, for the public directory.
+ *
+ * Newest first and capped, because this is a browse list rather than a search —
+ * an unbounded query here would grow into the slowest request in the app.
+ */
+export function findAllRooms(limit = 60): Promise<RoomWithMembers[]> {
+  return prisma.room.findMany({
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    include: { members: memberSelect },
+  })
+}
+
 export function findMembership(userId: string, roomId: string) {
   return prisma.membership.findUnique({ where: { userId_roomId: { userId, roomId } } })
 }

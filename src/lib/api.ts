@@ -1,4 +1,4 @@
-import { API_BASE, getToken } from '@/lib/config'
+import { API_BASE, API_HEADERS, getToken } from '@/lib/config'
 
 /**
  * Thin wrapper over fetch for the SyncRoom API.
@@ -22,7 +22,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { ...API_HEADERS }
   if (init?.body) headers['Content-Type'] = 'application/json'
 
   const token = getToken()

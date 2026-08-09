@@ -31,6 +31,28 @@ export async function listRooms(userId: string) {
   return rooms.map(serialiseRoom)
 }
 
+/**
+ * Rooms anyone signed in can walk into.
+ *
+ * Deliberately does not leak the member list — only counts. Knowing a room
+ * exists and how busy it is, is all the directory needs; who is inside is for
+ * people who have actually joined.
+ */
+export async function discoverRooms(userId: string) {
+  const rooms = await roomModel.findAllRooms()
+
+  return rooms.map((room) => ({
+    id: room.id,
+    slug: room.slug,
+    name: room.name,
+    type: room.type,
+    createdAt: room.createdAt,
+    memberCount: room.members.length,
+    onlineCount: presenceFor(room.id).length,
+    joined: room.members.some((member) => member.user.id === userId),
+  }))
+}
+
 export async function createRoom(userId: string, input: { name: string; type: RoomType }) {
   const room = await roomModel.createRoom({
     name: input.name,

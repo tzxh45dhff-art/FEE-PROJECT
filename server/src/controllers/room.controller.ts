@@ -24,6 +24,10 @@ export async function create(req: Request, res: Response) {
   res.status(201).json({ room })
 }
 
+export async function discover(req: Request, res: Response) {
+  res.json({ rooms: await roomService.discoverRooms(req.userId!) })
+}
+
 export async function show(req: Request, res: Response) {
   const room = await roomService.getRoom(req.userId!, req.params.id!)
   res.json({ room })

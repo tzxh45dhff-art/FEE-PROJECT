@@ -21,8 +21,17 @@ export function getSocket() {
       path: '/socket.io',
       withCredentials: true,
       auth: { token: getToken() ?? undefined },
+      /*
+       * WebSocket only, no HTTP long-polling fallback.
+       *
+       * Socket.IO normally starts on polling and upgrades. Through an ngrok
+       * free tunnel those polling requests collect the browser-warning HTML
+       * page instead of a handshake, so the connection never establishes.
+       * WebSocket bypasses that path entirely.
+       */
+      transports: ['websocket'] as string[],
     }
-    socket = API_BASE ? io(API_BASE, options) : io(options)
+    socket = API_BASE ? io(API_BASE, { ...options }) : io({ ...options })
   }
   return socket
 }

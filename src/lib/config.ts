@@ -50,6 +50,19 @@ export function setToken(token: string | null) {
   }
 }
 
+/**
+ * Headers every API call needs, beyond auth.
+ *
+ * ngrok's free tier answers browser-looking requests with an HTML warning page
+ * instead of proxying — and that page carries no CORS headers, so a
+ * cross-origin `fetch` fails with a bare "Failed to fetch" that looks exactly
+ * like the server being down. This header opts out of it. Harmless everywhere
+ * else, so it is not conditional.
+ */
+export const API_HEADERS: Record<string, string> = {
+  'ngrok-skip-browser-warning': 'true',
+}
+
 /** Absolute URL for something the API serves, such as an uploaded video. */
 export function apiUrl(path: string) {
   if (/^https?:\/\//i.test(path)) return path

@@ -14,6 +14,7 @@ roomRoutes.use(requireAuth)
 roomRoutes.get('/', asyncHandler(roomController.list))
 roomRoutes.post('/', asyncHandler(roomController.create))
 /* Before `/:id`, or Express reads "join" as a room id. */
+roomRoutes.get('/discover', asyncHandler(roomController.discover))
 roomRoutes.post('/join', asyncHandler(roomController.joinByCode))
 roomRoutes.get('/:id', asyncHandler(roomController.show))
 roomRoutes.post('/:id/join', asyncHandler(roomController.join))

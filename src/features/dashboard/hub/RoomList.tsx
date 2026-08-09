@@ -1,7 +1,9 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Globe, Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import type { Room } from '@/features/rooms/api'
+import * as roomsApi from '@/features/rooms/api'
+import type { DiscoverableRoom, Room } from '@/features/rooms/api'
 import { roomStyle } from '@/features/rooms/roomStyle'
 
 /**
@@ -63,6 +65,103 @@ function JoinByCode({ onJoin }: { onJoin: (code: string) => Promise<Room> }) {
   )
 }
 
+/**
+ * Rooms anyone can walk into.
+ *
+ * Joining goes through the same code path as pasting a code — the slug *is* the
+ * code — so there is one way to become a member rather than two that can drift.
+ */
+function Discover({ onJoin }: { onJoin: (code: string) => Promise<Room> }) {
+  const [rooms, setRooms] = useState<DiscoverableRoom[] | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    roomsApi
+      .fetchDiscoverable()
+      .then(setRooms)
+      .catch(() => setRooms([]))
+  }, [])
+
+  /* Only rooms you are not already in — yours are listed below already. */
+  const open = (rooms ?? []).filter((room) => !room.joined)
+
+  if (rooms === null) {
+    return (
+      <p className="flex items-center gap-2 px-1 py-3 text-[0.8rem] text-mist">
+        <Loader2 aria-hidden className="size-3.5 animate-spin" /> Looking for open rooms…
+      </p>
+    )
+  }
+
+  if (open.length === 0) return null
+
+  return (
+    <section className="mb-6">
+      <h4 className="flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.16em] text-dusk">
+        <Globe aria-hidden className="size-3.5" /> Open rooms
+      </h4>
+      <ul className="mt-2.5 flex flex-col gap-2">
+        {open.map((room) => {
+          const art = roomStyle(room.type)
+          return (
+            <li key={room.id}>
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={async () => {
+                  setBusy(room.id)
+                  setError(null)
+                  try {
+                    await onJoin(room.slug)
+                  } catch (cause) {
+                    setError(cause instanceof Error ? cause.message : 'Could not join')
+                  } finally {
+                    setBusy(null)
+                  }
+                }}
+                className="liquid-btn is-scrim flex w-full items-center gap-3 rounded-card px-4 py-3 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-signal disabled:opacity-60"
+              >
+                <span
+                  aria-hidden
+                  className="size-9 shrink-0 rounded-full ring-1 ring-inset ring-white/15"
+                  style={{ backgroundImage: `linear-gradient(150deg, ${art.glow}, ${art.from})` }}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-display text-[0.92rem] font-semibold text-chalk">
+                    {room.name}
+                  </span>
+                  <span className="block truncate text-[0.72rem] text-mist">
+                    {art.name} · {room.memberCount}{' '}
+                    {room.memberCount === 1 ? 'member' : 'members'}
+                  </span>
+                </span>
+                {busy === room.id ? (
+                  <Loader2 aria-hidden className="size-4 shrink-0 animate-spin text-mist" />
+                ) : (
+                  room.onlineCount > 0 && (
+                    <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-black/40 px-2.5 py-1">
+                      <span className="size-1.5 animate-signal-pulse rounded-full bg-emerald-400" />
+                      <span className="text-[0.66rem] font-medium text-chalk">
+                        {room.onlineCount}
+                      </span>
+                    </span>
+                  )
+                )}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      {error && (
+        <p role="alert" className="mt-2 text-[0.78rem] text-signal-bright">
+          {error}
+        </p>
+      )}
+    </section>
+  )
+}
+
 /** The rooms you belong to, as a way in — plus the door for rooms you don't. */
 export function RoomList({
   rooms,
@@ -79,6 +178,7 @@ export function RoomList({
     return (
       <>
         <JoinByCode onJoin={onJoin} />
+        <Discover onJoin={onJoin} />
         <div className="rounded-card border border-white/[0.08] bg-white/[0.02] px-5 py-10 text-center">
           <p className="font-display text-[1.05rem] font-semibold text-chalk">No rooms yet</p>
           <p className="mx-auto mt-2 max-w-xs text-[0.85rem] leading-relaxed text-mist">
@@ -92,6 +192,8 @@ export function RoomList({
   return (
     <>
       <JoinByCode onJoin={onJoin} />
+      <Discover onJoin={onJoin} />
+      <h4 className="mb-2.5 text-[0.72rem] uppercase tracking-[0.16em] text-dusk">Your rooms</h4>
       <ul className="flex flex-col gap-2.5">
       {rooms.map((room) => {
         const art = roomStyle(room.type)
