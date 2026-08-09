@@ -18,10 +18,34 @@ function required(name: string): string {
   return value
 }
 
+/**
+ * Origins allowed to call this API.
+ *
+ * Comma-separated, because a split deployment normally has at least two: the
+ * production frontend and whatever preview URL is being tested against it.
+ */
+function origins(): string[] {
+  const raw = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173'
+  return raw
+    .split(',')
+    .map((entry) => entry.trim().replace(/\/$/, ''))
+    .filter(Boolean)
+}
+
 export const env = {
   jwtSecret: required('JWT_SECRET'),
   port: Number(process.env.PORT ?? 4000),
   isProd: process.env.NODE_ENV === 'production',
+  clientOrigins: origins(),
+  /**
+   * True when the frontend is served from a different origin than this API.
+   *
+   * Flips the session cookie to `SameSite=None; Secure`, which is the only
+   * combination a browser will send cross-site — and which *requires* HTTPS on
+   * both ends. Note this is still not sufficient on its own: Safari blocks
+   * third-party cookies outright, which is why the bearer token exists.
+   */
+  crossSite: process.env.CROSS_SITE === 'true',
   /**
    * Optional. Only YouTube *search* needs it — adding by link goes through the
    * public oEmbed endpoint, so the watch feature works without a key at all.

@@ -30,3 +30,8 @@ dist-ssr
 
 # Uploaded room videos — user content, not source
 server/uploads/
+
+# Local dev database. Committing it ships real accounts and password hashes,
+# and gives anyone who clones a private copy that never syncs with yours.
+server/prisma/dev.db
+server/prisma/*.db-journal

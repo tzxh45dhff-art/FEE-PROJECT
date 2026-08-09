@@ -31,6 +31,13 @@ export function useMicLevel() {
   }, [])
 
   const start = useCallback(async () => {
+    /* Same browser rule as the call: no mic outside a secure context. Saying
+       so beats a bare "denied" the user cannot act on. */
+    if (!window.isSecureContext) {
+      setState('denied')
+      return
+    }
+
     setState('requesting')
     try {
       const media = await navigator.mediaDevices.getUserMedia({ audio: true })

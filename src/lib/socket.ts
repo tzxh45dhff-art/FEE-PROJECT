@@ -1,5 +1,7 @@
 import { io, type Socket } from 'socket.io-client'
 
+import { API_BASE, getToken } from '@/lib/config'
+
 let socket: Socket | null = null
 
 /**
@@ -9,9 +11,30 @@ let socket: Socket | null = null
  * and watch share this rather than opening one each — and because they share
  * it, the server can treat "joined to the room" as the permission for both.
  *
- * The handshake carries the session cookie automatically — same auth as REST.
+ * The handshake carries the session cookie automatically when same-origin. It
+ * also carries the bearer token, because cross-origin that cookie is
+ * third-party and may be dropped before it ever reaches the server.
  */
 export function getSocket() {
-  if (!socket) socket = io({ path: '/socket.io', withCredentials: true })
+  if (!socket) {
+    const options = {
+      path: '/socket.io',
+      withCredentials: true,
+      auth: { token: getToken() ?? undefined },
+    }
+    socket = API_BASE ? io(API_BASE, options) : io(options)
+  }
   return socket
+}
+
+/**
+ * Drop the connection so the next one re-handshakes.
+ *
+ * Signing in or out changes who the socket is, and Socket.IO only reads `auth`
+ * when it connects — without this a fresh session would keep talking over the
+ * previous user's authenticated connection.
+ */
+export function resetSocket() {
+  socket?.disconnect()
+  socket = null
 }

@@ -15,6 +15,7 @@ import { useDriftCorrection } from '@/features/watch/useDriftCorrection'
 import { useWatchSession } from '@/features/watch/useWatchSession'
 import { WatchControls } from '@/features/watch/WatchControls'
 import { WatchToasts } from '@/features/watch/WatchToasts'
+import { apiUrl } from '@/lib/config'
 import { cn } from '@/lib/utils'
 
 const EASE = [0.16, 1, 0.3, 1] as const
@@ -206,7 +207,10 @@ export function WatchStage({
             {item && embeddable && item.source === 'file' && (
               <FilePlayer
                 key={item.id}
-                src={item.ref}
+                /* Uploads are stored as a server-relative path, which resolves
+                   against the *frontend* once the two are on different origins.
+                   This puts it back on the API. */
+                src={apiUrl(item.ref)}
                 startAt={targetPosition()}
                 onHandle={setHandle}
                 onEnded={onEnded}

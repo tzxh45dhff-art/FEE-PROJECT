@@ -1,10 +1,14 @@
+import { API_BASE, getToken } from '@/lib/config'
+
 /**
  * Thin wrapper over fetch for the SyncRoom API.
  *
- * Every call sends cookies, because the session is an httpOnly cookie the
- * client can't read — there is no token to attach by hand, which is the point.
- * Requests go to a same-origin `/api` path and Vite proxies them to the server
- * in dev, so there is no CORS and no base URL to configure.
+ * Same-origin, the session is an httpOnly cookie and there is nothing to attach
+ * by hand — Vite proxies `/api` to the server, so no CORS and no base URL.
+ *
+ * Cross-origin (a deployed frontend talking to a tunnelled API) that cookie is
+ * third-party and may never be sent, so the bearer token is added as well.
+ * Both are always offered; the server takes whichever it gets.
  */
 
 export class ApiError extends Error {
@@ -18,15 +22,26 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {}
+  if (init?.body) headers['Content-Type'] = 'application/json'
+
+  const token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+
   let response: Response
   try {
-    response = await fetch(`/api${path}`, {
+    response = await fetch(`${API_BASE}/api${path}`, {
       credentials: 'include',
-      headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
       ...init,
+      headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) },
     })
   } catch {
-    throw new ApiError(0, 'Can’t reach the server. Is it running?')
+    throw new ApiError(
+      0,
+      API_BASE
+        ? 'Can’t reach the server. Is the backend running and the tunnel up?'
+        : 'Can’t reach the server. Is it running?',
+    )
   }
 
   if (response.status === 204) return undefined as T

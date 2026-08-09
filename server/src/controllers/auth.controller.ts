@@ -23,20 +23,29 @@ function parse<T extends z.ZodTypeAny>(schema: T, body: unknown): z.infer<T> {
   return result.data
 }
 
+/*
+ * The token comes back in the body as well as in the cookie.
+ *
+ * Same-origin clients ignore it and let the cookie do the work. A client on
+ * another origin cannot rely on that cookie surviving the round trip, so it
+ * keeps this and sends it as a bearer header instead.
+ */
 export async function register(req: Request, res: Response) {
   const input = parse(registration, req.body)
   const user = await authService.register(input)
 
-  setSessionCookie(res, signSession(user.id))
-  res.status(201).json({ user })
+  const token = signSession(user.id)
+  setSessionCookie(res, token)
+  res.status(201).json({ user, token })
 }
 
 export async function login(req: Request, res: Response) {
   const input = parse(credentials, req.body)
   const user = await authService.login(input)
 
-  setSessionCookie(res, signSession(user.id))
-  res.json({ user })
+  const token = signSession(user.id)
+  setSessionCookie(res, token)
+  res.json({ user, token })
 }
 
 export function logout(_req: Request, res: Response) {

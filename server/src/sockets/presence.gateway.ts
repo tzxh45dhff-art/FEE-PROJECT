@@ -2,7 +2,7 @@ import * as cookie from 'cookie'
 import { Server, type Socket } from 'socket.io'
 import type { Server as HttpServer } from 'node:http'
 
-import { SESSION_COOKIE } from '../config/env.js'
+import { SESSION_COOKIE, env } from '../config/env.js'
 import * as userModel from '../models/user.model.js'
 import {
   addPresence,
@@ -12,7 +12,7 @@ import {
   setCharacter,
 } from '../services/presence.service.js'
 import { assertMembership } from '../services/room.service.js'
-import { readSession } from '../services/token.service.js'
+import { readSession, tokenFrom } from '../services/token.service.js'
 
 type SocketState = { userId: string; name: string; joined: Set<string> }
 const state = new WeakMap<Socket, SocketState>()
@@ -44,8 +44,10 @@ function characterIdFrom(raw: unknown): string | undefined {
 /** Real-time presence. Who is in a room, updated the moment it changes. */
 export function attachPresenceGateway(httpServer: HttpServer) {
   const io = new Server(httpServer, {
-    // Same-origin in dev through the Vite proxy, so no CORS config is needed.
     serveClient: false,
+    /* Same-origin in dev through the Vite proxy; a split deployment needs the
+       frontend's origin named explicitly, same as the REST API. */
+    cors: { origin: env.clientOrigins, credentials: true },
   })
 
   /*
@@ -53,8 +55,22 @@ export function attachPresenceGateway(httpServer: HttpServer) {
    * so there is no second auth mechanism to keep in step.
    */
   io.use(async (socket, next) => {
+    /*
+     * Cookie first, then the handshake token.
+     *
+     * Cross-origin the cookie may never arrive — Safari drops third-party
+     * cookies — so the client also hands the token to `io({ auth })`, and that
+     * is what keeps the socket authenticating when the REST calls are using a
+     * bearer header.
+     */
     const header = socket.handshake.headers.cookie
-    const token = header ? cookie.parse(header)[SESSION_COOKIE] : undefined
+    const fromCookie = header ? cookie.parse(header)[SESSION_COOKIE] : undefined
+    const fromAuth = (socket.handshake.auth as { token?: unknown } | undefined)?.token
+    const token =
+      fromCookie ??
+      (typeof fromAuth === 'string' ? fromAuth : undefined) ??
+      tokenFrom({ headers: socket.handshake.headers as Record<string, unknown> })
+
     const userId = readSession(token)
     if (!userId) return next(new Error('Not signed in'))
 

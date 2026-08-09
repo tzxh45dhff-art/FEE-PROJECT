@@ -1,4 +1,5 @@
 import { api } from '@/lib/api'
+import { API_BASE, getToken } from '@/lib/config'
 import { getSocket } from '@/lib/socket'
 import type { QueueItem, ResolvedSource, SearchResult } from '@/features/watch/types'
 
@@ -50,8 +51,11 @@ export function uploadVideo(
     body.append('video', file)
 
     const request = new XMLHttpRequest()
-    request.open('POST', `/api/rooms/${roomId}/watch/upload`)
+    request.open('POST', `${API_BASE}/api/rooms/${roomId}/watch/upload`)
     request.withCredentials = true
+    /* Same dual-carrier auth as the fetch client — see lib/config. */
+    const token = getToken()
+    if (token) request.setRequestHeader('Authorization', `Bearer ${token}`)
 
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress?.(event.loaded / event.total)

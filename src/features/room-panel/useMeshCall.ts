@@ -190,6 +190,23 @@ export function useMeshCall(roomId: string | null) {
   const join = useCallback(async () => {
     if (!roomId || active.current) return
 
+    /*
+     * Camera and microphone need a secure context.
+     *
+     * Browsers only expose `mediaDevices` on HTTPS or on localhost — so the
+     * moment a second person opens the app over the LAN at
+     * `http://192.168.x.x:5173`, it is simply not there. That is a browser rule
+     * with no way around it in code, and reporting it as "this browser cannot
+     * make calls" sends people off debugging the wrong thing entirely.
+     */
+    if (!window.isSecureContext) {
+      setStatus('unsupported')
+      setError(
+        'Camera and mic are blocked on an insecure connection. Browsers only allow them on HTTPS or localhost — open the app over HTTPS (a tunnel works) to call from another machine.',
+      )
+      return
+    }
+
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
       setStatus('unsupported')
       setError('This browser cannot make calls.')
