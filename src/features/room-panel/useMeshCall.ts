@@ -280,72 +280,96 @@ export function useMeshCall(roomId: string | null) {
     setCameraOff(false)
   }, [roomId])
 
-  const join = useCallback(async () => {
-    if (!roomId || active.current) return
+  /**
+   * @param audioOnly Skip the camera entirely rather than requesting it and
+   *   discarding it. The hub's quick Voice button uses this — pressing "Voice"
+   *   shouldn't pop a camera permission prompt for someone who only wants to
+   *   talk. It is not a different call, just a different way in: audio-only
+   *   and full joins land in exactly the same room call, same peers.
+   */
+  const join = useCallback(
+    async (audioOnly = false) => {
+      if (!roomId || active.current) return
 
-    /*
-     * Camera and microphone need a secure context.
-     *
-     * Browsers only expose `mediaDevices` on HTTPS or on localhost — so the
-     * moment a second person opens the app over the LAN at
-     * `http://192.168.x.x:5173`, it is simply not there. That is a browser rule
-     * with no way around it in code, and reporting it as "this browser cannot
-     * make calls" sends people off debugging the wrong thing entirely.
-     */
-    if (!window.isSecureContext) {
-      setStatus('unsupported')
-      setError(
-        'Camera and mic are blocked on an insecure connection. Browsers only allow them on HTTPS or localhost — open the app over HTTPS (a tunnel works) to call from another machine.',
-      )
-      return
-    }
-
-    if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
-      setStatus('unsupported')
-      setError('This browser cannot make calls.')
-      return
-    }
-
-    setStatus('requesting')
-    setError(null)
-
-    let media: MediaStream
-    try {
-      media = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: { echoCancellation: true, noiseSuppression: true },
-      })
-    } catch {
-      /* No camera, or camera in use elsewhere — audio alone is still a call. */
-      try {
-        media = await navigator.mediaDevices.getUserMedia({ audio: true })
-        setCameraOff(true)
-      } catch {
-        setStatus('denied')
-        setError('Camera and microphone are blocked. Allow them and try again.')
+      /*
+       * Camera and microphone need a secure context.
+       *
+       * Browsers only expose `mediaDevices` on HTTPS or on localhost — so the
+       * moment a second person opens the app over the LAN at
+       * `http://192.168.x.x:5173`, it is simply not there. That is a browser rule
+       * with no way around it in code, and reporting it as "this browser cannot
+       * make calls" sends people off debugging the wrong thing entirely.
+       */
+      if (!window.isSecureContext) {
+        setStatus('unsupported')
+        setError(
+          'Camera and mic are blocked on an insecure connection. Browsers only allow them on HTTPS or localhost — open the app over HTTPS (a tunnel works) to call from another machine.',
+        )
         return
       }
-    }
 
-    /*
-     * Awaited here, not just left to the background effect.
-     *
-     * `iceServers` is a constructor-only option — a peer connection built
-     * before this resolves is stuck on STUN alone forever, even after the
-     * real config arrives. The background effect only *primes* the cache; this
-     * is what guarantees the value is actually ready before `call:join` can
-     * trigger the first `connectionFor()`. The fetch runs in parallel with
-     * `getUserMedia` above rather than after it, so it costs nothing extra.
-     */
-    ice.current = (await loadIce()).iceServers
+      if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {
+        setStatus('unsupported')
+        setError('This browser cannot make calls.')
+        return
+      }
 
-    stream.current = media
-    active.current = true
-    setInvite(null)
-    setLocalStream(media)
-    setStatus('live')
-    getSocket().emit('call:join', { roomId })
-  }, [roomId])
+      setStatus('requesting')
+      setError(null)
+
+      let media: MediaStream
+      const AUDIO = { echoCancellation: true, noiseSuppression: true }
+
+      if (audioOnly) {
+        try {
+          media = await navigator.mediaDevices.getUserMedia({ audio: AUDIO })
+          setCameraOff(true)
+        } catch {
+          setStatus('denied')
+          setError('Microphone is blocked. Allow it and try again.')
+          return
+        }
+      } else {
+        try {
+          media = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: AUDIO,
+          })
+        } catch {
+          /* No camera, or camera in use elsewhere — audio alone is still a call. */
+          try {
+            media = await navigator.mediaDevices.getUserMedia({ audio: AUDIO })
+            setCameraOff(true)
+          } catch {
+            setStatus('denied')
+            setError('Camera and microphone are blocked. Allow them and try again.')
+            return
+          }
+        }
+      }
+
+      /*
+       * Awaited here, not just left to the background effect.
+       *
+       * `iceServers` is a constructor-only option — a peer connection built
+       * before this resolves is stuck on STUN alone forever, even after the
+       * real config arrives. The background effect only *primes* the cache;
+       * this is what guarantees the value is actually ready before
+       * `call:join` can trigger the first `connectionFor()`. The fetch runs
+       * in parallel with `getUserMedia` above rather than after it, so it
+       * costs nothing extra.
+       */
+      ice.current = (await loadIce()).iceServers
+
+      stream.current = media
+      active.current = true
+      setInvite(null)
+      setLocalStream(media)
+      setStatus('live')
+      getSocket().emit('call:join', { roomId })
+    },
+    [roomId],
+  )
 
   /* Socket wiring. Kept separate from `join` so a peer arriving before we
      finished getting media is still handled. */
@@ -505,6 +529,57 @@ export function useMeshCall(roomId: string | null) {
 
   const hasCamera = (localStream?.getVideoTracks().length ?? 0) > 0
 
+  /*
+   * Your own level, read off the stream actually being sent.
+   *
+   * This used to be a second, separate `getUserMedia` capture just for a meter
+   * — which meant the hub's quick Voice button was proving a *different*
+   * microphone stream than the one the call transmitted, not the real one.
+   * Analysing `localStream` itself means the ring can only ever show what
+   * peers are actually hearing.
+   *
+   * A ref, not state: this updates every animation frame, and pushing that
+   * through React would re-render everything downstream at 60fps for a value
+   * only one small ring reads.
+   */
+  const micLevel = useRef(0)
+
+  useEffect(() => {
+    if (!localStream || localStream.getAudioTracks().length === 0) {
+      micLevel.current = 0
+      return
+    }
+
+    const audio = new AudioContext()
+    const source = audio.createMediaStreamSource(localStream)
+    const analyser = audio.createAnalyser()
+    analyser.fftSize = 512
+    source.connect(analyser)
+
+    const samples = new Uint8Array(analyser.frequencyBinCount)
+    let frame = 0
+
+    const tick = () => {
+      analyser.getByteTimeDomainData(samples)
+      /* RMS around the 128 midpoint — peak alone flickers too hard to read
+         as a voice level. */
+      let sum = 0
+      for (const sample of samples) {
+        const centred = (sample - 128) / 128
+        sum += centred * centred
+      }
+      micLevel.current = Math.min(1, Math.sqrt(sum / samples.length) * 3.2)
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+
+    return () => {
+      cancelAnimationFrame(frame)
+      micLevel.current = 0
+      void audio.close()
+    }
+  }, [localStream])
+
   return {
     status,
     error,
@@ -517,6 +592,7 @@ export function useMeshCall(roomId: string | null) {
     muted,
     cameraOff,
     hasCamera,
+    micLevel,
     join,
     leave,
     toggleMute,

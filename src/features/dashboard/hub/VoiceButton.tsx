@@ -1,28 +1,28 @@
 import { useEffect, useRef } from 'react'
 import { Mic, MicOff } from 'lucide-react'
 
-import { useMicLevel } from '@/hooks/useMicLevel'
+import { useVoiceRelay } from '@/hooks/useVoiceRelay'
 import { cn } from '@/lib/utils'
 
 /**
- * Push-to-talk's always-on cousin, and the one control that is live the moment
- * you walk into a room.
+ * The room's quick, always-easy voice: one button, on or off.
  *
- * The ring is your own captured level, so the button proves the mic works.
- * Nothing is transmitted to the room yet — that needs a WebRTC path the server
- * doesn't have — and the label says so rather than implying a call is up.
+ * Deliberately its own thing, not the "Chat & call" panel's WebRTC call —
+ * see `useVoiceRelay` for why. This is the ambient, toggle-and-go voice;
+ * that one is the deliberate, camera-capable call. Both can be live at once
+ * without conflict, since neither touches the other's connections.
  */
-export function VoiceButton() {
-  const { state, level, toggle } = useMicLevel()
+export function VoiceButton({ roomId }: { roomId: string | null }) {
+  const { state, toggle, level } = useVoiceRelay(roomId)
   const ring = useRef<HTMLSpanElement>(null)
 
-  /*
-   * The level is written to a CSS variable from inside the animation frame
-   * rather than kept in state — a voice meter re-rendering React at 60fps would
-   * drag the 3D canvas down with it.
-   */
+  const live = state === 'live'
+
+  /* Written to a CSS variable from inside the animation frame rather than
+     kept in state — a voice meter re-rendering React at 60fps would drag the
+     3D hub canvas down with it. */
   useEffect(() => {
-    if (state !== 'live') {
+    if (!live) {
       ring.current?.style.setProperty('--level', '0')
       return
     }
@@ -34,27 +34,29 @@ export function VoiceButton() {
     }
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-  }, [state, level])
+  }, [live, level])
 
-  const live = state === 'live'
-  const label =
-    state === 'live'
-      ? 'Mic live · local only'
-      : state === 'requesting'
-        ? 'Asking for the mic…'
-        : state === 'denied'
-          ? 'Mic blocked'
+  const label = live
+    ? 'Live in the room'
+    : state === 'requesting'
+      ? 'Asking for the mic…'
+      : state === 'denied'
+        ? 'Mic blocked'
+        : state === 'unsupported'
+          ? 'Not supported here'
           : 'Mic off'
 
   return (
     <button
       type="button"
       onClick={toggle}
+      disabled={state === 'requesting'}
       aria-pressed={live}
       className={cn(
         'glass-pill-ink pointer-events-auto group/mic flex items-center gap-3 rounded-full py-2 pl-2 pr-5 outline-none',
         'transition-[border-color,box-shadow] duration-500 ease-glass',
         'hover:border-white/25 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-signal',
+        'disabled:cursor-wait disabled:opacity-70',
         live && 'border-emerald-400/40',
       )}
     >

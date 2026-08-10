@@ -299,7 +299,7 @@ export function DashboardPage() {
             {activeRoom && (
               <>
                 <RoomChip room={activeRoom} />
-                <VoiceButton />
+                <VoiceButton roomId={activeRoomId} />
               </>
             )}
           </div>
