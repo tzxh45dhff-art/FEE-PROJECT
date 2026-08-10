@@ -51,6 +51,27 @@ export const env = {
    * public oEmbed endpoint, so the watch feature works without a key at all.
    */
   youtubeApiKey: process.env.YOUTUBE_API_KEY ?? '',
+
+  /**
+   * TURN relay, for calls between people on different networks.
+   *
+   * Optional in the sense that the app runs without it — but calls will only
+   * connect when both ends can reach each other directly, which in practice
+   * means "on the same wifi". There is no working credential-free public relay
+   * any more, so this genuinely needs an account somewhere.
+   */
+  turn: {
+    urls: (process.env.TURN_URL ?? '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+    username: process.env.TURN_USERNAME ?? '',
+    credential: process.env.TURN_CREDENTIAL ?? '',
+    /* Metered mints short-lived credentials from an API key — preferred, since
+       what reaches the browser then expires on its own. */
+    meteredApiKey: process.env.METERED_API_KEY ?? '',
+    meteredDomain: process.env.METERED_DOMAIN ?? '',
+  },
 }
 
 /** Name of the httpOnly cookie carrying the session token. */

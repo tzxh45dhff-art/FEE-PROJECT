@@ -83,6 +83,16 @@ export function CallSection({ call, selfName }: { call: Call; selfName: string }
             {call.error}
           </p>
         )}
+
+        {/* Said before the call, not after it fails. Without a relay this works
+            on one shared network and nowhere else, and that is worth knowing
+            up front rather than discovering mid-call. */}
+        {!call.relayAvailable && (
+          <p className="mt-2.5 text-[0.7rem] leading-relaxed text-dusk">
+            No TURN relay configured — calls will only connect between people on the same
+            network.
+          </p>
+        )}
       </div>
     )
   }
@@ -117,7 +127,9 @@ export function CallSection({ call, selfName }: { call: Call; selfName: string }
 
       {call.peers.some((peer) => peer.failed) && (
         <p className="px-1 pt-2.5 text-[0.7rem] leading-relaxed text-dusk">
-          A connection failed — some networks need a TURN relay, which this server doesn't run yet.
+          {call.relayAvailable
+            ? "A connection failed. The relay couldn't get through — that network may be blocking it."
+            : 'A connection failed. Different networks need a TURN relay, and none is configured.'}
         </p>
       )}
 

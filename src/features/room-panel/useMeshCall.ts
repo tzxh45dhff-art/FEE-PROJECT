@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { api } from '@/lib/api'
 import { getSocket } from '@/lib/socket'
 
 /**
@@ -19,55 +20,45 @@ import { getSocket } from '@/lib/socket'
  */
 
 /**
- * STUN discovers your public address. That is enough only when both ends can
- * be reached directly, which on real networks is often false: symmetric NATs,
- * mobile carriers doing CGNAT, and most corporate firewalls all refuse the
- * direct path. Those calls need a TURN relay to forward the media, and without
- * one they negotiate perfectly and then never connect — the exact "it does
- * nothing" failure.
+ * Fallback when the server can't be reached for its ICE config.
  *
- * The defaults below are Open Relay's free public TURN, which needs no signup
- * and is intended for exactly this. It is shared and rate-limited, so point
- * `VITE_TURN_URL` at your own before anyone relies on it.
+ * STUN-only, and therefore only good for peers that can reach each other
+ * directly — which in practice means the same network.
  */
-const STUN: RTCIceServer = {
-  urls: [
-    'stun:stun.l.google.com:19302',
-    'stun:stun1.l.google.com:19302',
-    'stun:global.stun.twilio.com:3478',
-  ],
-}
+const STUN_ONLY: RTCIceServer[] = [
+  {
+    urls: [
+      'stun:stun.l.google.com:19302',
+      'stun:stun1.l.google.com:19302',
+      'stun:stun.cloudflare.com:3478',
+    ],
+  },
+]
 
-function turnServers(): RTCIceServer[] {
-  const env = import.meta.env as Record<string, string | undefined>
-  const custom = env.VITE_TURN_URL?.trim()
+type IceConfig = { iceServers: RTCIceServer[]; relay: boolean }
 
-  if (custom) {
-    return [
-      {
-        urls: custom.split(',').map((entry) => entry.trim()).filter(Boolean),
-        username: env.VITE_TURN_USERNAME ?? '',
-        credential: env.VITE_TURN_CREDENTIAL ?? '',
-      },
-    ]
+let icePromise: Promise<IceConfig> | null = null
+
+/**
+ * ICE servers, from the server.
+ *
+ * Deliberately not hardcoded here. Relay credentials are billable secrets and
+ * anything in this file ships to every visitor; the server holds them and
+ * hands out what the browser needs. Cached for the tab, because the answer
+ * doesn't change between calls.
+ */
+function loadIce(): Promise<IceConfig> {
+  if (!icePromise) {
+    icePromise = api
+      .get<IceConfig>('/ice')
+      .then((config) => ({
+        iceServers: config.iceServers?.length ? config.iceServers : STUN_ONLY,
+        relay: Boolean(config.relay),
+      }))
+      .catch(() => ({ iceServers: STUN_ONLY, relay: false }))
   }
-
-  return [
-    {
-      /* UDP first, then TCP, then TLS on 443 — the last one is what gets
-         through firewalls that only allow what looks like HTTPS. */
-      urls: [
-        'turn:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:443',
-        'turns:openrelay.metered.ca:443?transport=tcp',
-      ],
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-  ]
+  return icePromise
 }
-
-const ICE_SERVERS: RTCIceServer[] = [STUN, ...turnServers()]
 
 export type CallPeer = {
   socketId: string
@@ -118,6 +109,23 @@ export function useMeshCall(roomId: string | null) {
   const connections = useRef(new Map<string, Connection>())
   const stream = useRef<MediaStream | null>(null)
   const active = useRef(false)
+  const ice = useRef<RTCIceServer[]>(STUN_ONLY)
+  /** False when the server has no relay — cross-network calls cannot work. */
+  const [relayAvailable, setRelayAvailable] = useState(true)
+
+  /* Fetched up front so the first peer connection already has the relay,
+     rather than gathering candidates without it and failing. */
+  useEffect(() => {
+    let cancelled = false
+    void loadIce().then((config) => {
+      if (cancelled) return
+      ice.current = config.iceServers
+      setRelayAvailable(config.relay)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const signal = useCallback(
     (to: string, data: unknown) => {
@@ -136,7 +144,7 @@ export function useMeshCall(roomId: string | null) {
       const socket = getSocket()
       /* Gathering a few candidates up front shaves a noticeable pause off the
          first connection, especially when a relay is involved. */
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceCandidatePoolSize: 4 })
+      const pc = new RTCPeerConnection({ iceServers: ice.current, iceCandidatePoolSize: 4 })
       /* Deterministic and symmetric: whoever has the smaller socket id is the
          polite one, and both ends compute the same answer independently. */
       const polite = (socket.id ?? '') < peerId
@@ -479,6 +487,7 @@ export function useMeshCall(roomId: string | null) {
     localStream,
     peers: Object.values(peers),
     othersOnCall,
+    relayAvailable,
     invite,
     dismissInvite: () => setInvite(null),
     muted,

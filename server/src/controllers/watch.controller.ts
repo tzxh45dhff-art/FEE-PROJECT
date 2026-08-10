@@ -2,6 +2,7 @@ import path from 'node:path'
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
+import { iceConfig } from '../services/turn.service.js'
 import { UPLOAD_ROUTE } from '../services/upload.service.js'
 
 import * as queueModel from '../models/queue.model.js'
@@ -77,6 +78,16 @@ export async function upload(req: Request, res: Response) {
       thumbnail: null,
     },
   })
+}
+
+/**
+ * ICE servers for a call.
+ *
+ * Auth-gated because it can hand out relay credentials, and those cost money
+ * to use — an open endpoint would let anyone mine them.
+ */
+export async function ice(_req: Request, res: Response) {
+  res.json(await iceConfig())
 }
 
 export async function queue(req: Request, res: Response) {
