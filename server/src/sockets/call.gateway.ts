@@ -99,6 +99,21 @@ export function attachCallGateway(io: Server) {
         roomId,
         peer: peers.get(socket.id),
       })
+
+      /*
+       * Starting a call is news to the room, not just to the call.
+       *
+       * Without this, one person presses Start and everyone else sees nothing
+       * — the call is technically working and looks completely broken, because
+       * nobody was told there was something to join.
+       */
+      if (existing.length === 0) {
+        socket.to(roomId).emit('call:started', {
+          roomId,
+          by: { id: self.id, name: self.name },
+        })
+      }
+
       roster(roomId)
     })
 

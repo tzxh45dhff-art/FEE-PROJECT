@@ -15,6 +15,7 @@ import { RoomList } from '@/features/dashboard/hub/RoomList'
 import { SceneBackdrop } from '@/features/dashboard/hub/SceneBackdrop'
 import { groundFor, usePreferences } from '@/features/dashboard/hub/usePreferences'
 import { VoiceButton } from '@/features/dashboard/hub/VoiceButton'
+import { CallInvite } from '@/features/room-panel/CallInvite'
 import { RoomPanel, PANEL_WIDTH_REM } from '@/features/room-panel/RoomPanel'
 import { useChat } from '@/features/room-panel/useChat'
 import { useMeshCall } from '@/features/room-panel/useMeshCall'
@@ -325,6 +326,21 @@ export function DashboardPage() {
           )}
         </>
       )}
+
+      <AnimatePresence>
+        {revealed && call.invite && !sideOpen && (
+          <CallInvite
+            key="call-invite"
+            name={call.invite.name}
+            onJoin={() => {
+              setSideOpen(true)
+              call.dismissInvite()
+              void call.join()
+            }}
+            onDismiss={call.dismissInvite}
+          />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {revealed && watch.invite && activity !== 'watch' && (

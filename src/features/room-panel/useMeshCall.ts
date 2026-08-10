@@ -18,18 +18,56 @@ import { getSocket } from '@/lib/socket'
  * answer without another round trip.
  */
 
-const ICE_SERVERS: RTCIceServer[] = [
-  /*
-   * STUN only.
-   *
-   * This discovers a public address and is enough for most networks. It is not
-   * enough for symmetric NATs and some corporate firewalls, which need a TURN
-   * relay — and TURN cannot be borrowed, it has to be hosted, because it
-   * carries the actual media. Calls that need it will fail to connect rather
-   * than fail quietly, which is why `failed` is surfaced per peer below.
-   */
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-]
+/**
+ * STUN discovers your public address. That is enough only when both ends can
+ * be reached directly, which on real networks is often false: symmetric NATs,
+ * mobile carriers doing CGNAT, and most corporate firewalls all refuse the
+ * direct path. Those calls need a TURN relay to forward the media, and without
+ * one they negotiate perfectly and then never connect — the exact "it does
+ * nothing" failure.
+ *
+ * The defaults below are Open Relay's free public TURN, which needs no signup
+ * and is intended for exactly this. It is shared and rate-limited, so point
+ * `VITE_TURN_URL` at your own before anyone relies on it.
+ */
+const STUN: RTCIceServer = {
+  urls: [
+    'stun:stun.l.google.com:19302',
+    'stun:stun1.l.google.com:19302',
+    'stun:global.stun.twilio.com:3478',
+  ],
+}
+
+function turnServers(): RTCIceServer[] {
+  const env = import.meta.env as Record<string, string | undefined>
+  const custom = env.VITE_TURN_URL?.trim()
+
+  if (custom) {
+    return [
+      {
+        urls: custom.split(',').map((entry) => entry.trim()).filter(Boolean),
+        username: env.VITE_TURN_USERNAME ?? '',
+        credential: env.VITE_TURN_CREDENTIAL ?? '',
+      },
+    ]
+  }
+
+  return [
+    {
+      /* UDP first, then TCP, then TLS on 443 — the last one is what gets
+         through firewalls that only allow what looks like HTTPS. */
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turns:openrelay.metered.ca:443?transport=tcp',
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+  ]
+}
+
+const ICE_SERVERS: RTCIceServer[] = [STUN, ...turnServers()]
 
 export type CallPeer = {
   socketId: string
@@ -61,6 +99,8 @@ type Connection = {
    * that negotiates fine and then never connects.
    */
   pending: RTCIceCandidateInit[]
+  /** Guards the one automatic ICE restart, so it cannot loop. */
+  restarted: boolean
 }
 
 export function useMeshCall(roomId: string | null) {
@@ -72,6 +112,8 @@ export function useMeshCall(roomId: string | null) {
   const [error, setError] = useState<string | null>(null)
   /** People on the call you have not joined, for the panel's badge. */
   const [othersOnCall, setOthersOnCall] = useState(0)
+  /** Somebody just started one — prompts the rest of the room to come in. */
+  const [invite, setInvite] = useState<{ name: string } | null>(null)
 
   const connections = useRef(new Map<string, Connection>())
   const stream = useRef<MediaStream | null>(null)
@@ -92,12 +134,21 @@ export function useMeshCall(roomId: string | null) {
       if (existing) return existing
 
       const socket = getSocket()
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+      /* Gathering a few candidates up front shaves a noticeable pause off the
+         first connection, especially when a relay is involved. */
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceCandidatePoolSize: 4 })
       /* Deterministic and symmetric: whoever has the smaller socket id is the
          polite one, and both ends compute the same answer independently. */
       const polite = (socket.id ?? '') < peerId
 
-      const entry: Connection = { pc, polite, makingOffer: false, ignoreOffer: false, pending: [] }
+      const entry: Connection = {
+        pc,
+        polite,
+        makingOffer: false,
+        ignoreOffer: false,
+        pending: [],
+        restarted: false,
+      }
       connections.current.set(peerId, entry)
 
       const local = stream.current
@@ -145,11 +196,33 @@ export function useMeshCall(roomId: string | null) {
       }
 
       pc.onconnectionstatechange = () => {
-        const dead = pc.connectionState === 'failed'
+        const state = pc.connectionState
+        const dead = state === 'failed'
+
         setPeers((current) => {
           const peer = current[peerId]
-          return peer ? { ...current, [peerId]: { ...peer, failed: dead } } : current
+          if (!peer) return current
+          /* Recovered — clear the warning rather than leaving it stuck on. */
+          return { ...current, [peerId]: { ...peer, failed: dead } }
         })
+
+        /*
+         * One automatic retry on failure.
+         *
+         * `failed` often means the candidates that were gathered went stale —
+         * a network switched from wifi to cellular, or a relay expired. An ICE
+         * restart re-gathers and re-offers, which recovers the call without
+         * anyone having to hang up. Only the impolite side restarts, so the
+         * two ends don't both do it and collide.
+         */
+        if (dead && !entry.polite && !entry.restarted) {
+          entry.restarted = true
+          try {
+            pc.restartIce()
+          } catch {
+            /* Older browsers lack restartIce; the tile already says failed. */
+          }
+        }
       }
 
       return entry
@@ -236,6 +309,7 @@ export function useMeshCall(roomId: string | null) {
 
     stream.current = media
     active.current = true
+    setInvite(null)
     setLocalStream(media)
     setStatus('live')
     getSocket().emit('call:join', { roomId })
@@ -283,7 +357,16 @@ export function useMeshCall(roomId: string | null) {
       })
     }
 
-    const onCount = ({ count }: { count: number }) => setOthersOnCall(count)
+    const onCount = ({ count }: { count: number }) => {
+      setOthersOnCall(count)
+      /* Nobody left on the call means the prompt is stale — drop it rather
+         than invite someone into an empty room. */
+      if (count === 0) setInvite(null)
+    }
+
+    const onStarted = ({ by }: { by: { name: string } }) => {
+      if (!active.current) setInvite({ name: by.name })
+    }
 
     const onFull = () => {
       setStatus('full')
@@ -336,6 +419,7 @@ export function useMeshCall(roomId: string | null) {
     socket.on('call:peer-left', onPeerLeft)
     socket.on('call:roster', onRoster)
     socket.on('call:count', onCount)
+    socket.on('call:started', onStarted)
     socket.on('call:full', onFull)
     socket.on('call:signal', onSignal)
 
@@ -345,6 +429,7 @@ export function useMeshCall(roomId: string | null) {
       socket.off('call:peer-left', onPeerLeft)
       socket.off('call:roster', onRoster)
       socket.off('call:count', onCount)
+      socket.off('call:started', onStarted)
       socket.off('call:full', onFull)
       socket.off('call:signal', onSignal)
     }
@@ -394,6 +479,8 @@ export function useMeshCall(roomId: string | null) {
     localStream,
     peers: Object.values(peers),
     othersOnCall,
+    invite,
+    dismissInvite: () => setInvite(null),
     muted,
     cameraOff,
     hasCamera,
