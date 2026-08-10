@@ -55,7 +55,19 @@ function loadIce(): Promise<IceConfig> {
         iceServers: config.iceServers?.length ? config.iceServers : STUN_ONLY,
         relay: Boolean(config.relay),
       }))
-      .catch(() => ({ iceServers: STUN_ONLY, relay: false }))
+      .catch(() => {
+        /*
+         * The failure is not cached, only the success.
+         *
+         * A transient blip — the tunnel restarting, a slow first request —
+         * would otherwise fall back to STUN-only and stay there for the rest
+         * of the tab's life, since the module-level cache never expires. The
+         * next call to `loadIce` (the next time someone presses Start) gets a
+         * fresh attempt instead of repeating a stale failure.
+         */
+        icePromise = null
+        return { iceServers: STUN_ONLY, relay: false }
+      })
   }
   return icePromise
 }
@@ -314,6 +326,18 @@ export function useMeshCall(roomId: string | null) {
         return
       }
     }
+
+    /*
+     * Awaited here, not just left to the background effect.
+     *
+     * `iceServers` is a constructor-only option — a peer connection built
+     * before this resolves is stuck on STUN alone forever, even after the
+     * real config arrives. The background effect only *primes* the cache; this
+     * is what guarantees the value is actually ready before `call:join` can
+     * trigger the first `connectionFor()`. The fetch runs in parallel with
+     * `getUserMedia` above rather than after it, so it costs nothing extra.
+     */
+    ice.current = (await loadIce()).iceServers
 
     stream.current = media
     active.current = true
