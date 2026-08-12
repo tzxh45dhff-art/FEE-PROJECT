@@ -4,7 +4,7 @@ import * as roomController from '../controllers/room.controller.js'
 import * as watchController from '../controllers/watch.controller.js'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { requireAuth } from '../middleware/requireAuth.js'
-import { videoUpload } from '../services/upload.service.js'
+import { receiveVideo } from '../services/upload.service.js'
 
 export const roomRoutes = Router()
 
@@ -23,11 +23,7 @@ roomRoutes.post('/:id/join', asyncHandler(roomController.join))
 roomRoutes.get('/:id/watch', asyncHandler(watchController.capabilities))
 roomRoutes.get('/:id/watch/search', asyncHandler(watchController.search))
 roomRoutes.post('/:id/watch/resolve', asyncHandler(watchController.resolve))
-roomRoutes.post(
-  '/:id/watch/upload',
-  videoUpload.single('video'),
-  asyncHandler(watchController.upload),
-)
+roomRoutes.post('/:id/watch/upload', receiveVideo, asyncHandler(watchController.upload))
 roomRoutes.get('/:id/watch/library', asyncHandler(watchController.library))
 roomRoutes.get('/:id/watch/queue', asyncHandler(watchController.queue))
 roomRoutes.post('/:id/watch/queue', asyncHandler(watchController.add))

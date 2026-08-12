@@ -2,7 +2,7 @@ import { ChevronDown, ChevronUp, Play, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import * as watchApi from '@/features/watch/api'
-import { SourcePicker } from '@/features/watch/SourcePicker'
+import { SourcePicker, type Queued } from '@/features/watch/SourcePicker'
 import { formatTime, type QueueItem } from '@/features/watch/types'
 import { cn } from '@/lib/utils'
 
@@ -25,6 +25,7 @@ export function QueuePanel({
   nowPlayingId,
   canSearch,
   onQueueChange,
+  onQueued,
   onPlayNow,
   onClose,
 }: {
@@ -33,6 +34,11 @@ export function QueuePanel({
   nowPlayingId: string | null
   canSearch: boolean
   onQueueChange: (items: QueueItem[]) => void
+  /**
+   * Adding from in here has to reach the stage, or picking a video from the
+   * panel puts nothing on — the queue grows and the screen stays empty.
+   */
+  onQueued: (queued: Queued, playNow: boolean) => void
   onPlayNow: (item: QueueItem) => void
   onClose: () => void
 }) {
@@ -71,7 +77,7 @@ export function QueuePanel({
       </header>
 
       <div className="border-b border-white/[0.07] px-5 py-4">
-        <SourcePicker roomId={roomId} canSearch={canSearch} compact onQueued={() => undefined} />
+        <SourcePicker roomId={roomId} canSearch={canSearch} compact onQueued={onQueued} />
       </div>
 
       <div data-lenis-prevent className="min-h-0 flex-1 overflow-y-auto">

@@ -3,7 +3,7 @@ import { Film, FolderOpen, Link2, Loader2, MonitorPlay, Search, Upload } from 'l
 
 import { Button } from '@/components/ui/button'
 import * as watchApi from '@/features/watch/api'
-import type { LibraryEntry, ResolvedSource, SearchResult } from '@/features/watch/types'
+import type { LibraryEntry, QueueItem, ResolvedSource, SearchResult } from '@/features/watch/types'
 import { cn } from '@/lib/utils'
 
 /**
@@ -43,6 +43,9 @@ const SOURCES: {
   { id: 'external', label: 'Netflix, Prime, others', hint: 'Synced countdown', icon: MonitorPlay },
 ]
 
+/** What the picker hands back once the server has stored the addition. */
+export type Queued = { item: QueueItem; items: QueueItem[] }
+
 export function SourcePicker({
   roomId,
   canSearch,
@@ -53,7 +56,12 @@ export function SourcePicker({
   canSearch: boolean
   /** Inside the side panel the tiles stack; on the empty stage they spread. */
   compact?: boolean
-  onQueued: (playNow: boolean) => void
+  /**
+   * The item that was created, not just the fact that one was. The caller
+   * usually wants to put it on, and it can only do that by id — see the note
+   * on the pending load in `WatchStage`.
+   */
+  onQueued: (queued: Queued, playNow: boolean) => void
 }) {
   const [source, setSource] = useState<Source | null>(null)
   const [query, setQuery] = useState('')
@@ -94,11 +102,11 @@ export function SourcePicker({
     setBusy(true)
     setError(null)
     try {
-      await watchApi.addToQueue(roomId, resolved)
+      const queued = await watchApi.addToQueue(roomId, resolved)
       setQuery('')
       setResults(null)
       setPending(null)
-      onQueued(playNow)
+      onQueued(queued, playNow)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not add that')
     } finally {

@@ -106,12 +106,20 @@ export function fetchQueue(roomId: string) {
   return api.get<{ items: QueueItem[] }>(`/rooms/${roomId}/watch/queue`).then((r) => r.items)
 }
 
+/**
+ * Add one thing to the queue.
+ *
+ * Returns the created item alongside the new list, and callers want both: the
+ * list to paint, and the item because it is the only reliable way to say
+ * *which* one was just added. Position won't do it — two people adding at once
+ * means the last row is not necessarily yours.
+ */
 export function addToQueue(roomId: string, item: Omit<ResolvedSource, 'note'>) {
   return api
     .post<{ item: QueueItem; items: QueueItem[] }>(`/rooms/${roomId}/watch/queue`, item)
     .then((response) => {
       announce(roomId)
-      return response.items
+      return response
     })
 }
 
