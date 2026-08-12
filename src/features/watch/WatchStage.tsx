@@ -65,6 +65,9 @@ export function WatchStage({
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
 
+  const item = snapshot?.item ?? null
+  const embeddable = item?.source === 'youtube' || item?.source === 'file'
+
   /*
    * Auto-hide chrome.
    *
@@ -109,8 +112,6 @@ export function WatchStage({
     }
   }, [])
 
-  const item = snapshot?.item ?? null
-  const embeddable = item?.source === 'youtube' || item?.source === 'file'
 
   useEffect(() => {
     watchApi
