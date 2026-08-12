@@ -35,9 +35,20 @@ self.addEventListener('fetch', (event) => {
   const headers = new Headers(event.request.headers)
   headers.set('ngrok-skip-browser-warning', 'true')
 
+  /*
+   * The `<video>` element sends its requests with `mode: "no-cors"`. In that
+   * mode, the browser silently strips any non-simple header — including ours.
+   * Re-issuing as `mode: "cors"` lets the custom header through. The Express
+   * CORS middleware on the backend already allows the Vercel origin, so the
+   * response carries the right `Access-Control-Allow-Origin` and the browser
+   * accepts it.
+   */
   event.respondWith(
-    fetch(
-      new Request(event.request, { headers }),
-    ),
+    fetch(event.request.url, {
+      method: event.request.method,
+      headers,
+      mode: 'cors',
+      credentials: 'omit',
+    }),
   )
 })
