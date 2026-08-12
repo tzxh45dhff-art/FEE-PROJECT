@@ -43,8 +43,9 @@ for i in $(seq 1 30); do
 done
 
 # ── 2. Start ngrok ──────────────────────────────────────────────────────────
-echo "🌐 Starting ngrok tunnel…"
-ngrok http "$PORT" --log=stdout > /tmp/ngrok-sync.log 2>&1 &
+NGROK_DOMAIN="nimbly-unroasted-gaffe.ngrok-free.dev"
+echo "🌐 Starting ngrok tunnel on $NGROK_DOMAIN…"
+ngrok http "$PORT" --url="$NGROK_DOMAIN" --log=stdout > /tmp/ngrok-sync.log 2>&1 &
 NGROK_PID=$!
 
 # Wait for ngrok to expose the URL
