@@ -65,7 +65,6 @@ export function FilePlayer({
       /* Ours are the only controls — see the note in YouTubePlayer. */
       controls={false}
       preload="auto"
-      crossOrigin="anonymous"
       onLoadedMetadata={() => {
         if (video.current && startRef.current > 1) video.current.currentTime = startRef.current
         setReady(true)
