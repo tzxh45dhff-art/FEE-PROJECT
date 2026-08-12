@@ -1,5 +1,7 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
+import type { NextFunction, Request, Response } from 'express'
 import multer from 'multer'
 
 import { HttpError } from '../utils/HttpError.js'
@@ -32,9 +34,25 @@ const PLAYABLE = new Set([
 
 const MAX_BYTES = 2 * 1024 * 1024 * 1024
 
+/**
+ * Marks a file as still arriving.
+ *
+ * An upload is written under a dot-prefixed `.part` name and only renamed into
+ * place once the whole request has come through. The two halves of that name
+ * both earn their keep: `listLibrary` already skips dotfiles, so a transfer in
+ * flight can never appear in the library — and the suffix makes a leftover
+ * obviously junk rather than a video someone deliberately dropped in.
+ */
+const PART_SUFFIX = '.part'
+const inProgressName = (final: string) => `.${final}${PART_SUFFIX}`
+const finalName = (part: string) => part.replace(/^\./, '').replace(/\.part$/, '')
+
+/** Absolute path each request is currently writing to, for cleanup on abort. */
+const partials = new WeakMap<Request, string>()
+
 const storage = multer.diskStorage({
   destination: (_req, _file, done) => done(null, UPLOAD_DIR),
-  filename: (_req, file, done) => {
+  filename: (req, file, done) => {
     /*
      * Never trust the supplied name for the path. A crafted `originalname`
      * containing `../` would otherwise write wherever it liked; the extension
@@ -43,11 +61,17 @@ const storage = multer.diskStorage({
     const ext = path.extname(file.originalname).toLowerCase()
     const safeExt = /^\.(mp4|webm|ogv|ogg|mov|m4v)$/.test(ext) ? ext : '.mp4'
     const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-    done(null, `${unique}${safeExt}`)
+
+    const name = inProgressName(`${unique}${safeExt}`)
+    /* Recorded here because multer only hands back `req.file` on success, and
+       the failure this protects against is precisely the one where it never
+       does. */
+    partials.set(req, path.join(UPLOAD_DIR, name))
+    done(null, name)
   },
 })
 
-export const videoUpload = multer({
+const videoUpload = multer({
   storage,
   limits: { fileSize: MAX_BYTES, files: 1 },
   fileFilter: (_req, file, done) => {
@@ -59,6 +83,66 @@ export const videoUpload = multer({
     )
   },
 })
+
+/**
+ * Accept one video, and clean up after it if it never fully arrives.
+ *
+ * A cancelled upload — closed tab, dropped wifi, someone changing their mind
+ * on a 2GB file — leaves multer holding a stream it will never finish. Nothing
+ * in the library layer can tell those bytes apart from a real video: the file
+ * has a plausible size and a playable extension, and it sits there offering
+ * itself as something to watch and then failing halfway through.
+ *
+ * `close` without a finished response is exactly the abort case; a request
+ * that made it to a reply — success, rejected type, too large — has either
+ * been promoted by `finishUpload` or already cleaned up by multer.
+ */
+export function receiveVideo(req: Request, res: Response, next: NextFunction) {
+  res.on('close', () => {
+    if (res.writableFinished) return
+    const partial = partials.get(req)
+    if (!partial) return
+    partials.delete(req)
+    void rm(partial, { force: true }).catch(() => undefined)
+  })
+
+  videoUpload.single('video')(req, res, next)
+}
+
+/**
+ * Promote a completed upload to its real name.
+ *
+ * Until this runs the file is hidden and unservable, which is the point — the
+ * rename is the moment it becomes a video, and it is atomic.
+ */
+export async function finishUpload(req: Request, file: Express.Multer.File) {
+  const name = finalName(file.filename)
+  await rename(path.join(UPLOAD_DIR, file.filename), path.join(UPLOAD_DIR, name))
+  partials.delete(req)
+  return name
+}
+
+/** Discard an upload that arrived but isn't going to be kept. */
+export async function discardUpload(req: Request, file: Express.Multer.File) {
+  partials.delete(req)
+  await rm(path.join(UPLOAD_DIR, file.filename), { force: true }).catch(() => undefined)
+}
+
+/*
+ * Leftovers from a crash.
+ *
+ * The abort handler covers a request that dies; it cannot cover the process
+ * dying underneath it. Nothing can be in flight at startup, so anything still
+ * marked in-progress here is unambiguously dead.
+ */
+try {
+  for (const name of readdirSync(UPLOAD_DIR)) {
+    if (name.endsWith(PART_SUFFIX)) rmSync(path.join(UPLOAD_DIR, name), { force: true })
+  }
+} catch {
+  /* Unreadable uploads folder is the library's problem to report, not a
+     reason to refuse to boot. */
+}
 
 /** Human-readable size cap, so the client can say the limit rather than guess. */
 export const MAX_UPLOAD_MB = Math.round(MAX_BYTES / (1024 * 1024))

@@ -3,7 +3,12 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { iceConfig } from '../services/turn.service.js'
-import { listLibrary, UPLOAD_ROUTE } from '../services/upload.service.js'
+import {
+  discardUpload,
+  finishUpload,
+  listLibrary,
+  UPLOAD_ROUTE,
+} from '../services/upload.service.js'
 
 import * as queueModel from '../models/queue.model.js'
 import { resolveSource, searchAvailable, searchYouTube } from '../services/sources.service.js'
@@ -60,19 +65,31 @@ export async function resolve(req: Request, res: Response) {
  *
  * Returns the same shape as `resolve`, so the client can hand it straight to
  * the queue without a second code path for uploads.
+ *
+ * Multer has already written the bytes by the time this runs — it has to, the
+ * body is the file — so every exit from here is responsible for the file it
+ * inherited. It is either promoted to a real name or deleted; nothing is left
+ * half-named in the uploads folder for the library to offer up later.
  */
 export async function upload(req: Request, res: Response) {
-  await gate(req)
-
   const file = (req as Request & { file?: Express.Multer.File }).file
+
+  try {
+    await gate(req)
+  } catch (cause) {
+    if (file) await discardUpload(req, file)
+    throw cause
+  }
+
   if (!file) throw HttpError.badRequest('No file was uploaded')
 
   const title = path.parse(file.originalname).name || 'Uploaded video'
+  const stored = await finishUpload(req, file)
 
   res.status(201).json({
     resolved: {
       source: 'file' as const,
-      ref: `${UPLOAD_ROUTE}/${file.filename}`,
+      ref: `${UPLOAD_ROUTE}/${stored}`,
       title,
       duration: null,
       thumbnail: null,

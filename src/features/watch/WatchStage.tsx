@@ -9,7 +9,7 @@ import { ExternalBeacon } from '@/features/watch/players/ExternalBeacon'
 import { FilePlayer } from '@/features/watch/players/FilePlayer'
 import { YouTubePlayer } from '@/features/watch/players/YouTubePlayer'
 import { QueuePanel } from '@/features/watch/QueuePanel'
-import { SourcePicker } from '@/features/watch/SourcePicker'
+import { SourcePicker, type Queued } from '@/features/watch/SourcePicker'
 import type { PlayerHandle, QueueItem } from '@/features/watch/types'
 import { useDriftCorrection } from '@/features/watch/useDriftCorrection'
 import { useWatchSession } from '@/features/watch/useWatchSession'
@@ -61,8 +61,8 @@ export function WatchStage({
   const [needsGesture, setNeedsGesture] = useState(false)
   const [position, setPosition] = useState(0)
   const [duration, setDuration] = useState(0)
-  /** Set when the picker queues something, so it starts without a second click. */
-  const [autoPlayNewest, setAutoPlayNewest] = useState(false)
+  /** Id of a just-added item waiting to be put on. See `onQueued` below. */
+  const [pendingPlayId, setPendingPlayId] = useState<string | null>(null)
 
   const item = snapshot?.item ?? null
   const embeddable = item?.source === 'youtube' || item?.source === 'file'
@@ -156,16 +156,30 @@ export function WatchStage({
   /*
    * Choosing something should play it.
    *
-   * The add is REST and the queue comes back over the socket, so the new item
-   * is not in hand at the moment of choosing — this waits for it to arrive and
-   * then loads it, which is why picking a video doesn't need a second click.
+   * Identified by id, never by position. The add is REST and the room's queue
+   * arrives over the socket, so at the moment of choosing the list in hand can
+   * still be the one from before — and "the last row" was then whatever was
+   * already there, which is how picking a video used to start the *previous*
+   * one. Holding the id and waiting for that exact row is the whole fix.
    */
+  const onQueued = useCallback(
+    ({ item: added, items }: Queued, playImmediately: boolean) => {
+      /* The REST reply is already the new queue, so seed it rather than wait
+         on the socket — otherwise a dropped `watch:queue` means the pending
+         load never resolves and the pick silently does nothing. */
+      setQueue(items)
+      if (playImmediately) setPendingPlayId(added.id)
+    },
+    [setQueue],
+  )
+
   useEffect(() => {
-    if (!autoPlayNewest || queue.length === 0) return
-    const newest = queue[queue.length - 1]
-    if (newest) playNow(newest)
-    setAutoPlayNewest(false)
-  }, [autoPlayNewest, queue, playNow])
+    if (!pendingPlayId) return
+    const target = queue.find((entry) => entry.id === pendingPlayId)
+    if (!target) return
+    playNow(target)
+    setPendingPlayId(null)
+  }, [pendingPlayId, queue, playNow])
 
   const skip = useCallback(() => {
     if (!snapshot) return
@@ -251,15 +265,7 @@ export function WatchStage({
                   )}
 
                   <div className="mt-5 w-full">
-                    <SourcePicker
-                      roomId={roomId}
-                      canSearch={canSearch}
-                      onQueued={(playImmediately) => {
-                        /* Queue state arrives over the socket; the newest item
-                           is the one they just chose, so put it on. */
-                        if (playImmediately) setAutoPlayNewest(true)
-                      }}
-                    />
+                    <SourcePicker roomId={roomId} canSearch={canSearch} onQueued={onQueued} />
                   </div>
                 </div>
               </div>
@@ -387,6 +393,7 @@ export function WatchStage({
             nowPlayingId={item?.id ?? null}
             canSearch={canSearch}
             onQueueChange={setQueue}
+            onQueued={onQueued}
             onPlayNow={(next) => playNow(next)}
             onClose={() => setQueueOpen(false)}
           />
