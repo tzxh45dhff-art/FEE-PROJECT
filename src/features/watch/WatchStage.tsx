@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Clapperboard, Loader2, MessagesSquare, Play, WifiOff, X } from 'lucide-react'
@@ -63,6 +63,51 @@ export function WatchStage({
   const [duration, setDuration] = useState(0)
   /** Id of a just-added item waiting to be put on. See `onQueued` below. */
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  /*
+   * Auto-hide chrome.
+   *
+   * The header and controls fade out after 5 s of no mouse/touch activity,
+   * then reappear on any movement. Scrubbing, hovering the controls, or
+   * pausing keeps them visible.
+   */
+  const [chromeVisible, setChromeVisible] = useState(true)
+  const hideTimer = useRef<ReturnType<typeof setTimeout>>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
+
+  const resetHideTimer = useCallback(() => {
+    setChromeVisible(true)
+    if (hideTimer.current) clearTimeout(hideTimer.current)
+    hideTimer.current = setTimeout(() => setChromeVisible(false), 5000)
+  }, [])
+
+  /* Start the timer when a video is playing; clear when paused or empty. */
+  useEffect(() => {
+    if (!item || !snapshot?.playing) {
+      setChromeVisible(true)
+      if (hideTimer.current) clearTimeout(hideTimer.current)
+      return
+    }
+    resetHideTimer()
+    return () => { if (hideTimer.current) clearTimeout(hideTimer.current) }
+  }, [item, snapshot?.playing, resetHideTimer])
+
+  /* Track fullscreen state changes (user might press Escape). */
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  const toggleFullscreen = useCallback(() => {
+    if (!stageRef.current) return
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => undefined)
+    } else {
+      stageRef.current.requestFullscreen().catch(() => undefined)
+    }
+  }, [])
 
   const item = snapshot?.item ?? null
   const embeddable = item?.source === 'youtube' || item?.source === 'file'
@@ -197,12 +242,15 @@ export function WatchStage({
 
   return createPortal(
     <motion.div
+      ref={stageRef}
       className="fixed inset-0 z-[135] flex flex-col bg-void transition-[padding] duration-500 ease-glass"
-      style={{ paddingRight: `${insetRight}rem` }}
+      style={{ paddingRight: `${insetRight}rem`, cursor: chromeVisible ? undefined : 'none' }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.35, ease: EASE }}
+      onMouseMove={resetHideTimer}
+      onTouchStart={resetHideTimer}
     >
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1">
@@ -311,7 +359,12 @@ export function WatchStage({
             </div>
           )}
 
-          <header className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 bg-gradient-to-b from-void/90 to-transparent p-4 md:p-5">
+          <header
+            className={cn(
+              'pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 bg-gradient-to-b from-void/90 to-transparent p-4 transition-opacity duration-500 ease-glass md:p-5',
+              chromeVisible ? 'opacity-100' : 'opacity-0',
+            )}
+          >
             <span className="pointer-events-auto flex items-center gap-2.5">
               {snapshot && snapshot.viewers.length > 0 && (
                 <span className="glass-pill-ink flex items-center gap-2 rounded-full px-3 py-1.5">
@@ -365,7 +418,12 @@ export function WatchStage({
 
           <WatchToasts snapshot={snapshot} selfId={selfId} />
 
-          <div className="absolute inset-x-0 bottom-0">
+          <div
+            className={cn(
+              'absolute inset-x-0 bottom-0 transition-opacity duration-500 ease-glass',
+              chromeVisible ? 'opacity-100' : 'opacity-0 pointer-events-none',
+            )}
+          >
             {snapshot && (
               <WatchControls
                 snapshot={snapshot}
@@ -373,6 +431,7 @@ export function WatchStage({
                 duration={duration}
                 queueCount={queue.length}
                 queueOpen={queueOpen}
+                isFullscreen={isFullscreen}
                 onToggleQueue={() => setQueueOpen((open) => !open)}
                 onPlayPause={() =>
                   send('watch:control', {
@@ -383,6 +442,7 @@ export function WatchStage({
                 onSeek={(seconds) => send('watch:control', { action: 'seek', position: seconds })}
                 onRate={(rate) => send('watch:control', { action: 'rate', rate })}
                 onSkip={skip}
+                onToggleFullscreen={toggleFullscreen}
                 disabled={!item}
               />
             )}

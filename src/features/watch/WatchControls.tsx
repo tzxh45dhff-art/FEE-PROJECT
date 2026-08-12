@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ListVideo, Pause, Play, SkipForward } from 'lucide-react'
+import { ListVideo, Maximize, Minimize, Pause, Play, SkipForward } from 'lucide-react'
 
 import { formatTime, RATES, type WatchSnapshot } from '@/features/watch/types'
 import { cn } from '@/lib/utils'
@@ -17,11 +17,13 @@ export function WatchControls({
   duration,
   queueCount,
   queueOpen,
+  isFullscreen,
   onToggleQueue,
   onPlayPause,
   onSeek,
   onRate,
   onSkip,
+  onToggleFullscreen,
   disabled,
 }: {
   snapshot: WatchSnapshot
@@ -29,11 +31,13 @@ export function WatchControls({
   duration: number
   queueCount: number
   queueOpen: boolean
+  isFullscreen: boolean
   onToggleQueue: () => void
   onPlayPause: () => void
   onSeek: (seconds: number) => void
   onRate: (rate: number) => void
   onSkip: () => void
+  onToggleFullscreen: () => void
   disabled: boolean
 }) {
   /* While a scrub is in progress the bar shows the finger, not the room —
@@ -177,6 +181,19 @@ export function WatchControls({
         >
           <ListVideo aria-hidden className="size-4" />
           <span className="text-[0.78rem] tabular-nums">{queueCount}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onToggleFullscreen}
+          aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+          className="grid size-10 shrink-0 place-items-center rounded-full border border-white/12 bg-white/[0.05] text-chalk outline-none transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+        >
+          {isFullscreen ? (
+            <Minimize aria-hidden className="size-4" />
+          ) : (
+            <Maximize aria-hidden className="size-4" />
+          )}
         </button>
       </div>
     </div>
