@@ -56,6 +56,19 @@ export function FilePlayer({
     return () => onHandle(null)
   }, [ready, onHandle])
 
+  /* Stop playback hard on unmount — removing the element from the DOM is not
+     enough; the browser can keep the media session (and its audio) alive on a
+     detached node until GC collects it. */
+  useEffect(() => {
+    const el = video.current
+    return () => {
+      if (!el) return
+      el.pause()
+      el.removeAttribute('src')
+      el.load()
+    }
+  }, [])
+
   return (
     <video
       ref={video}
