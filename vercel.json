@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/uploads/:path*",
+      "destination": "$VITE_API_URL/uploads/:path*"
+    }
+  ]
+}

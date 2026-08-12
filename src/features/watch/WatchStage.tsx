@@ -221,10 +221,13 @@ export function WatchStage({
             {item && embeddable && item.source === 'file' && (
               <FilePlayer
                 key={item.id}
-                /* Uploads are stored as a server-relative path, which resolves
-                   against the *frontend* once the two are on different origins.
-                   This puts it back on the API. */
-                src={apiUrl(item.ref)}
+                /* Uploads are stored as a server-relative path like
+                   `/uploads/abc.mp4`. Locally the Vite proxy forwards that to
+                   the API; in production a Vercel rewrite does the same, so the
+                   `<video>` element always fetches same-origin and avoids
+                   ngrok's browser interstitial. Full URLs (pasted links) pass
+                   through as-is. */
+                src={item.ref.startsWith('/') ? item.ref : apiUrl(item.ref)}
                 startAt={targetPosition()}
                 onHandle={setHandle}
                 onEnded={onEnded}
