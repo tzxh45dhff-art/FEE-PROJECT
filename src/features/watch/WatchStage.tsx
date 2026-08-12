@@ -221,13 +221,13 @@ export function WatchStage({
             {item && embeddable && item.source === 'file' && (
               <FilePlayer
                 key={item.id}
-                /* Uploads are stored as a server-relative path like
-                   `/uploads/abc.mp4`. Locally the Vite proxy forwards that to
-                   the API; in production a Vercel rewrite does the same, so the
-                   `<video>` element always fetches same-origin and avoids
-                   ngrok's browser interstitial. Full URLs (pasted links) pass
-                   through as-is. */
-                src={item.ref.startsWith('/') ? item.ref : apiUrl(item.ref)}
+                /* Uploads are stored as a server-relative path, which resolves
+                   against the *frontend* once the two are on different origins.
+                   `apiUrl` puts it back on the API. The service worker in
+                   `public/ngrok-sw.js` adds the `ngrok-skip-browser-warning`
+                   header so ngrok doesn't serve its interstitial to the
+                   `<video>` element. */
+                src={apiUrl(item.ref)}
                 startAt={targetPosition()}
                 onHandle={setHandle}
                 onEnded={onEnded}
