@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Film, Link2, Loader2, MonitorPlay, Search, Upload } from 'lucide-react'
+import { Film, FolderOpen, Link2, Loader2, MonitorPlay, Search, Upload } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import * as watchApi from '@/features/watch/api'
-import type { ResolvedSource, SearchResult } from '@/features/watch/types'
+import type { LibraryEntry, ResolvedSource, SearchResult } from '@/features/watch/types'
 import { cn } from '@/lib/utils'
 
 /**
@@ -16,7 +16,14 @@ import { cn } from '@/lib/utils'
  * one explain its own constraints at the moment they matter.
  */
 
-type Source = 'youtube' | 'upload' | 'link' | 'external'
+type Source = 'library' | 'youtube' | 'upload' | 'link' | 'external'
+
+/** Rough and readable — a movie listing wants "3.1 GB", not a byte count. */
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
 
 const SOURCES: {
   id: Source
@@ -24,6 +31,12 @@ const SOURCES: {
   hint: string
   icon: typeof Film
 }[] = [
+  {
+    id: 'library',
+    label: 'On the server',
+    hint: 'Already in the uploads folder',
+    icon: FolderOpen,
+  },
   { id: 'youtube', label: 'YouTube', hint: 'Search or paste a link', icon: Film },
   { id: 'upload', label: 'Upload a video', hint: 'From this device', icon: Upload },
   { id: 'link', label: 'Direct link', hint: 'A .mp4 or .webm URL', icon: Link2 },
@@ -49,6 +62,7 @@ export function SourcePicker({
   const [results, setResults] = useState<SearchResult[] | null>(null)
   const [pending, setPending] = useState<ResolvedSource | null>(null)
   const [progress, setProgress] = useState<number | null>(null)
+  const [library, setLibrary] = useState<LibraryEntry[] | null>(null)
 
   const field = useRef<HTMLInputElement>(null)
   const filePicker = useRef<HTMLInputElement>(null)
@@ -58,9 +72,23 @@ export function SourcePicker({
     setResults(null)
     setPending(null)
     setError(null)
-    if (source && source !== 'upload') field.current?.focus()
+    setLibrary(null)
+    if (source && source !== 'upload' && source !== 'library') field.current?.focus()
     if (source === 'upload') filePicker.current?.click()
-  }, [source])
+
+    /* Read fresh every time it's opened — the folder is the source of truth,
+       and a file dropped in a moment ago should already be here. */
+    if (source === 'library') {
+      setBusy(true)
+      watchApi
+        .fetchLibrary(roomId)
+        .then(setLibrary)
+        .catch((cause: unknown) =>
+          setError(cause instanceof Error ? cause.message : 'Could not read the server folder'),
+        )
+        .finally(() => setBusy(false))
+    }
+  }, [source, roomId])
 
   async function queue(resolved: Omit<ResolvedSource, 'note'>, playNow: boolean) {
     setBusy(true)
@@ -188,7 +216,81 @@ export function SourcePicker({
             </span>
           </div>
 
-          {source === 'upload' ? (
+          {source === 'library' ? (
+            <div>
+              {busy && !library && (
+                <p className="px-1 py-6 text-center text-[0.82rem] text-mist">
+                  Reading the server folder…
+                </p>
+              )}
+
+              {library && library.length === 0 && (
+                <div className="rounded-card border border-dashed border-white/15 bg-white/[0.02] px-5 py-6 text-center">
+                  <p className="text-[0.85rem] leading-relaxed text-mist">
+                    Nothing in the uploads folder yet. Drop a video into{' '}
+                    <code className="font-mono text-[0.78rem] text-chalk">server/uploads/</code> on
+                    the machine running the backend and it shows up here.
+                  </p>
+                </div>
+              )}
+
+              {library && library.length > 0 && (
+                <ul className="flex max-h-80 flex-col gap-1 overflow-y-auto" data-lenis-prevent>
+                  {library.map((entry) => (
+                    <li key={entry.file}>
+                      <button
+                        type="button"
+                        disabled={busy || !entry.playable}
+                        onClick={() =>
+                          void queue(
+                            {
+                              source: 'file',
+                              ref: entry.ref,
+                              title: entry.title,
+                              duration: null,
+                              thumbnail: null,
+                            },
+                            true,
+                          )
+                        }
+                        className={cn(
+                          'flex w-full items-center gap-3 rounded-card px-3 py-2.5 text-left outline-none transition-colors duration-200',
+                          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
+                          entry.playable
+                            ? 'hover:bg-white/[0.06]'
+                            : 'cursor-not-allowed opacity-55',
+                        )}
+                      >
+                        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-white/[0.07] text-mist ring-1 ring-inset ring-white/10">
+                          <Film aria-hidden className="size-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[0.85rem] text-chalk">
+                            {entry.title}
+                          </span>
+                          <span className="block truncate text-[0.7rem] text-dusk">
+                            {formatBytes(entry.bytes)}
+                            {!entry.playable && " · browsers can't play this container"}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {library?.some((entry) => !entry.playable) && (
+                <p className="mt-3 px-1 text-[0.7rem] leading-relaxed text-dusk">
+                  Greyed-out files are containers no browser will play (.mkv, .avi). Convert one
+                  with{' '}
+                  <code className="font-mono text-[0.68rem] text-mist">
+                    ffmpeg -i in.mkv -c:v copy -c:a aac out.mp4
+                  </code>{' '}
+                  and it appears here ready to go.
+                </p>
+              )}
+            </div>
+          ) : source === 'upload' ? (
             <div className="rounded-card border border-dashed border-white/15 bg-white/[0.02] px-5 py-6 text-center">
               {progress !== null ? (
                 <>

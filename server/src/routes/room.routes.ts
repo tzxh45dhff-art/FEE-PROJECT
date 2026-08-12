@@ -28,6 +28,7 @@ roomRoutes.post(
   videoUpload.single('video'),
   asyncHandler(watchController.upload),
 )
+roomRoutes.get('/:id/watch/library', asyncHandler(watchController.library))
 roomRoutes.get('/:id/watch/queue', asyncHandler(watchController.queue))
 roomRoutes.post('/:id/watch/queue', asyncHandler(watchController.add))
 roomRoutes.post('/:id/watch/queue/reorder', asyncHandler(watchController.reorder))

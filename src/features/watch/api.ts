@@ -1,7 +1,12 @@
 import { api } from '@/lib/api'
 import { API_BASE, API_HEADERS, getToken } from '@/lib/config'
 import { getSocket } from '@/lib/socket'
-import type { QueueItem, ResolvedSource, SearchResult } from '@/features/watch/types'
+import type {
+  LibraryEntry,
+  QueueItem,
+  ResolvedSource,
+  SearchResult,
+} from '@/features/watch/types'
 
 /**
  * Tell the room the queue moved.
@@ -88,6 +93,13 @@ export function uploadVideo(
 
     request.send(body)
   })
+}
+
+/** Videos already on the server, ready to play without uploading anything. */
+export function fetchLibrary(roomId: string) {
+  return api
+    .get<{ items: LibraryEntry[] }>(`/rooms/${roomId}/watch/library`)
+    .then((response) => response.items)
 }
 
 export function fetchQueue(roomId: string) {

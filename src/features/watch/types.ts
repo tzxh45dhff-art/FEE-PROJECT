@@ -45,6 +45,17 @@ export type ResolvedSource = {
   note?: string
 }
 
+/** A file already sitting in the server's uploads folder. */
+export type LibraryEntry = {
+  file: string
+  title: string
+  ref: string
+  bytes: number
+  /** False for containers no browser will play — .mkv, .avi and friends. */
+  playable: boolean
+  modifiedAt: number
+}
+
 export type SearchResult = {
   id: string
   title: string

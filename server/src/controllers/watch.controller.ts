@@ -3,7 +3,7 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { iceConfig } from '../services/turn.service.js'
-import { UPLOAD_ROUTE } from '../services/upload.service.js'
+import { listLibrary, UPLOAD_ROUTE } from '../services/upload.service.js'
 
 import * as queueModel from '../models/queue.model.js'
 import { resolveSource, searchAvailable, searchYouTube } from '../services/sources.service.js'
@@ -88,6 +88,18 @@ export async function upload(req: Request, res: Response) {
  */
 export async function ice(_req: Request, res: Response) {
   res.json(await iceConfig())
+}
+
+/**
+ * What's already sitting on the server, ready to play.
+ *
+ * The uploads folder is the interface: drop a file in over SSH, Finder, or
+ * the upload form and it shows up here — no link to paste, no database row to
+ * keep in step with what's actually on disk.
+ */
+export async function library(req: Request, res: Response) {
+  await gate(req)
+  res.json({ items: await listLibrary() })
 }
 
 export async function queue(req: Request, res: Response) {
