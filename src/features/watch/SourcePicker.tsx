@@ -253,9 +253,13 @@ export function SourcePicker({
                           void queue(
                             {
                               source: 'file',
-                              ref: entry.ref,
+                              /* The CDN version whenever there is one. Same
+                                 film either way, but the published one starts
+                                 in a second and does not come out of the
+                                 server's uplink. */
+                              ref: entry.hls ?? entry.ref,
                               title: entry.title,
-                              duration: null,
+                              duration: entry.duration,
                               thumbnail: null,
                             },
                             true,
@@ -279,6 +283,13 @@ export function SourcePicker({
                           <span className="block truncate text-[0.7rem] text-dusk">
                             {formatBytes(entry.bytes)}
                             {!entry.playable && " · browsers can't play this container"}
+                            {/* Published files are streamed, so the local
+                                file's own shortcomings stop mattering. */}
+                            {entry.hls
+                              ? ' · streaming'
+                              : entry.playable &&
+                                !entry.fastStart &&
+                                ' · slow to start — needs remuxing'}
                           </span>
                         </span>
                       </button>
@@ -295,6 +306,17 @@ export function SourcePicker({
                     ffmpeg -i in.mkv -c:v copy -c:a aac out.mp4
                   </code>{' '}
                   and it appears here ready to go.
+                </p>
+              )}
+
+              {library?.some((entry) => entry.playable && !entry.fastStart && !entry.hls) && (
+                <p className="mt-3 px-1 text-[0.7rem] leading-relaxed text-dusk">
+                  Files marked “slow to start” keep their index at the end, so the player waits on
+                  the whole download before the first frame. Move it to the front — no re-encode,
+                  so it is a copy rather than a conversion —{' '}
+                  <code className="font-mono text-[0.68rem] text-mist">
+                    ffmpeg -i in.mp4 -c copy -movflags +faststart out.mp4
+                  </code>
                 </p>
               )}
             </div>

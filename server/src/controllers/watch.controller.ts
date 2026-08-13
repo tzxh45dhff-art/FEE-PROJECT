@@ -3,6 +3,7 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { iceConfig } from '../services/turn.service.js'
+import { publishInBackground, readPublished } from '../services/publish.service.js'
 import {
   discardUpload,
   finishUpload,
@@ -86,6 +87,16 @@ export async function upload(req: Request, res: Response) {
   const title = path.parse(file.originalname).name || 'Uploaded video'
   const stored = await finishUpload(req, file)
 
+  /*
+   * Start the CDN version, but answer now.
+   *
+   * The path below is playable the moment the file is on disk, so the room is
+   * never blocked on repackaging — which for a long film takes minutes. The
+   * library picks up the HLS URL once it exists, and anyone who queues this
+   * before then simply gets the direct file.
+   */
+  publishInBackground(stored)
+
   res.status(201).json({
     resolved: {
       source: 'file' as const,
@@ -113,10 +124,28 @@ export async function ice(_req: Request, res: Response) {
  * The uploads folder is the interface: drop a file in over SSH, Finder, or
  * the upload form and it shows up here — no link to paste, no database row to
  * keep in step with what's actually on disk.
+ *
+ * Each entry is matched against what has been published to the CDN. A file
+ * with an HLS version should be played from there rather than from this
+ * machine, and the client can only make that choice if it is told which is
+ * which — so the published URL and its duration ride along with the listing.
  */
 export async function library(req: Request, res: Response) {
   await gate(req)
-  res.json({ items: await listLibrary() })
+
+  const [items, published] = await Promise.all([listLibrary(), readPublished()])
+
+  res.json({
+    items: items.map((item) => {
+      const live = published[item.file]
+      return {
+        ...item,
+        hls: live?.url ?? null,
+        duration: live?.durationSeconds ?? null,
+        audio: live?.audio ?? null,
+      }
+    }),
+  })
 }
 
 export async function queue(req: Request, res: Response) {

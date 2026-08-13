@@ -53,6 +53,28 @@ export const env = {
   youtubeApiKey: process.env.YOUTUBE_API_KEY ?? '',
 
   /**
+   * Cloudflare R2, where video actually lives.
+   *
+   * Serving a movie off this machine through a tunnel puts the room's playback
+   * behind a home upload pipe: one 3GB file means a 21MB index every viewer
+   * must read before the first frame, over a link shared by everyone watching.
+   * R2 takes both problems away — the bytes sit on a CDN, and egress is free,
+   * so the server's only job is to put them there once.
+   *
+   * Optional. Without it uploads stay on disk and are served locally, which is
+   * fine for one person on localhost and is what the tests run against.
+   */
+  r2: {
+    accountId: process.env.R2_ACCOUNT_ID ?? '',
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? '',
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? '',
+    bucket: process.env.R2_BUCKET ?? '',
+    endpoint: process.env.R2_ENDPOINT ?? '',
+    /** Public bucket origin, no trailing slash — what viewers actually hit. */
+    publicUrl: (process.env.R2_PUBLIC_URL ?? '').replace(/\/$/, ''),
+  },
+
+  /**
    * TURN relay, for calls between people on different networks.
    *
    * Optional in the sense that the app runs without it — but calls will only
