@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { DoorOpen, LogOut, MessagesSquare, Plus, Settings2, Users } from 'lucide-react'
 
@@ -54,10 +55,64 @@ export function DashboardPage() {
   const { preferences, update } = usePreferences()
   const tilt = usePointerTilt()
 
-  const [activeRoomId, setActiveRoomId] = useState<string | null>(null)
+  /*
+   * Which room you're standing in, and what you're doing, live in the URL.
+   *
+   * Held as component state these survived nothing: a refresh dropped you back
+   * to the room list, and the back button — with no history entry to pop —
+   * walked out of the hub entirely rather than closing what was open. Both read
+   * as the app losing your place, because it was.
+   *
+   * The panel deliberately stays local. It's a disclosure on the current
+   * screen, not a place, and putting it in history would mean back-button
+   * presses spent dismissing a drawer.
+   */
+  const [params, setParams] = useSearchParams()
   const [panel, setPanel] = useState<Panel | null>(null)
-  const [activity, setActivity] = useState<ActivityId | null>(null)
   const [sideOpen, setSideOpen] = useState(false)
+
+  const activeRoomId = params.get('room')
+  /* Validated rather than cast — `?activity=` is user-editable, and an
+     unknown id would otherwise be handed straight to `findActivity`. */
+  const activityParam = params.get('activity')
+  const activity = ACTIVITIES.some((entry) => entry.id === activityParam)
+    ? (activityParam as ActivityId)
+    : null
+
+  const setActiveRoomId = useCallback(
+    (id: string | null) => {
+      setParams(
+        (previous) => {
+          const next = new URLSearchParams(previous)
+          if (id) next.set('room', id)
+          else {
+            next.delete('room')
+            /* An activity outside a room is meaningless, and leaving it behind
+               would reopen the stage the moment another room was picked. */
+            next.delete('activity')
+          }
+          return next
+        },
+        { replace: false },
+      )
+    },
+    [setParams],
+  )
+
+  const setActivity = useCallback(
+    (id: ActivityId | null) => {
+      setParams(
+        (previous) => {
+          const next = new URLSearchParams(previous)
+          if (id) next.set('activity', id)
+          else next.delete('activity')
+          return next
+        },
+        { replace: false },
+      )
+    },
+    [setParams],
+  )
 
   /*
    * Chat and the call are mounted for as long as you are in the room, not for
@@ -141,7 +196,7 @@ export function DashboardPage() {
      you back in the solo hub rather than leave a dangling id. */
   useEffect(() => {
     if (activeRoomId && !loading && !activeRoom) setActiveRoomId(null)
-  }, [activeRoomId, activeRoom, loading])
+  }, [activeRoomId, activeRoom, loading, setActiveRoomId])
 
   const scene = findScene(preferences.sceneId)
 

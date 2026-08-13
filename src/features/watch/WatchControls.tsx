@@ -1,7 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
-import { ListVideo, Maximize, Minimize, Pause, Play, SkipForward } from 'lucide-react'
+import {
+  Captions,
+  Languages,
+  ListVideo,
+  Maximize,
+  Minimize,
+  Pause,
+  Play,
+  SkipForward,
+} from 'lucide-react'
 
-import { formatTime, RATES, type WatchSnapshot } from '@/features/watch/types'
+import {
+  formatTime,
+  RATES,
+  type AudioTrackInfo,
+  type SubtitleTrack,
+  type WatchSnapshot,
+} from '@/features/watch/types'
 import { cn } from '@/lib/utils'
 
 /**
@@ -18,6 +33,12 @@ export function WatchControls({
   queueCount,
   queueOpen,
   isFullscreen,
+  audioTracks,
+  audioTrack,
+  onAudioTrackChange,
+  subtitles,
+  subtitleTrack,
+  onSubtitleTrackChange,
   onToggleQueue,
   onPlayPause,
   onSeek,
@@ -32,6 +53,16 @@ export function WatchControls({
   queueCount: number
   queueOpen: boolean
   isFullscreen: boolean
+  /** Empty when the source has nothing to choose between. */
+  audioTracks: AudioTrackInfo[]
+  audioTrack: number
+  /** Personal, not sent to the room — see the note in `WatchStage`. */
+  onAudioTrackChange: (id: number) => void
+  /** Empty when nothing was published with this video. */
+  subtitles: SubtitleTrack[]
+  /** Index into `subtitles`, or -1 for off. */
+  subtitleTrack: number
+  onSubtitleTrackChange: (index: number) => void
   onToggleQueue: () => void
   onPlayPause: () => void
   onSeek: (seconds: number) => void
@@ -44,16 +75,23 @@ export function WatchControls({
      otherwise incoming snapshots would drag the thumb out from under it. */
   const [scrubbing, setScrubbing] = useState<number | null>(null)
   const [rateOpen, setRateOpen] = useState(false)
+  const [languageOpen, setLanguageOpen] = useState(false)
+  const [captionsOpen, setCaptionsOpen] = useState(false)
   const rateMenu = useRef<HTMLDivElement>(null)
+  const languageMenu = useRef<HTMLDivElement>(null)
+  const captionsMenu = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!rateOpen) return
+    if (!rateOpen && !languageOpen && !captionsOpen) return
     const onAway = (event: MouseEvent) => {
-      if (!rateMenu.current?.contains(event.target as Node)) setRateOpen(false)
+      const target = event.target as Node
+      if (!rateMenu.current?.contains(target)) setRateOpen(false)
+      if (!languageMenu.current?.contains(target)) setLanguageOpen(false)
+      if (!captionsMenu.current?.contains(target)) setCaptionsOpen(false)
     }
     window.addEventListener('mousedown', onAway)
     return () => window.removeEventListener('mousedown', onAway)
-  }, [rateOpen])
+  }, [rateOpen, languageOpen, captionsOpen])
 
   const shown = scrubbing ?? position
   const known = duration > 0
@@ -126,11 +164,111 @@ export function WatchControls({
           <SkipForward aria-hidden className="size-4" />
         </button>
 
-        <div className="min-w-0 flex-1 px-2">
+        {/* The title yields first. With captions and audio-language buttons
+            present there are six controls competing for a phone's width, and
+            a title squeezed to three characters is worth less than the room
+            the buttons need. */}
+        <div className="hidden min-w-0 flex-1 px-2 sm:block">
           <p className="truncate text-[0.85rem] font-medium text-chalk">
             {snapshot.item?.title ?? 'Nothing playing'}
           </p>
         </div>
+        <div className="flex-1 sm:hidden" />
+
+        {subtitles.length > 0 && (
+          <div ref={captionsMenu} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setCaptionsOpen((open) => !open)}
+              disabled={disabled}
+              aria-label="Subtitles"
+              aria-pressed={subtitleTrack >= 0}
+              className={cn(
+                'grid size-10 shrink-0 place-items-center rounded-full border outline-none transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-35',
+                subtitleTrack >= 0
+                  ? 'border-signal/50 bg-signal/15 text-chalk'
+                  : 'border-white/12 bg-white/[0.05] text-chalk hover:border-white/30 hover:bg-white/[0.1]',
+              )}
+            >
+              <Captions aria-hidden className="size-4" />
+            </button>
+
+            {captionsOpen && (
+              <div className="glass-pill-ink absolute bottom-12 right-0 flex flex-col gap-0.5 rounded-card p-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSubtitleTrackChange(-1)
+                    setCaptionsOpen(false)
+                  }}
+                  className={cn(
+                    'whitespace-nowrap rounded-full px-4 py-1.5 text-left text-[0.78rem] transition-colors duration-200',
+                    subtitleTrack < 0
+                      ? 'bg-signal/20 text-chalk'
+                      : 'text-mist hover:bg-white/[0.08] hover:text-chalk',
+                  )}
+                >
+                  Off
+                </button>
+                {subtitles.map((track, index) => (
+                  <button
+                    key={track.url}
+                    type="button"
+                    onClick={() => {
+                      onSubtitleTrackChange(index)
+                      setCaptionsOpen(false)
+                    }}
+                    className={cn(
+                      'whitespace-nowrap rounded-full px-4 py-1.5 text-left text-[0.78rem] transition-colors duration-200',
+                      index === subtitleTrack
+                        ? 'bg-signal/20 text-chalk'
+                        : 'text-mist hover:bg-white/[0.08] hover:text-chalk',
+                    )}
+                  >
+                    {track.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {audioTracks.length > 1 && (
+          <div ref={languageMenu} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setLanguageOpen((open) => !open)}
+              disabled={disabled}
+              aria-label="Audio language"
+              className="grid size-10 shrink-0 place-items-center rounded-full border border-white/12 bg-white/[0.05] text-chalk outline-none transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-35"
+            >
+              <Languages aria-hidden className="size-4" />
+            </button>
+
+            {languageOpen && (
+              <div className="glass-pill-ink absolute bottom-12 right-0 flex flex-col gap-0.5 rounded-card p-1.5">
+                {audioTracks.map((track) => (
+                  <button
+                    key={track.id}
+                    type="button"
+                    onClick={() => {
+                      onAudioTrackChange(track.id)
+                      setLanguageOpen(false)
+                    }}
+                    className={cn(
+                      'whitespace-nowrap rounded-full px-4 py-1.5 text-left text-[0.78rem] transition-colors duration-200',
+                      track.id === audioTrack
+                        ? 'bg-signal/20 text-chalk'
+                        : 'text-mist hover:bg-white/[0.08] hover:text-chalk',
+                    )}
+                  >
+                    {track.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div ref={rateMenu} className="relative shrink-0">
           <button

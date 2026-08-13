@@ -124,6 +124,13 @@ export function YouTubePlayer({
       /* YouTube only accepts its own rate list, so drift is corrected by
          seeking rather than by nudging the speed. */
       supportsFineRate: false,
+      /* The iframe API has no alternate-audio concept to expose, and YouTube
+         draws its own captions inside the iframe where we can't reach them. */
+      getAudioTracks: () => [],
+      getAudioTrack: () => 0,
+      setAudioTrack: () => undefined,
+      getSubtitleTrack: () => -1,
+      setSubtitleTrack: () => undefined,
     }
 
     onHandle(handle)

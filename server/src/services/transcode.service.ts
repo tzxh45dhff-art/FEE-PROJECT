@@ -24,6 +24,7 @@ import path from 'node:path'
 const SEGMENT_SECONDS = 6
 
 export type AudioTrack = { index: number; language: string; label: string }
+export type SubtitleTrack = { index: number; language: string; label: string; codec: string }
 
 export type ProbeResult = {
   durationSeconds: number
@@ -31,6 +32,7 @@ export type ProbeResult = {
   height: number | null
   videoCodec: string | null
   audio: AudioTrack[]
+  subtitles: SubtitleTrack[]
 }
 
 /* ISO 639-2 for the languages that actually turn up on a film print. Anything
@@ -123,13 +125,79 @@ export async function probe(input: string): Promise<ProbeResult> {
       } satisfies AudioTrack
     })
 
+  /* Numbered among subtitle streams for the same reason as audio above. */
+  const subtitles = streams
+    .filter((stream) => stream.codec_type === 'subtitle')
+    .map((stream, position) => {
+      const language = stream.tags?.language ?? 'und'
+      return {
+        index: position,
+        language,
+        label: LANGUAGE_NAMES[language] ?? (language === 'und' ? `Track ${position + 1}` : language),
+        codec: stream.codec_name ?? 'unknown',
+      } satisfies SubtitleTrack
+    })
+
   return {
     durationSeconds: Number(parsed.format?.duration ?? 0),
     width: video?.width ?? null,
     height: video?.height ?? null,
     videoCodec: video?.codec_name ?? null,
     audio,
+    subtitles,
   }
+}
+
+/**
+ * Subtitle formats that convert cleanly to WebVTT.
+ *
+ * These are text; `subrip`, `ass` and friends are timed strings that ffmpeg can
+ * rewrite into VTT in a moment. Bitmap formats — `dvd_subtitle`, `hdmv_pgs`,
+ * which are what most Blu-ray rips carry — are images of text, and turning
+ * those into VTT means running OCR. Out of scope, so they are skipped rather
+ * than failing the publish over something optional.
+ */
+const TEXT_SUBTITLE_CODECS = new Set(['subrip', 'srt', 'ass', 'ssa', 'mov_text', 'webvtt', 'text'])
+
+export const isTextSubtitle = (track: SubtitleTrack) => TEXT_SUBTITLE_CODECS.has(track.codec)
+
+/**
+ * Pull every text subtitle out as a WebVTT file.
+ *
+ * Written as standalone `.vtt` rather than segmented into the HLS ladder. A
+ * subtitle file for a whole film is tens of kilobytes — smaller than a single
+ * video segment — so the machinery to chop it into a playlist would cost more
+ * than it saves, and a plain `<track>` element handles it in every browser.
+ */
+export async function extractSubtitles(input: string, outDir: string, tracks: SubtitleTrack[]) {
+  const usable = tracks.filter(isTextSubtitle)
+  if (usable.length === 0) return []
+
+  const written: { language: string; label: string; file: string }[] = []
+
+  for (const track of usable) {
+    const file = `sub_${track.index}_${track.language}.vtt`
+    try {
+      await run('ffmpeg', [
+        '-hide_banner',
+        '-nostdin',
+        '-y',
+        '-i',
+        input,
+        '-map',
+        `0:s:${track.index}`,
+        '-c:s',
+        'webvtt',
+        path.join(outDir, file),
+      ])
+      written.push({ language: track.language, label: track.label, file })
+    } catch {
+      /* One malformed subtitle stream — which is common in the wild — should
+         not take the whole film down with it. */
+    }
+  }
+
+  return written
 }
 
 /**

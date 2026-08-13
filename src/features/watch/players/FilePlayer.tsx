@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Hls from 'hls.js'
 
-import type { PlayerHandle } from '@/features/watch/types'
+import type { AudioTrackInfo, PlayerHandle, SubtitleTrack } from '@/features/watch/types'
 
 /**
  * A direct media URL in a plain `<video>`.
@@ -20,22 +20,48 @@ import type { PlayerHandle } from '@/features/watch/types'
 
 const isHls = (src: string) => /\.m3u8(\?|$)/i.test(src)
 
+/*
+ * `HTMLMediaElement.audioTracks` — Safari's own multi-audio API for native
+ * HLS. It never made it into a finished standard, so TypeScript's DOM types
+ * do not carry it even though the browser genuinely implements it. This is
+ * the minimal shape used below, not a claim that it's standard.
+ */
+type NativeAudioTrack = { id: string; label: string; language: string; enabled: boolean }
+type NativeAudioTrackList = EventTarget & { length: number; [index: number]: NativeAudioTrack }
+type WithNativeAudioTracks = HTMLVideoElement & { audioTracks?: NativeAudioTrackList }
+
 export function FilePlayer({
   src,
   startAt,
+  subtitles,
   onHandle,
   onEnded,
   onError,
+  onAudioTracksChanged,
 }: {
   src: string
   startAt: number
+  /** Published WebVTT tracks. Rendered as `<track>` children below. */
+  subtitles?: SubtitleTrack[]
   onHandle: (handle: PlayerHandle | null) => void
   onEnded: () => void
   onError: (message: string) => void
+  /**
+   * Fired whenever the alternate-audio list might have changed — a new video
+   * loaded, or the source finished discovering its tracks after playback
+   * already started. The handle's `getAudioTracks` is the source of truth;
+   * this is only the doorbell telling the caller to go read it again.
+   */
+  onAudioTracksChanged?: () => void
 }) {
   const video = useRef<HTMLVideoElement>(null)
   const buffering = useRef(false)
   const [ready, setReady] = useState(false)
+
+  /* The hls.js instance backing the current source, or null off of it — the
+     handle reads audio tracks through this rather than through closure state,
+     since hls.js's own arrays are already the source of truth. */
+  const hlsRef = useRef<Hls | null>(null)
 
   const startRef = useRef(startAt)
   startRef.current = startAt
@@ -44,6 +70,8 @@ export function FilePlayer({
      re-renders — attaching HLS twice tears down playback mid-frame. */
   const onErrorRef = useRef(onError)
   onErrorRef.current = onError
+  const onTracksRef = useRef(onAudioTracksChanged)
+  onTracksRef.current = onAudioTracksChanged
 
   useEffect(() => {
     setReady(false)
@@ -71,7 +99,17 @@ export function FilePlayer({
 
     if (element.canPlayType('application/vnd.apple.mpegurl')) {
       element.src = src
+
+      /* Safari discovers alternate audio asynchronously, same as hls.js does
+         — the list is empty for a moment after `src` is set. */
+      const nativeElement = element as WithNativeAudioTracks
+      const onChange = () => onTracksRef.current?.()
+      nativeElement.audioTracks?.addEventListener('addtrack', onChange)
+      nativeElement.audioTracks?.addEventListener('change', onChange)
+
       return () => {
+        nativeElement.audioTracks?.removeEventListener('addtrack', onChange)
+        nativeElement.audioTracks?.removeEventListener('change', onChange)
         element.removeAttribute('src')
         element.load()
       }
@@ -88,6 +126,7 @@ export function FilePlayer({
       backBufferLength: 30,
       enableWorker: true,
     })
+    hlsRef.current = hls
 
     hls.on(Hls.Events.ERROR, (_event, data) => {
       /* Most errors are recoverable and hls.js expects to be told to try:
@@ -108,16 +147,98 @@ export function FilePlayer({
       hls.destroy()
     })
 
+    hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => onTracksRef.current?.())
+    hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => onTracksRef.current?.())
+
     hls.loadSource(src)
     hls.attachMedia(element)
 
-    return () => hls.destroy()
+    return () => {
+      hlsRef.current = null
+      hls.destroy()
+    }
   }, [src])
 
   useEffect(() => {
     if (!ready || !video.current) return
 
     const element = video.current
+    const nativeElement = element as WithNativeAudioTracks
+
+    /* Distinguishing the two audio APIs is the one thing every method here
+       has to do: hls.js is authoritative whenever it's attached, and the
+       browser's own `audioTracks` only applies to native Safari HLS (or is
+       simply absent on a browser that never implements it). */
+    const getAudioTracks = (): AudioTrackInfo[] => {
+      if (hlsRef.current) {
+        return hlsRef.current.audioTracks.map((track, index) => ({
+          id: index,
+          language: track.lang || 'und',
+          label: track.name || track.lang || `Track ${index + 1}`,
+        }))
+      }
+      const list = nativeElement.audioTracks
+      if (!list) return []
+      return Array.from({ length: list.length }, (_, index) => {
+        const track = list[index]!
+        return {
+          id: index,
+          language: track.language || 'und',
+          label: track.label || track.language || `Track ${index + 1}`,
+        }
+      })
+    }
+
+    const getAudioTrack = (): number => {
+      if (hlsRef.current) return hlsRef.current.audioTrack
+      const list = nativeElement.audioTracks
+      if (!list) return 0
+      for (let index = 0; index < list.length; index += 1) {
+        if (list[index]!.enabled) return index
+      }
+      return 0
+    }
+
+    const setAudioTrack = (id: number) => {
+      if (hlsRef.current) {
+        hlsRef.current.audioTrack = id
+        return
+      }
+      const list = nativeElement.audioTracks
+      if (!list) return
+      /* The spec says setting one `enabled` track in an exclusive group turns
+         the others off automatically, but that behaviour is inconsistent
+         enough across engines that it isn't worth trusting — set it
+         explicitly rather than debug a "two tracks at once" report later. */
+      for (let index = 0; index < list.length; index += 1) {
+        list[index]!.enabled = index === id
+      }
+    }
+
+    /*
+     * Subtitle visibility runs through `textTracks`, not the `<track>` DOM
+     * nodes. React owns those elements, so setting `.mode` on the live
+     * TextTrack list is the only way to change what's showing without
+     * fighting the renderer over attributes.
+     */
+    const getSubtitleTrack = () => {
+      const tracks = element.textTracks
+      for (let index = 0; index < tracks.length; index += 1) {
+        if (tracks[index]!.mode === 'showing') return index
+      }
+      return -1
+    }
+
+    const setSubtitleTrack = (index: number) => {
+      const tracks = element.textTracks
+      for (let position = 0; position < tracks.length; position += 1) {
+        /* `hidden` rather than `disabled` for the ones being turned off: it
+           keeps the cues parsed, so switching languages back is instant
+           instead of re-fetching the file. */
+        tracks[position]!.mode = position === index ? 'showing' : 'hidden'
+      }
+    }
+
     const handle: PlayerHandle = {
       play: () => void element.play().catch(() => undefined),
       pause: () => element.pause(),
@@ -131,6 +252,11 @@ export function FilePlayer({
       getDuration: () => (Number.isFinite(element.duration) ? element.duration : 0),
       isBuffering: () => buffering.current,
       supportsFineRate: true,
+      getAudioTracks,
+      getAudioTrack,
+      setAudioTrack,
+      getSubtitleTrack,
+      setSubtitleTrack,
     }
 
     onHandle(handle)
@@ -178,6 +304,19 @@ export function FilePlayer({
           "That file couldn't be played. It needs to be a direct video URL the browser can fetch — and the host has to allow it.",
         )
       }}
-    />
+    >
+      {/* Off until asked for. `default` would burn one in as showing, and a
+          film that starts with subtitles nobody chose is worse than one that
+          starts without. */}
+      {subtitles?.map((track) => (
+        <track
+          key={track.url}
+          kind="subtitles"
+          src={track.url}
+          srcLang={track.language}
+          label={track.label}
+        />
+      ))}
+    </video>
   )
 }

@@ -562,6 +562,27 @@
     outline: 2px solid var(--color-signal);
     outline-offset: 3px;
   }
+
+  /*
+   * Subtitles.
+   *
+   * Left unstyled, browsers draw cues as white text on an opaque black slab in
+   * their own default face — legible, but it looks like a different piece of
+   * software has been pasted over the film. A translucent ground and the app's
+   * own type settle it back into the page.
+   *
+   * `::cue` accepts only a small set of properties, so this is deliberately
+   * narrow: anything to do with layout or the box itself is ignored by the
+   * engine rather than merely unsupported.
+   */
+  ::cue {
+    background: color-mix(in oklab, var(--color-void) 65%, transparent);
+    color: var(--color-chalk);
+    font-family: inherit;
+    font-size: 1em;
+    line-height: 1.4;
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
+  }
 }
 
 @layer utilities {

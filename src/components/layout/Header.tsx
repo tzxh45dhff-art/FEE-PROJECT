@@ -171,11 +171,20 @@ export function Header() {
             </>
           ) : (
             <>
-              <Button asChild variant="ghost" size="sm" flat className="hidden sm:inline-flex">
+              {/* Never hidden. Signing in is the one thing a returning visitor
+                  came here to do, and on a phone this was the only route to
+                  it — the marketing links are already gone below `md`, so the
+                  width it needs is there. */}
+              <Button asChild variant="ghost" size="sm" flat>
                 <Link to="/signin">Sign in</Link>
               </Button>
               <Button asChild variant="outline" size="sm" flat>
-                <Link to="/signup">Create room</Link>
+                {/* "Create room" is the pitch, but it costs a phone's whole
+                    remaining header width to say it. */}
+                <Link to="/signup">
+                  <span className="sm:hidden">Sign up</span>
+                  <span className="hidden sm:inline">Create room</span>
+                </Link>
               </Button>
             </>
           )}

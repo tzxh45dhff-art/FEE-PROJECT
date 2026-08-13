@@ -10,7 +10,7 @@ import { FilePlayer } from '@/features/watch/players/FilePlayer'
 import { YouTubePlayer } from '@/features/watch/players/YouTubePlayer'
 import { QueuePanel } from '@/features/watch/QueuePanel'
 import { SourcePicker, type Queued } from '@/features/watch/SourcePicker'
-import type { PlayerHandle, QueueItem } from '@/features/watch/types'
+import type { AudioTrackInfo, PlayerHandle, QueueItem } from '@/features/watch/types'
 import { useDriftCorrection } from '@/features/watch/useDriftCorrection'
 import { useWatchSession } from '@/features/watch/useWatchSession'
 import { WatchControls } from '@/features/watch/WatchControls'
@@ -19,6 +19,9 @@ import { apiUrl } from '@/lib/config'
 import { cn } from '@/lib/utils'
 
 const EASE = [0.16, 1, 0.3, 1] as const
+
+/** Last language someone on this device picked, so the next film opens in it. */
+const AUDIO_LANGUAGE_KEY = 'syncroom.audioLanguage'
 
 /**
  * The watch stage.
@@ -64,6 +67,20 @@ export function WatchStage({
   /** Id of a just-added item waiting to be put on. See `onQueued` below. */
   const [pendingPlayId, setPendingPlayId] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  /*
+   * Audio language.
+   *
+   * Deliberately local, never sent through `send()`. Playback position, rate,
+   * and what's on are decisions the room makes together — which language you
+   * personally hear it in is not, the same way volume isn't. Two people in one
+   * room can watch the same film in different languages at once.
+   */
+  const [audioTracks, setAudioTracks] = useState<AudioTrackInfo[]>([])
+  const [audioTrack, setAudioTrackState] = useState(0)
+  /** Index into the item's subtitle list, or -1 for off. Also personal. */
+  const [subtitleTrack, setSubtitleTrackState] = useState(-1)
+  /** True while the player is stalled, so a freeze reads as loading. */
+  const [buffering, setBuffering] = useState(false)
 
   const item = snapshot?.item ?? null
   const embeddable = item?.source === 'youtube' || item?.source === 'file'
@@ -187,15 +204,97 @@ export function WatchStage({
       if (handle && embeddable) {
         setPosition(handle.getPosition())
         setDuration(handle.getDuration() || item?.duration || 0)
+        /* Only while the room believes it's playing. A paused video is not
+           buffering, and saying so would put a spinner over every pause. */
+        setBuffering(handle.isBuffering() && (snapshot?.playing ?? false))
       } else if (snapshot) {
         setPosition(targetPosition())
         setDuration(item?.duration ?? 0)
+        setBuffering(false)
       }
     }
     tick()
     const timer = setInterval(tick, 250)
     return () => clearInterval(timer)
   }, [handle, embeddable, snapshot, targetPosition, item?.duration])
+
+  /*
+   * Read the source's audio-track list into state.
+   *
+   * Called on every handle change and again whenever the player says its list
+   * might have moved — HLS discovers alternate audio asynchronously, so the
+   * list at the moment playback starts is not reliably the final one.
+   */
+  const syncAudioTracks = useCallback(() => {
+    if (!handle) {
+      setAudioTracks([])
+      setAudioTrackState(0)
+      return
+    }
+    setAudioTracks(handle.getAudioTracks())
+    setAudioTrackState(handle.getAudioTrack())
+  }, [handle])
+
+  useEffect(() => {
+    syncAudioTracks()
+  }, [syncAudioTracks])
+
+  /* A saved language applies itself once, the moment a video's tracks first
+     become known — not on every re-sync, or manually switching languages
+     mid-film would get silently reverted the next time hls.js re-announces
+     its track list. */
+  const appliedPreference = useRef<string | null>(null)
+  useEffect(() => {
+    if (!handle || audioTracks.length < 2) return
+    if (appliedPreference.current === item?.id) return
+    appliedPreference.current = item?.id ?? null
+
+    let preferred: string | null = null
+    try {
+      preferred = localStorage.getItem(AUDIO_LANGUAGE_KEY)
+    } catch {
+      /* Private browsing can refuse storage access entirely. */
+    }
+    if (!preferred) return
+
+    const match = audioTracks.find((track) => track.language === preferred)
+    if (match && match.id !== handle.getAudioTrack()) {
+      handle.setAudioTrack(match.id)
+      setAudioTrackState(match.id)
+    }
+  }, [handle, audioTracks, item?.id])
+
+  const onAudioTrackChange = useCallback(
+    (id: number) => {
+      if (!handle) return
+      handle.setAudioTrack(id)
+      setAudioTrackState(id)
+      const track = audioTracks.find((entry) => entry.id === id)
+      if (track) {
+        try {
+          localStorage.setItem(AUDIO_LANGUAGE_KEY, track.language)
+        } catch {
+          /* Not being able to remember the choice is not worth surfacing. */
+        }
+      }
+    },
+    [handle, audioTracks],
+  )
+
+  /* Subtitles start off on every new item, matching the `<track>` elements,
+     which are rendered without `default` for the same reason. */
+  useEffect(() => {
+    setSubtitleTrackState(-1)
+  }, [item?.id])
+
+  const onSubtitleTrackChange = useCallback(
+    (index: number) => {
+      if (!handle) return
+      handle.setSubtitleTrack(index)
+      setSubtitleTrackState(index)
+    },
+    [handle],
+  )
 
   const playNow = useCallback((next: QueueItem) => send('watch:load', { itemId: next.id }), [send])
 
@@ -278,9 +377,11 @@ export function WatchStage({
                    `<video>` element. */
                 src={apiUrl(item.ref)}
                 startAt={targetPosition()}
+                subtitles={item.subtitles}
                 onHandle={setHandle}
                 onEnded={onEnded}
                 onError={setError}
+                onAudioTracksChanged={syncAudioTracks}
               />
             )}
 
@@ -323,6 +424,18 @@ export function WatchStage({
               </div>
             )}
           </div>
+
+          {/* Sits under `needsGesture`, which is a different problem with its
+              own overlay — showing both at once would be two explanations for
+              one stopped video. */}
+          {buffering && !needsGesture && (
+            <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center">
+              <span className="glass-pill-ink flex items-center gap-2.5 rounded-full px-4 py-2.5">
+                <Loader2 aria-hidden className="size-4 animate-spin text-signal-bright" />
+                <span className="text-[0.78rem] text-chalk">Buffering…</span>
+              </span>
+            </div>
+          )}
 
           {needsGesture && (
             <button
@@ -433,6 +546,12 @@ export function WatchStage({
                 queueCount={queue.length}
                 queueOpen={queueOpen}
                 isFullscreen={isFullscreen}
+                audioTracks={audioTracks}
+                audioTrack={audioTrack}
+                onAudioTrackChange={onAudioTrackChange}
+                subtitles={item?.subtitles ?? []}
+                subtitleTrack={subtitleTrack}
+                onSubtitleTrackChange={onSubtitleTrackChange}
                 onToggleQueue={() => setQueueOpen((open) => !open)}
                 onPlayPause={() =>
                   send('watch:control', {
