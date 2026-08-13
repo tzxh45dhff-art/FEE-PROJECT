@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'socket.io'
 
 import * as queueModel from '../models/queue.model.js'
+import { subtitlesForRef } from '../services/publish.service.js'
 import { assertMembership } from '../services/room.service.js'
 import * as watch from '../services/watch.service.js'
 import { socketUser } from './presence.gateway.js'
@@ -33,6 +34,18 @@ function toItem(row: {
     duration: row.duration,
     thumbnail: row.thumbnail,
   }
+}
+
+/**
+ * The same item, plus whatever subtitles were published alongside it.
+ *
+ * Only the item actually going on screen is enriched — the queue behind it
+ * doesn't need its subtitle lists, and looking them all up would read the
+ * index once per row for something nobody is reading yet.
+ */
+async function toItemWithTracks(row: Parameters<typeof toItem>[0]): Promise<watch.WatchItem> {
+  const item = toItem(row)
+  return { ...item, subtitles: await subtitlesForRef(item.ref) }
 }
 
 function roomIdFrom(raw: unknown): string | null {
@@ -244,7 +257,7 @@ export function attachWatchGateway(io: Server) {
 
       io.to(stageRoom(roomId)).emit(
         'watch:state',
-        watch.apply(roomId, self, { action: 'load', item: toItem(row) }),
+        watch.apply(roomId, self, { action: 'load', item: await toItemWithTracks(row) }),
       )
     })
 
@@ -268,7 +281,10 @@ export function attachWatchGateway(io: Server) {
       const next = await queueModel.nextInQueue(roomId, current.item.id)
       io.to(stageRoom(roomId)).emit(
         'watch:state',
-        watch.apply(roomId, self, { action: 'advance', item: next ? toItem(next) : null }),
+        watch.apply(roomId, self, {
+          action: 'advance',
+          item: next ? await toItemWithTracks(next) : null,
+        }),
       )
     })
 

@@ -43,7 +43,15 @@ export function HubRail({
   return (
     <motion.nav
       className={cn(
-        'pointer-events-auto absolute top-1/2 z-20 flex w-[15.5rem] max-w-[42vw] flex-col gap-3',
+        /*
+         * Two rails face each other across the scene, so each can only ever
+         * have somewhat under half the width — which on a phone is about 150px,
+         * and after the icon and padding leaves barely enough for a word. The
+         * cap is loosened a little there and the labels below are allowed to
+         * wrap rather than truncate, which is what actually buys the room.
+         */
+        'pointer-events-auto absolute top-1/2 z-20 flex w-[15.5rem] max-w-[46vw] flex-col gap-2.5',
+        'sm:max-w-[42vw] sm:gap-3',
         'transition-[right] duration-500 ease-glass',
         side === 'left' ? 'left-4 md:left-8' : 'items-end',
         className,
@@ -83,7 +91,8 @@ export function HubRail({
             whileTap={{ scale: 0.98 }}
             transition={{ duration: 0.35, ease: EASE }}
             className={cn(
-              'group/rail flex w-full items-center gap-3 rounded-card px-4 py-3 text-left outline-none',
+              'group/rail flex w-full items-center gap-2.5 rounded-card px-3 py-2.5 text-left outline-none',
+              'sm:gap-3 sm:px-4 sm:py-3',
               /*
                * Frosted over a *dark scrim*, not clear glass. Clear glass is
                * only legible over bright artwork — it vanishes against dark
@@ -99,7 +108,7 @@ export function HubRail({
           >
             <span
               className={cn(
-                'grid size-9 shrink-0 place-items-center rounded-full bg-white/10 text-chalk ring-1 ring-inset ring-white/15',
+                'grid size-8 shrink-0 place-items-center rounded-full bg-white/10 text-chalk ring-1 ring-inset ring-white/15 sm:size-9',
                 'transition-colors duration-500',
                 item.active && 'bg-signal/25 text-white ring-signal/40',
                 item.danger && 'group-hover/rail:bg-signal/25 group-hover/rail:text-white',
@@ -109,7 +118,10 @@ export function HubRail({
             </span>
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1.5">
-                <span className="truncate font-display text-[0.95rem] font-semibold tracking-[-0.015em] text-chalk">
+                {/* Wraps on a phone, truncates once there's width for one
+                    line. "Create a room" over two lines still says what it
+                    does; "Create …" does not. */}
+                <span className="font-display text-[0.9rem] font-semibold leading-tight tracking-[-0.015em] text-chalk sm:truncate sm:text-[0.95rem]">
                   {item.label}
                 </span>
                 {item.live && (
@@ -119,8 +131,13 @@ export function HubRail({
                   />
                 )}
               </span>
+              {/* The hint is a nicety, and on a phone it only ever rendered as
+                  a cut-off fragment — "Start your o…" tells you less than the
+                  space it costs the label above it. */}
               {item.hint && (
-                <span className="block truncate text-[0.72rem] text-mist">{item.hint}</span>
+                <span className="hidden truncate text-[0.72rem] text-mist sm:block">
+                  {item.hint}
+                </span>
               )}
             </span>
           </motion.button>

@@ -2,6 +2,9 @@ export type WatchSource = 'youtube' | 'file' | 'external'
 
 export type WatchAction = 'load' | 'play' | 'pause' | 'seek' | 'rate' | 'advance' | 'open'
 
+/** One WebVTT subtitle track published alongside a video. */
+export type SubtitleTrack = { language: string; label: string; url: string }
+
 export type WatchItem = {
   id: string
   source: WatchSource
@@ -10,6 +13,8 @@ export type WatchItem = {
   title: string
   duration: number | null
   thumbnail: string | null
+  /** Absent for anything not published with subtitles. */
+  subtitles?: SubtitleTrack[]
 }
 
 export type QueueItem = WatchItem & {
@@ -74,6 +79,9 @@ export type LibraryEntry = {
   audio: { language: string; label: string }[] | null
 }
 
+/** One alternate audio track, as offered by the source. */
+export type AudioTrackInfo = { id: number; language: string; label: string }
+
 export type SearchResult = {
   id: string
   title: string
@@ -107,6 +115,21 @@ export type PlayerHandle = {
    * has to correct by seeking instead.
    */
   supportsFineRate: boolean
+  /**
+   * Alternate audio tracks, if the source has any. Empty for a single-track
+   * file, a plain MP4, or YouTube — this is not the same as an error, it just
+   * means there is nothing to switch between.
+   */
+  getAudioTracks: () => AudioTrackInfo[]
+  getAudioTrack: () => number
+  setAudioTrack: (id: number) => void
+  /**
+   * Which subtitle track is showing, by index into the item's list, or -1 for
+   * none. Separate from the audio API because subtitles are `<track>`
+   * elements on the video rather than anything the streaming layer owns.
+   */
+  getSubtitleTrack: () => number
+  setSubtitleTrack: (index: number) => void
 }
 
 export const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const

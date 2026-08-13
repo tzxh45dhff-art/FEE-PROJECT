@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { publicUrl, r2Enabled, uploadDirectory } from './r2.service.js'
-import { probe, toHls } from './transcode.service.js'
+import { extractSubtitles, probe, toHls } from './transcode.service.js'
 import { UPLOAD_DIR } from './upload.service.js'
 
 /**
@@ -35,6 +35,8 @@ export type PublishedEntry = {
   width: number | null
   height: number | null
   audio: { language: string; label: string }[]
+  /** WebVTT tracks pulled out of the source, if it carried any text ones. */
+  subtitles: { language: string; label: string; url: string }[]
   segmentCount: number
   publishedAt: number
 }
@@ -62,6 +64,24 @@ async function record(entry: PublishedEntry) {
 /** What has already been published for a given file, if anything. */
 export async function publishedFor(file: string) {
   return (await readPublished())[file] ?? null
+}
+
+/**
+ * Subtitle tracks for something already in the queue.
+ *
+ * Resolved from the published index by URL rather than stored on the queue
+ * row. The row only ever held a ref, and copying the subtitle list onto it
+ * would mean two records of the same fact that can disagree — republish a film
+ * with different subtitles and every queue entry pointing at it would still be
+ * describing the old ones.
+ */
+export async function subtitlesForRef(ref: string) {
+  if (!ref.startsWith('http')) return []
+  const index = await readPublished()
+  for (const entry of Object.values(index)) {
+    if (entry.url === ref) return entry.subtitles ?? []
+  }
+  return []
 }
 
 /**
@@ -157,6 +177,10 @@ export async function publish(
     onProgress?.({ stage: 'packaging', fraction: 0 })
     await toHls(source, work, (fraction) => onProgress?.({ stage: 'packaging', fraction }))
 
+    /* After the ladder, so a subtitle failure can't waste the expensive step —
+       and into the same directory, so one upload carries both. */
+    const written = await extractSubtitles(source, work, probed.subtitles)
+
     const keyPrefix = keyPrefixFor(file, info.size)
     onProgress?.({ stage: 'uploading', fraction: 0 })
     const segmentCount = await uploadDirectory(work, keyPrefix, (done, total) =>
@@ -171,6 +195,11 @@ export async function publish(
       width: probed.width,
       height: probed.height,
       audio: probed.audio.map((track) => ({ language: track.language, label: track.label })),
+      subtitles: written.map((track) => ({
+        language: track.language,
+        label: track.label,
+        url: publicUrl(`${keyPrefix}/${track.file}`),
+      })),
       segmentCount,
       publishedAt: Date.now(),
     }

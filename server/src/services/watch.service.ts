@@ -21,6 +21,8 @@ export type WatchItem = {
   title: string
   duration: number | null
   thumbnail: string | null
+  /** Published WebVTT tracks, resolved when the item is loaded. */
+  subtitles?: { language: string; label: string; url: string }[]
 }
 
 export const WATCH_ACTIONS = [

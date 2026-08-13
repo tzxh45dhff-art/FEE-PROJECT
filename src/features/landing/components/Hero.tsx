@@ -49,9 +49,21 @@ export function Hero() {
         className="pointer-events-none absolute inset-0 z-10 grid place-items-center"
         style={reduced ? still : { y: orbY, scale: orbScale }}
       >
-        {/* WebGL without preserveDrawingBuffer photographs as blank, so the
-            orb is excluded from the snapshot rather than punching a hole in it. */}
-        <div data-liquid-ignore className="aspect-square w-[min(78vw,42rem)]">
+        {/*
+          WebGL without preserveDrawingBuffer photographs as blank, so the
+          orb is excluded from the snapshot rather than punching a hole in it.
+
+          Smaller and lifted on phones. The headline is heavy enough to read
+          across the glass — that crossing is the point — but the standfirst
+          under it is small grey text, and centring a bright sphere in a
+          narrow column put it directly behind those two lines. Raising the
+          orb to sit behind the headline alone keeps the effect and gives the
+          copy a dark ground again.
+        */}
+        <div
+          data-liquid-ignore
+          className="aspect-square w-[min(56vw,42rem)] -translate-y-[14vh] sm:w-[min(78vw,42rem)] sm:translate-y-0"
+        >
           <Suspense fallback={null}>
             {orbModel ? (
               <ModelBoundary fallback={<HeroOrb />}>
