@@ -8,10 +8,25 @@
 #
 
 PORT=4000
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-NGROK_DOMAIN="nimbly-unroasted-gaffe.ngrok-free.dev"
+# $0 is the symlink (~/.local/bin/sync) when run as a bare global command —
+# resolve it to the real script before walking up to the project root, or
+# ROOT ends up pointing at ~/.local instead of the repo.
+SELF="$0"
+while [ -L "$SELF" ]; do
+  LINK="$(readlink "$SELF")"
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *) SELF="$(dirname "$SELF")/$LINK" ;;
+  esac
+done
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+NGROK_DOMAIN="letter-fiction-fog.ngrok-free.dev"
 
+CLEANED=0
 cleanup() {
+  [ "$CLEANED" = 1 ] && return
+  CLEANED=1
+  trap - EXIT INT TERM
   echo ""
   echo "Shutting down..."
   kill 0 2>/dev/null

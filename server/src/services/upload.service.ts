@@ -168,7 +168,73 @@ export type LibraryEntry = {
   bytes: number
   /** False for containers no browser will play; the client says why. */
   playable: boolean
+  /**
+   * False when an MP4 keeps its index at the end of the file.
+   *
+   * Nothing is wrong with the video — it simply cannot *start* until the
+   * browser has the `moov` atom, and if that sits behind a multi-gigabyte
+   * `mdat` the player stalls on a file that looks perfectly fine in the list.
+   * Surfacing it is the difference between a one-line `ffmpeg` fix and an
+   * afternoon of blaming the network.
+   */
+  fastStart: boolean
   modifiedAt: number
+}
+
+/** MP4-family containers, the only ones with a `moov` atom to be misplaced. */
+const MP4_EXT = /\.(mp4|mov|m4v)$/i
+
+/**
+ * Whether an MP4's index sits at the front, where a streaming player needs it.
+ *
+ * Walks the top-level atoms — each is an 8-byte header naming itself and its
+ * length, so this seeks rather than reads, and costs a handful of 16-byte
+ * reads no matter how large the file is. Whichever of `moov`/`mdat` appears
+ * first decides it.
+ *
+ * Anything unreadable or not MP4 answers `true`: a false alarm on a working
+ * file is worse than staying quiet, because the warning is only useful if it
+ * always means something.
+ */
+async function hasFastStart(fullPath: string): Promise<boolean> {
+  if (!MP4_EXT.test(fullPath)) return true
+
+  const { open } = await import('node:fs/promises')
+
+  let handle
+  try {
+    handle = await open(fullPath, 'r')
+    const { size } = await handle.stat()
+    const header = Buffer.alloc(16)
+
+    for (let offset = 0; offset + 8 <= size; ) {
+      const { bytesRead } = await handle.read(header, 0, 16, offset)
+      if (bytesRead < 8) return true
+
+      const type = header.toString('ascii', 4, 8)
+      if (type === 'moov') return true
+      if (type === 'mdat') return false
+
+      let length = header.readUInt32BE(0)
+      /* 1 means the real 64-bit length follows the type; 0 means "to EOF",
+         which can only be the last atom and so settles nothing. */
+      if (length === 1) {
+        if (bytesRead < 16) return true
+        length = Number(header.readBigUInt64BE(8))
+      } else if (length === 0) {
+        return true
+      }
+
+      if (length < 8) return true
+      offset += length
+    }
+  } catch {
+    return true
+  } finally {
+    await handle?.close().catch(() => undefined)
+  }
+
+  return true
 }
 
 function prettyTitle(file: string) {
@@ -205,8 +271,11 @@ export async function listLibrary(): Promise<LibraryEntry[]> {
       .filter((name) => !name.startsWith('.') && VIDEO_EXT.test(name))
       .map(async (name) => {
         try {
-          const info = await stat(path.join(UPLOAD_DIR, name))
+          const fullPath = path.join(UPLOAD_DIR, name)
+          const info = await stat(fullPath)
           if (!info.isFile()) return null
+
+          const playable = PLAYABLE_EXT.test(name)
 
           return {
             file: name,
@@ -216,7 +285,9 @@ export async function listLibrary(): Promise<LibraryEntry[]> {
                in, and spaces and brackets have to survive the URL. */
             ref: `${UPLOAD_ROUTE}/${encodeURIComponent(name)}`,
             bytes: info.size,
-            playable: PLAYABLE_EXT.test(name),
+            playable,
+            /* Only worth asking about a file that could otherwise play. */
+            fastStart: playable ? await hasFastStart(fullPath) : true,
             modifiedAt: info.mtimeMs,
           } satisfies LibraryEntry
         } catch {

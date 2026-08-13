@@ -53,7 +53,25 @@ export type LibraryEntry = {
   bytes: number
   /** False for containers no browser will play — .mkv, .avi and friends. */
   playable: boolean
+  /**
+   * False when an MP4's index sits at the end of the file, so playback stalls
+   * before it starts. The file is fine; it just needs remuxing.
+   */
+  fastStart: boolean
   modifiedAt: number
+  /**
+   * Master playlist on the CDN, once this file has been published.
+   *
+   * Present means it streams properly: playback starts on a playlist of a few
+   * kilobytes instead of the file's whole index, and the segments come from
+   * the CDN rather than the machine running the server. Absent means the only
+   * way to play it is the file itself — which works, and drags on anything
+   * long or anything watched by more than one person at once.
+   */
+  hls: string | null
+  /** Known only for published files — read while repackaging. */
+  duration: number | null
+  audio: { language: string; label: string }[] | null
 }
 
 export type SearchResult = {
