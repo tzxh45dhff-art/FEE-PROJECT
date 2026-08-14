@@ -130,6 +130,14 @@ export type PlayerHandle = {
    */
   getSubtitleTrack: () => number
   setSubtitleTrack: (index: number) => void
+  /**
+   * The underlying `<video>` element, for sources that have one. iOS Safari
+   * blacks out a `<video>` when a non-video ancestor is fullscreened — the
+   * fix is fullscreening the element itself, which needs a reference to it.
+   * Absent for sources with no native element to hand back, like YouTube's
+   * cross-origin iframe.
+   */
+  getVideoElement?: () => HTMLVideoElement | null
 }
 
 export const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const
