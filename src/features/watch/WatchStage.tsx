@@ -88,6 +88,23 @@ export function WatchStage({
   const embeddable = item?.source === 'youtube' || item?.source === 'file'
 
   /*
+   * The last YouTube video this room played.
+   *
+   * Kept so the player below can outlive the item that introduced it — a
+   * fresh instance per video meant `destroy()` immediately followed by
+   * `new Player()`, which is what crashed the SDK on every switch, including
+   * a switch to a non-YouTube source. Cleared only on a room change, the one
+   * moment the whole session is genuinely being torn down.
+   */
+  const [stickyYouTubeRef, setStickyYouTubeRef] = useState<string | null>(null)
+  useEffect(() => {
+    if (item?.source === 'youtube') setStickyYouTubeRef(item.ref)
+  }, [item?.source, item?.ref])
+  useEffect(() => {
+    setStickyYouTubeRef(null)
+  }, [roomId])
+
+  /*
    * Auto-hide chrome.
    *
    * The header and controls fade out after 5 s of no mouse/touch activity,
@@ -122,14 +139,61 @@ export function WatchStage({
     return () => document.removeEventListener('fullscreenchange', onChange)
   }, [])
 
+  /*
+   * iOS Safari never fires `fullscreenchange` for the video-native path
+   * below — it has its own events for its own fullscreen mode.
+   */
+  useEffect(() => {
+    const video = handle?.getVideoElement?.()
+    if (!video) return
+    const onBegin = () => setIsFullscreen(true)
+    const onEnd = () => setIsFullscreen(false)
+    video.addEventListener('webkitbeginfullscreen', onBegin)
+    video.addEventListener('webkitendfullscreen', onEnd)
+    return () => {
+      video.removeEventListener('webkitbeginfullscreen', onBegin)
+      video.removeEventListener('webkitendfullscreen', onEnd)
+    }
+  }, [handle])
+
   const toggleFullscreen = useCallback(() => {
     if (!stageRef.current) return
+
+    const video = handle?.getVideoElement?.() as
+      | (HTMLVideoElement & {
+          webkitEnterFullscreen?: () => void
+          webkitExitFullscreen?: () => void
+          webkitDisplayingFullscreen?: boolean
+          webkitSupportsFullscreen?: boolean
+        })
+      | null
+      | undefined
+
+    if (video?.webkitDisplayingFullscreen) {
+      video.webkitExitFullscreen?.()
+      return
+    }
+
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => undefined)
-    } else {
-      stageRef.current.requestFullscreen().catch(() => undefined)
+      return
     }
-  }, [])
+
+    /*
+     * iOS Safari blacks out a `<video>` when a non-video ancestor goes
+     * fullscreen through the standard API — the video composites beneath
+     * the fullscreened layer rather than into it. Its own video-fullscreen
+     * API is the one path Safari actually renders correctly, at the cost of
+     * swapping in the OS player chrome for our custom controls while it's
+     * open — a real tradeoff, but better than a black rectangle.
+     */
+    if (video?.webkitSupportsFullscreen) {
+      video.webkitEnterFullscreen?.()
+      return
+    }
+
+    stageRef.current.requestFullscreen().catch(() => undefined)
+  }, [handle])
 
 
   useEffect(() => {
@@ -357,10 +421,19 @@ export function WatchStage({
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1">
           <div className="absolute inset-0 bg-black">
-            {item && embeddable && item.source === 'youtube' && (
+            {/*
+              One persistent player for the room's whole life, kept mounted
+              past the video that introduced it. A fresh instance per video
+              meant `destroy()` immediately followed by `new Player()` —
+              which is what crashed the SDK, on *any* switch away from
+              YouTube too, since that unmounted it mid glue-code. Idle, it is
+              a paused iframe under the current source, driving nothing.
+            */}
+            {stickyYouTubeRef && (
               <YouTubePlayer
-                key={item.id}
-                videoId={item.ref}
+                key="youtube"
+                videoId={stickyYouTubeRef}
+                active={item?.source === 'youtube'}
                 startAt={targetPosition()}
                 onHandle={setHandle}
                 onEnded={onEnded}

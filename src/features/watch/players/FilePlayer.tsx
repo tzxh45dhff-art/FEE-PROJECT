@@ -257,6 +257,7 @@ export function FilePlayer({
       setAudioTrack,
       getSubtitleTrack,
       setSubtitleTrack,
+      getVideoElement: () => video.current,
     }
 
     onHandle(handle)
