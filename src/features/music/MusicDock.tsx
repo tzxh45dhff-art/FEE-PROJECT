@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Mic, Music4, Pause, Play, SkipForward, X } from 'lucide-react'
@@ -23,11 +22,14 @@ const EASE = [0.16, 1, 0.3, 1] as const
 export function MusicDock({
   visible,
   onOpen,
+  onLeave,
   insetRight = 0,
 }: {
   visible: boolean
   /** Given the dock's own box, so the page opens out of it too. */
   onOpen: (from?: DOMRect) => void
+  /** Step out of the listening session — for you, not for the room. */
+  onLeave: () => void
   /** Rem the room panel occupies, so the dock never hides behind it. */
   insetRight?: number
 }) {
@@ -35,18 +37,9 @@ export function MusicDock({
   const track = snapshot?.track ?? null
   const palette = useCoverPalette(track?.artwork)
 
-  /*
-   * Which song the bar was dismissed for.
-   *
-   * Stored as a track id rather than a boolean so the next song brings the bar
-   * back on its own. "Hide this" means this one — a dismissal that silently
-   * persisted would leave the room playing with no visible way back in.
-   */
-  const [dismissedFor, setDismissedFor] = useState<string | null>(null)
-
   return createPortal(
     <AnimatePresence>
-      {visible && track && dismissedFor !== track.id && (
+      {visible && track && (
         <motion.div
           className="pointer-events-auto fixed bottom-4 z-[120] transition-[right] duration-500 ease-glass"
           style={{ right: `calc(${insetRight}rem + 1rem)` }}
@@ -135,16 +128,16 @@ export function MusicDock({
             </button>
 
             {/*
-              Dismisses this bar, and nothing else.
-              It used to pause the room — which made a control that looks like
-              "hide this" silently stop the music for everybody else in it. The
-              room's playback is a shared decision; getting the bar off your own
-              screen is not.
+              Leaves the session — yours only.
+              Not a pause: pausing is a room decision and would stop the music
+              for everyone. This steps *you* out, so your audio stops and the
+              others carry on without you. Opening Listen again rejoins at
+              wherever the room has got to by then.
             */}
             <button
               type="button"
-              onClick={() => setDismissedFor(track.id)}
-              aria-label="Hide the player"
+              onClick={onLeave}
+              aria-label="Leave the music"
               className="grid size-8 shrink-0 place-items-center rounded-full text-mist outline-none transition-colors hover:bg-white/10 hover:text-chalk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
             >
               <X aria-hidden className="size-3.5" />

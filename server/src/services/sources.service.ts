@@ -207,9 +207,14 @@ export type SearchResult = {
  * song" works the moment the app is cloned, not because it is more reliable.
  */
 const PIPED_INSTANCES = [
-  'https://pipedapi.kavin.rocks',
-  'https://pipedapi.adminforge.de',
+  /* Ordered by what was actually answering when this was last checked. They
+     are raced, so a dead one costs nothing but a wasted socket — the order is
+     only a hint about which is likeliest to win. */
   'https://api.piped.private.coffee',
+  'https://pipedapi.adminforge.de',
+  'https://pipedapi.kavin.rocks',
+  'https://pipedapi.ducks.party',
+  'https://pipedapi.drgns.space',
 ]
 
 /** Piped returns `/watch?v=…`; the id is all we keep. */

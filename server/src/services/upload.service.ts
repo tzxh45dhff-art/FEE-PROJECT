@@ -254,8 +254,31 @@ const MP4_EXT = /\.(mp4|mov|m4v)$/i
  * file is worse than staying quiet, because the warning is only useful if it
  * always means something.
  */
+/**
+ * How long the index check may take before it is abandoned.
+ *
+ * It normally costs two 16-byte reads. But it is the only part of listing a
+ * folder that touches file *contents*, so it is the part that can stall — a
+ * disk waking, a network volume, an indexer holding the file — and a stalled
+ * read here left the whole library endpoint hanging with no response at all,
+ * which the UI could only render as a spinner that never stopped.
+ *
+ * Answering "assume it's fine" after a second is strictly better: the flag is
+ * only ever a hint shown next to a file, and a wrong hint is worth far less
+ * than a page that never loads.
+ */
+const FAST_START_TIMEOUT_MS = 1000
+
 async function hasFastStart(fullPath: string): Promise<boolean> {
   if (!MP4_EXT.test(fullPath)) return true
+
+  return Promise.race([
+    readFastStart(fullPath),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(true), FAST_START_TIMEOUT_MS)),
+  ])
+}
+
+async function readFastStart(fullPath: string): Promise<boolean> {
 
   const { open } = await import('node:fs/promises')
 
