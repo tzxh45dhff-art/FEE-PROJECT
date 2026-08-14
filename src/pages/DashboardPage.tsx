@@ -16,6 +16,11 @@ import { RoomList } from '@/features/dashboard/hub/RoomList'
 import { SceneBackdrop } from '@/features/dashboard/hub/SceneBackdrop'
 import { groundFor, usePreferences } from '@/features/dashboard/hub/usePreferences'
 import { VoiceButton } from '@/features/dashboard/hub/VoiceButton'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { StageFailed } from '@/features/dashboard/hub/StageFailed'
+import { MusicDock } from '@/features/music/MusicDock'
+import { MusicProvider } from '@/features/music/MusicProvider'
+import { MusicStage } from '@/features/music/MusicStage'
 import { CallInvite } from '@/features/room-panel/CallInvite'
 import { RoomPanel, PANEL_WIDTH_REM } from '@/features/room-panel/RoomPanel'
 import { useChat } from '@/features/room-panel/useChat'
@@ -70,6 +75,8 @@ export function DashboardPage() {
   const [params, setParams] = useSearchParams()
   const [panel, setPanel] = useState<Panel | null>(null)
   const [sideOpen, setSideOpen] = useState(false)
+  /** Where the music page should open from — the box of whatever summoned it. */
+  const [musicOrigin, setMusicOrigin] = useState<DOMRect | null>(null)
 
   const activeRoomId = params.get('room')
   /* Validated rather than cast — `?activity=` is user-editable, and an
@@ -262,7 +269,11 @@ export function DashboardPage() {
         icon: entry.icon,
         active: activity === entry.id,
         live: entry.id === 'watch' && watch.viewers.length > 0,
-        onClick: () => setActivity(entry.id),
+        /* The music page opens out of this control — see `MusicStage`. */
+        onClick: (from) => {
+          if (entry.id === 'music') setMusicOrigin(from ?? null)
+          setActivity(entry.id)
+        },
       }))
     : [
         {
@@ -335,6 +346,12 @@ export function DashboardPage() {
   const needsAssets = !hasScenes || !hasRoster
 
   return (
+    <MusicProvider
+      roomId={activeRoom?.id ?? null}
+      /* A film brings its own soundtrack. The provider pauses rather than
+         clears, so the queue and the position survive the interruption. */
+      enabled={activity !== 'watch'}
+    >
     <motion.main
       className="fixed inset-0 overflow-hidden"
       initial={{ opacity: 0 }}
@@ -434,11 +451,57 @@ export function DashboardPage() {
           />
         )}
 
-        {/* The other three are still stubs, and say so rather than miming. */}
-        {activity && activity !== 'watch' && (
+        {activity === 'music' && activeRoom && (
+          /*
+           * Bounded, because this screen drives a third-party player whose
+           * failures arrive as un-stacked cross-origin errors. Without this a
+           * bad video takes the hub down with it and leaves a black page.
+           */
+          <ErrorBoundary
+            key="music"
+            resetKey={activeRoom.id}
+            fallback={(_error, reset) => (
+              <StageFailed
+                title="The music page hit a problem"
+                onRetry={reset}
+                onClose={() => setActivity(null)}
+              />
+            )}
+          >
+            <MusicStage
+              origin={musicOrigin}
+              selfId={user?.id}
+              onClose={() => setActivity(null)}
+              insetRight={inset}
+              panelOpen={sideOpen}
+              unread={chat.unread}
+              onTogglePanel={() => setSideOpen((open) => !open)}
+            />
+          </ErrorBoundary>
+        )}
+
+        {/* The other two are still stubs, and say so rather than miming. */}
+        {activity && activity !== 'watch' && activity !== 'music' && (
           <ActivityStage id={activity} onClose={() => setActivity(null)} />
         )}
       </AnimatePresence>
+
+      {/*
+        The music keeps going when you leave its page — that is the point of
+        it living above this screen. Hidden while the record view is open (it
+        is the same session, full size) and while a film is on, which pauses
+        the music outright rather than layering two soundtracks.
+      */}
+      {activeRoom && (
+        <MusicDock
+          visible={activity !== 'music' && activity !== 'watch'}
+          onOpen={(from) => {
+            setMusicOrigin(from ?? null)
+            setActivity('music')
+          }}
+          insetRight={inset}
+        />
+      )}
 
       <AnimatePresence>
         {sideOpen && activeRoom && (
@@ -522,5 +585,6 @@ export function DashboardPage() {
         )}
       </AnimatePresence>
     </motion.main>
+    </MusicProvider>
   )
 }

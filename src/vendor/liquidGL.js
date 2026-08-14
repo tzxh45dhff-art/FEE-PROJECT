@@ -948,6 +948,24 @@
         return false;
       }
 
+      /*
+       * The readiness flag above is cached, but the program and uniform
+       * locations it vouches for belong to a specific GL context. Lose that
+       * context — which a page running this alongside a 3D scene and an
+       * embedded video player genuinely can — and the flag still says "ready"
+       * while these are gone. Dereferencing them then threw out of a
+       * requestAnimationFrame callback and took the whole React tree down with
+       * it, so a decorative effect became a blank screen.
+       *
+       * Bailing out degrades the glass and nothing else; the next frame
+       * retries once the context is back.
+       */
+      if (!this._vProg || !this._vU) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        this._restoreLensProgramState();
+        return false;
+      }
+
       gl.useProgram(this._vProg);
       gl.bindBuffer(gl.ARRAY_BUFFER, this._posBuf);
       gl.enableVertexAttribArray(this._vPosLoc);

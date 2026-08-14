@@ -4,6 +4,7 @@ import { createApp } from './app.js'
 import { env } from './config/env.js'
 import { attachCallGateway } from './sockets/call.gateway.js'
 import { attachChatGateway } from './sockets/chat.gateway.js'
+import { attachMusicGateway } from './sockets/music.gateway.js'
 import { attachPresenceGateway } from './sockets/presence.gateway.js'
 import { attachVoiceGateway } from './sockets/voice.gateway.js'
 import { attachWatchGateway } from './sockets/watch.gateway.js'
@@ -14,6 +15,7 @@ const httpServer = createServer(createApp())
    membership checked the same way for all of them. */
 const io = attachPresenceGateway(httpServer)
 attachWatchGateway(io)
+attachMusicGateway(io)
 attachChatGateway(io)
 attachCallGateway(io)
 attachVoiceGateway(io)

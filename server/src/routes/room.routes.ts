@@ -1,10 +1,11 @@
 import { Router } from 'express'
 
+import * as musicController from '../controllers/music.controller.js'
 import * as roomController from '../controllers/room.controller.js'
 import * as watchController from '../controllers/watch.controller.js'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { requireAuth } from '../middleware/requireAuth.js'
-import { receiveVideo } from '../services/upload.service.js'
+import { receiveAudio, receiveVideo } from '../services/upload.service.js'
 
 export const roomRoutes = Router()
 
@@ -30,3 +31,28 @@ roomRoutes.post('/:id/watch/queue', asyncHandler(watchController.add))
 roomRoutes.post('/:id/watch/queue/reorder', asyncHandler(watchController.reorder))
 roomRoutes.delete('/:id/watch/queue', asyncHandler(watchController.clear))
 roomRoutes.delete('/:id/watch/queue/:itemId', asyncHandler(watchController.remove))
+
+/* Music: the listening queue and its lookups. Playback is on the socket. */
+roomRoutes.get('/:id/music', asyncHandler(musicController.capabilities))
+roomRoutes.get('/:id/music/search', asyncHandler(musicController.search))
+roomRoutes.post('/:id/music/resolve', asyncHandler(musicController.resolve))
+roomRoutes.post('/:id/music/upload', receiveAudio, asyncHandler(musicController.upload))
+roomRoutes.get('/:id/music/library', asyncHandler(musicController.library))
+roomRoutes.get('/:id/music/queue', asyncHandler(musicController.queue))
+roomRoutes.post('/:id/music/queue', asyncHandler(musicController.add))
+roomRoutes.post('/:id/music/queue/reorder', asyncHandler(musicController.reorder))
+roomRoutes.delete('/:id/music/queue', asyncHandler(musicController.clear))
+roomRoutes.delete('/:id/music/queue/:trackId', asyncHandler(musicController.remove))
+
+/* The kept library: playlists, saved songs, and what to play next. */
+roomRoutes.get('/:id/music/playlists', asyncHandler(musicController.playlists))
+roomRoutes.post('/:id/music/playlists', asyncHandler(musicController.createPlaylist))
+roomRoutes.delete('/:id/music/playlists/:playlistId', asyncHandler(musicController.deletePlaylist))
+roomRoutes.post('/:id/music/playlists/:playlistId/tracks', asyncHandler(musicController.addToPlaylist))
+roomRoutes.delete(
+  '/:id/music/playlists/:playlistId/tracks/:trackId',
+  asyncHandler(musicController.removeFromPlaylist),
+)
+roomRoutes.get('/:id/music/liked', asyncHandler(musicController.liked))
+roomRoutes.post('/:id/music/liked', asyncHandler(musicController.toggleLiked))
+roomRoutes.get('/:id/music/suggestions', asyncHandler(musicController.suggestions))

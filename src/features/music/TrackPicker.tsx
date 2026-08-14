@@ -1,0 +1,368 @@
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Film, FolderOpen, Link2, Loader2, Music4, Search, Upload } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import * as musicApi from '@/features/music/api'
+import type {
+  AudioLibraryEntry,
+  QueuedTrack,
+  ResolvedTrack,
+  TrackSearchResult,
+} from '@/features/music/types'
+import { cn } from '@/lib/utils'
+
+/**
+ * Finding something to play.
+ *
+ * The same source-first shape as the watch picker, for the same reason: the
+ * four ways in behave differently enough that one box would have to guess
+ * which was meant, and guess wrong often.
+ */
+
+type Source = 'library' | 'youtube' | 'upload' | 'link'
+
+/** What the picker hands back once the server has stored the addition. */
+export type QueuedResult = { item: QueuedTrack; items: QueuedTrack[] }
+
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
+const SOURCES: { id: Source; label: string; hint: string; icon: typeof Music4 }[] = [
+  { id: 'library', label: 'On the server', hint: 'Already uploaded', icon: FolderOpen },
+  { id: 'youtube', label: 'YouTube', hint: 'Search or paste a link', icon: Film },
+  { id: 'upload', label: 'Upload a track', hint: 'From this device', icon: Upload },
+  { id: 'link', label: 'Direct link', hint: 'An .mp3 or .flac URL', icon: Link2 },
+]
+
+export function TrackPicker({
+  roomId,
+  canSearch,
+  compact = false,
+  onQueued,
+}: {
+  roomId: string
+  canSearch: boolean
+  compact?: boolean
+  onQueued: (queued: QueuedResult, playNow: boolean) => void
+}) {
+  const [source, setSource] = useState<Source | null>(null)
+  const [query, setQuery] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [results, setResults] = useState<TrackSearchResult[] | null>(null)
+  const [progress, setProgress] = useState<number | null>(null)
+  const [library, setLibrary] = useState<AudioLibraryEntry[] | null>(null)
+
+  const field = useRef<HTMLInputElement>(null)
+  const filePicker = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setQuery('')
+    setResults(null)
+    setError(null)
+    setLibrary(null)
+    if (source && source !== 'upload' && source !== 'library') field.current?.focus()
+    if (source === 'upload') filePicker.current?.click()
+
+    /* Read fresh every time — the folder is the source of truth, and a file
+       dropped in a moment ago should already be here. */
+    if (source === 'library') {
+      setBusy(true)
+      musicApi
+        .fetchLibrary(roomId)
+        .then(setLibrary)
+        .catch((cause: unknown) =>
+          setError(cause instanceof Error ? cause.message : 'Could not read the server folder'),
+        )
+        .finally(() => setBusy(false))
+    }
+  }, [source, roomId])
+
+  async function queue(track: ResolvedTrack, playNow: boolean) {
+    setBusy(true)
+    setError(null)
+    try {
+      const queued = await musicApi.addToQueue(roomId, track)
+      setQuery('')
+      setResults(null)
+      onQueued(queued, playNow)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not add that')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    const value = query.trim()
+    if (!value || busy) return
+
+    setBusy(true)
+    setError(null)
+    setResults(null)
+
+    try {
+      const looksLikeLink = /^https?:\/\//i.test(value) || /^[\w-]{11}$/.test(value)
+
+      if (source === 'youtube' && !looksLikeLink) {
+        if (!canSearch) {
+          setError('Search needs a YouTube API key on the server — paste a link instead.')
+          return
+        }
+        setResults(await musicApi.searchTracks(roomId, value))
+        return
+      }
+
+      await queue(await musicApi.resolveInput(roomId, value), true)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not add that')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleFile(file: File | undefined) {
+    if (!file) return
+    setBusy(true)
+    setError(null)
+    setProgress(0)
+    try {
+      await queue(await musicApi.uploadTrack(roomId, file, setProgress), true)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Upload failed')
+    } finally {
+      setBusy(false)
+      setProgress(null)
+    }
+  }
+
+  return (
+    <div className="w-full">
+      <input
+        ref={filePicker}
+        type="file"
+        accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/opus,audio/wav,audio/flac"
+        className="hidden"
+        onChange={(event) => {
+          void handleFile(event.target.files?.[0])
+          event.target.value = ''
+        }}
+      />
+
+      {!source ? (
+        <div className={cn('grid gap-2.5', compact ? 'grid-cols-1' : 'sm:grid-cols-2')}>
+          {SOURCES.map((entry) => {
+            const Icon = entry.icon
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => setSource(entry.id)}
+                className="liquid-btn is-scrim flex items-center gap-3 rounded-card px-4 py-3.5 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-signal"
+              >
+                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-white/10 text-chalk ring-1 ring-inset ring-white/15">
+                  <Icon aria-hidden className="size-[1.05rem]" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate font-display text-[0.92rem] font-semibold text-chalk">
+                    {entry.label}
+                  </span>
+                  <span className="block truncate text-[0.72rem] text-mist">{entry.hint}</span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      ) : (
+        <div>
+          <div className="mb-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSource(null)}
+              className="rounded-full px-2.5 py-1 text-[0.75rem] text-mist outline-none transition-colors hover:bg-white/10 hover:text-chalk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            >
+              ← All sources
+            </button>
+            <span className="text-[0.75rem] text-dusk">
+              {SOURCES.find((entry) => entry.id === source)?.label}
+            </span>
+          </div>
+
+          {source === 'library' ? (
+            <div>
+              {busy && !library && (
+                <p className="px-1 py-6 text-center text-[0.82rem] text-mist">
+                  Reading the server folder…
+                </p>
+              )}
+
+              {library && library.length === 0 && (
+                <div className="rounded-card border border-dashed border-white/15 bg-white/[0.02] px-5 py-6 text-center">
+                  <p className="text-[0.85rem] leading-relaxed text-mist">
+                    No audio in the uploads folder yet. Drop a track into{' '}
+                    <code className="font-mono text-[0.78rem] text-chalk">server/uploads/</code> on
+                    the machine running the backend and it shows up here.
+                  </p>
+                </div>
+              )}
+
+              {library && library.length > 0 && (
+                <ul className="flex max-h-80 flex-col gap-1 overflow-y-auto" data-lenis-prevent>
+                  {library.map((entry) => (
+                    <li key={entry.file}>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void queue(
+                            {
+                              source: 'file',
+                              ref: entry.ref,
+                              title: entry.title,
+                              artist: null,
+                              album: null,
+                              artwork: null,
+                              duration: null,
+                            },
+                            true,
+                          )
+                        }
+                        className="flex w-full items-center gap-3 rounded-card px-3 py-2.5 text-left outline-none transition-colors duration-200 hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                      >
+                        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-white/[0.07] text-mist ring-1 ring-inset ring-white/10">
+                          <Music4 aria-hidden className="size-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[0.85rem] text-chalk">
+                            {entry.title}
+                          </span>
+                          <span className="block truncate text-[0.7rem] text-dusk">
+                            {formatBytes(entry.bytes)}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : source === 'upload' ? (
+            <div className="rounded-card border border-dashed border-white/15 bg-white/[0.02] px-5 py-6 text-center">
+              {progress !== null ? (
+                <>
+                  <p className="text-[0.85rem] text-chalk">
+                    Uploading… {Math.round(progress * 100)}%
+                  </p>
+                  <span className="mt-3 block h-1 overflow-hidden rounded-full bg-white/10">
+                    <span
+                      className="block h-full rounded-full bg-signal transition-[width] duration-200"
+                      style={{ width: `${progress * 100}%` }}
+                    />
+                  </span>
+                </>
+              ) : (
+                <>
+                  <p className="text-[0.85rem] leading-relaxed text-mist">
+                    Pick a track and it uploads to the room, so everyone can hear it — not just
+                    you.
+                  </p>
+                  <Button
+                    size="sm"
+                    className="mt-4"
+                    disabled={busy}
+                    onClick={() => filePicker.current?.click()}
+                  >
+                    Choose a file
+                  </Button>
+                </>
+              )}
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <div className="flex gap-2">
+                <span className="relative min-w-0 flex-1">
+                  <Search
+                    aria-hidden
+                    className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-dusk"
+                  />
+                  <input
+                    ref={field}
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={
+                      source === 'youtube'
+                        ? canSearch
+                          ? 'Search YouTube, or paste a link'
+                          : 'Paste a YouTube link'
+                        : 'https://example.com/track.mp3'
+                    }
+                    spellCheck={false}
+                    className="w-full rounded-full border border-white/[0.1] bg-white/[0.04] py-2.5 pl-10 pr-4 text-[0.85rem] text-chalk outline-none transition-colors placeholder:text-dusk focus:border-signal/50"
+                  />
+                </span>
+                <Button type="submit" size="sm" disabled={busy || query.trim().length === 0}>
+                  {busy ? <Loader2 aria-hidden className="size-4 animate-spin" /> : 'Go'}
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {results && (
+            <ul className="mt-3 flex max-h-72 flex-col gap-1 overflow-y-auto" data-lenis-prevent>
+              {results.length === 0 && (
+                <li className="px-2 py-3 text-[0.8rem] text-mist">Nothing found.</li>
+              )}
+              {results.map((result) => (
+                <li key={result.id}>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void queue(
+                        {
+                          source: 'youtube',
+                          ref: result.id,
+                          title: result.title,
+                          artist: result.channel,
+                          album: null,
+                          artwork: result.thumbnail,
+                          duration: null,
+                        },
+                        true,
+                      )
+                    }
+                    className="flex w-full gap-3 rounded-card p-2 text-left outline-none transition-colors duration-200 hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                  >
+                    <img
+                      src={result.thumbnail}
+                      alt=""
+                      className="size-12 shrink-0 rounded object-cover"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="line-clamp-2 text-[0.8rem] leading-snug text-chalk">
+                        {result.title}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[0.7rem] text-dusk">
+                        {result.channel}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <p role="alert" className="mt-3 text-[0.78rem] leading-relaxed text-signal-bright">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
