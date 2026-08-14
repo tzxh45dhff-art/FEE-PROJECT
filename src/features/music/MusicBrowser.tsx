@@ -13,6 +13,13 @@ import {
   X,
 } from 'lucide-react'
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import * as musicApi from '@/features/music/api'
 import { useMusic } from '@/features/music/MusicContext'
@@ -79,6 +86,9 @@ export function MusicBrowser({
     more: TrackSearchResult[]
   } | null>(null)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+  /* The song waiting on a playlist that does not exist yet. */
+  const [newListFor, setNewListFor] = useState<LibraryTrack | null>(null)
+  const [newListName, setNewListName] = useState('')
 
   const filePicker = useRef<HTMLInputElement>(null)
   const searchField = useRef<HTMLInputElement>(null)
@@ -113,8 +123,15 @@ export function MusicBrowser({
    * playing means adding it to the room's queue first and letting the normal
    * pending-id path start it, exactly as the picker does.
    */
-  const play = useCallback(
-    async (track: LibraryTrack) => {
+  /**
+   * Put a song in the room's queue, and optionally on right now.
+   *
+   * Everything reachable from here is a `LibraryTrack`, not a queue row, so
+   * both actions go through the same add — the only difference is whether the
+   * room is asked to load it immediately or leave it for later.
+   */
+  const enqueue = useCallback(
+    async (track: LibraryTrack, playNow: boolean) => {
       if (!roomId) return
       setError(null)
       try {
@@ -127,12 +144,17 @@ export function MusicBrowser({
           artwork: track.artwork,
           duration: track.duration,
         })
-        onQueued(queued, true)
+        onQueued(queued, playNow)
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : 'Could not play that')
+        setError(cause instanceof Error ? cause.message : 'Could not add that')
       }
     },
     [roomId, onQueued],
+  )
+
+  const play = useCallback(
+    (track: LibraryTrack) => void enqueue(track, true),
+    [enqueue],
   )
 
   const runSearch = useCallback(async () => {
@@ -150,7 +172,7 @@ export function MusicBrowser({
          song properly and puts it straight on. */
       if (looksLikeLink) {
         const resolved = await musicApi.resolveInput(roomId, value)
-        await play(resolved)
+        await enqueue(resolved, true)
         setQuery('')
         return
       }
@@ -166,7 +188,7 @@ export function MusicBrowser({
     } finally {
       setBusy(false)
     }
-  }, [query, roomId, canSearch, play])
+  }, [query, roomId, canSearch, enqueue])
 
   const upload = useCallback(
     async (file: File | undefined) => {
@@ -175,14 +197,14 @@ export function MusicBrowser({
       setUploadProgress(0)
       try {
         const resolved = await musicApi.uploadTrack(roomId, file, setUploadProgress)
-        await play(resolved)
+        await enqueue(resolved, true)
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Upload failed')
       } finally {
         setUploadProgress(null)
       }
     },
-    [roomId, play],
+    [roomId, enqueue],
   )
 
   const rowProps = useCallback(
@@ -192,11 +214,16 @@ export function MusicBrowser({
       current: current?.source === track.source && current.ref === track.ref,
       liked: library.isLiked(track),
       playlists: library.playlists,
-      onPlay: () => void play(track),
+      onPlay: () => play(track),
+      onQueue: () => void enqueue(track, false),
       onLike: () => void library.toggleLike(track),
       onAddToPlaylist: (playlistId: string) => void library.addToPlaylist(playlistId, track),
+      onNewPlaylist: () => {
+        setNewListName('')
+        setNewListFor(track)
+      },
     }),
-    [playing, current, library, play],
+    [playing, current, library, play, enqueue],
   )
 
   const heading = useMemo(() => NAV.find((entry) => entry.id === view)!, [view])
@@ -213,6 +240,53 @@ export function MusicBrowser({
           event.target.value = ''
         }}
       />
+
+      {/*
+        Naming a new playlist without losing the song that prompted it.
+        The track is held while the name is typed, then both happen together —
+        so "add this to a new playlist" is one action rather than three.
+      */}
+      <Dialog open={newListFor !== null} onOpenChange={(open) => !open && setNewListFor(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>New playlist</DialogTitle>
+            <DialogDescription>
+              {newListFor
+                ? `“${newListFor.title}” goes in first. Everyone in the room can see it.`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            className="flex gap-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              const name = newListName.trim()
+              const track = newListFor
+              if (!name || !track) return
+              setNewListFor(null)
+              void library.createPlaylist(name).then((created) => {
+                if (created) void library.addToPlaylist(created.id, track)
+              })
+            }}
+          >
+            <input
+              autoFocus
+              value={newListName}
+              onChange={(event) => setNewListName(event.target.value)}
+              placeholder="Name this playlist"
+              className="h-11 min-w-0 flex-1 rounded-full border border-white/10 bg-white/[0.04] px-4 text-[0.88rem] text-chalk outline-none placeholder:text-dusk focus:border-white/25"
+            />
+            <button
+              type="submit"
+              disabled={newListName.trim().length === 0}
+              className="shrink-0 rounded-full bg-chalk px-4 text-[0.82rem] font-medium text-void outline-none transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-40"
+            >
+              Create
+            </button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/*
         The rail. Horizontal on a phone and vertical from `md` up — the same
