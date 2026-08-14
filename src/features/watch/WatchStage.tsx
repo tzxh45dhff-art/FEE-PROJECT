@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { Clapperboard, Loader2, MessagesSquare, Play, WifiOff, X } from 'lucide-react'
+import { Loader2, MessagesSquare, Play, WifiOff, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import * as watchApi from '@/features/watch/api'
@@ -9,7 +9,9 @@ import { ExternalBeacon } from '@/features/watch/players/ExternalBeacon'
 import { FilePlayer } from '@/features/watch/players/FilePlayer'
 import { YouTubePlayer } from '@/features/watch/players/YouTubePlayer'
 import { QueuePanel } from '@/features/watch/QueuePanel'
-import { SourcePicker, type Queued } from '@/features/watch/SourcePicker'
+import { type Queued } from '@/features/watch/SourcePicker'
+import { WatchBrowser } from '@/features/watch/WatchBrowser'
+import { CoverAmbience } from '@/features/music/CoverAmbience'
 import type { AudioTrackInfo, PlayerHandle, QueueItem } from '@/features/watch/types'
 import { useDriftCorrection } from '@/features/watch/useDriftCorrection'
 import { useWatchSession } from '@/features/watch/useWatchSession'
@@ -394,32 +396,47 @@ export function WatchStage({
             )}
 
             {!item && (
-              <div className="grid size-full place-items-center p-8">
-                <div className="flex max-w-md flex-col items-center text-center">
-                  <span className="grid size-14 place-items-center rounded-full bg-signal/15 text-signal-bright ring-1 ring-inset ring-signal/30">
-                    <Clapperboard aria-hidden className="size-6" />
-                  </span>
-                  <h2 className="mt-5 font-display text-[clamp(1.5rem,3.5vw,2.2rem)] font-semibold tracking-[-0.03em] text-chalk">
-                    What are we watching?
-                  </h2>
-                  <p className="mt-2.5 text-[0.92rem] leading-relaxed text-mist">
-                    Whatever you pick plays for everyone in the room, in sync.
-                  </p>
-
+              /*
+                The browser, not a dialog full of source buttons.
+                Choosing what to watch is most of the time spent here when
+                nothing is on, so it gets the whole screen and the same rail
+                the music library uses — with a thumbnail grid, because a
+                still frame identifies a video faster than its title does.
+              */
+              <div className="absolute inset-0 flex flex-col">
+                <CoverAmbience palette={null} />
+                <div className="relative flex min-h-0 flex-1 flex-col pt-16">
                   {first && (
-                    <div className="mt-5 w-full">
-                      <Button className="w-full" onClick={() => playNow(first)}>
-                        Resume “{first.title}”
-                      </Button>
-                      <p className="mt-3 text-[0.72rem] uppercase tracking-[0.16em] text-dusk">
-                        or start something new
-                      </p>
+                    <div className="shrink-0 px-4 pb-1 md:px-6">
+                      <button
+                        type="button"
+                        onClick={() => playNow(first)}
+                        className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-left outline-none backdrop-blur-md transition-colors hover:bg-white/[0.09] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                      >
+                        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-chalk text-void">
+                          <Play aria-hidden className="size-4 translate-x-px fill-current" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-[0.7rem] uppercase tracking-[0.16em] text-dusk">
+                            Pick up where the room left off
+                          </span>
+                          <span className="block truncate text-[0.88rem] text-chalk">
+                            {first.title}
+                          </span>
+                        </span>
+                      </button>
                     </div>
                   )}
 
-                  <div className="mt-5 w-full">
-                    <SourcePicker roomId={roomId} canSearch={canSearch} onQueued={onQueued} />
-                  </div>
+                  <WatchBrowser
+                    roomId={roomId}
+                    canSearch={canSearch}
+                    queue={queue}
+                    nowPlayingRef={null}
+                    playing={false}
+                    onQueued={onQueued}
+                    onPlayQueued={playNow}
+                  />
                 </div>
               </div>
             )}

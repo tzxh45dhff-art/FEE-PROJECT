@@ -1,4 +1,4 @@
-import { Heart, ListPlus, Music4, Pause, Play } from 'lucide-react'
+import { Heart, ListEnd, ListPlus, Music4, Pause, Play, Plus } from 'lucide-react'
 
 import {
   DropdownMenu,
@@ -30,8 +30,10 @@ export function TrackCard({
   liked,
   playlists,
   onPlay,
+  onQueue,
   onLike,
   onAddToPlaylist,
+  onNewPlaylist,
   onRemove,
   removeLabel,
 }: {
@@ -41,8 +43,12 @@ export function TrackCard({
   liked?: boolean
   playlists?: Playlist[]
   onPlay: () => void
+  /** Line it up without interrupting what the room is already hearing. */
+  onQueue?: () => void
   onLike?: () => void
   onAddToPlaylist?: (playlistId: string) => void
+  /** Make one and put this song in it, without leaving the song. */
+  onNewPlaylist?: () => void
   onRemove?: () => void
   removeLabel?: string
 }) {
@@ -114,6 +120,17 @@ export function TrackCard({
         </div>
 
         <div className="flex shrink-0 items-center">
+          {onQueue && (
+            <button
+              type="button"
+              onClick={onQueue}
+              aria-label={`Add ${track.title} to the queue`}
+              className="grid size-7 place-items-center rounded-full text-dusk opacity-0 outline-none transition-all duration-200 hover:text-chalk focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal group-hover/card:opacity-100"
+            >
+              <ListEnd aria-hidden className="size-3.5" />
+            </button>
+          )}
+
           {onLike && (
             <button
               type="button"
@@ -133,7 +150,14 @@ export function TrackCard({
             </button>
           )}
 
-          {(playlists?.length ?? 0) > 0 && onAddToPlaylist && (
+          {/*
+            Always offered, even with no playlists yet.
+            Hiding it until one existed meant the first playlist could only be
+            made from the Playlists tab — so the answer to "save this song"
+            was to leave the song, create a list, and come back and find it
+            again.
+          */}
+          {onAddToPlaylist && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -144,16 +168,31 @@ export function TrackCard({
                   <ListPlus aria-hidden className="size-3.5" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-52">
+              <DropdownMenuContent align="end" className="min-w-56">
                 <DropdownMenuLabel>Add to playlist</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {playlists!.map((playlist) => (
+
+                {onNewPlaylist && (
+                  <DropdownMenuItem onSelect={onNewPlaylist} className="cursor-pointer">
+                    <Plus aria-hidden className="size-3.5" />
+                    <span>New playlist…</span>
+                  </DropdownMenuItem>
+                )}
+
+                {(playlists?.length ?? 0) > 0 && onNewPlaylist && <DropdownMenuSeparator />}
+
+                {(playlists ?? []).map((playlist) => (
                   <DropdownMenuItem
                     key={playlist.id}
                     onSelect={() => onAddToPlaylist(playlist.id)}
                     className="cursor-pointer"
                   >
-                    <span className="truncate">{playlist.name}</span>
+                    <span className="min-w-0 flex-1 truncate">{playlist.name}</span>
+                    {/* Whose list it is — these are shared with the room, so
+                        the name alone does not say enough. */}
+                    <span className="ml-2 shrink-0 text-[0.7rem] text-dusk">
+                      {playlist.createdBy.name}
+                    </span>
                   </DropdownMenuItem>
                 ))}
                 {onRemove && (
