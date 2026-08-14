@@ -87,6 +87,18 @@ export function DashboardPage() {
     : null
 
   /*
+   * Whether you have stepped out of the room's listening session.
+   *
+   * Personal, and not the room's business: leaving closes your own socket
+   * session and stops your audio, while everyone else carries on. Opening
+   * Listen again clears it and rejoins wherever the room has reached.
+   */
+  const [leftMusic, setLeftMusic] = useState(false)
+  useEffect(() => {
+    if (activity === 'music') setLeftMusic(false)
+  }, [activity])
+
+  /*
    * Entering, switching, or leaving a room — in one URL write.
    *
    * It has to be one write. These setters go through `setSearchParams`, whose
@@ -348,9 +360,10 @@ export function DashboardPage() {
   return (
     <MusicProvider
       roomId={activeRoom?.id ?? null}
-      /* A film brings its own soundtrack. The provider pauses rather than
-         clears, so the queue and the position survive the interruption. */
-      enabled={activity !== 'watch'}
+      /* A film brings its own soundtrack, and someone who closed the dock has
+         asked to be left out — both pause this client without touching the
+         room, so the queue and everyone else's playback survive. */
+      enabled={activity !== 'watch' && !leftMusic}
     >
     <motion.main
       className="fixed inset-0 overflow-hidden"
@@ -494,11 +507,12 @@ export function DashboardPage() {
       */}
       {activeRoom && (
         <MusicDock
-          visible={activity !== 'music' && activity !== 'watch'}
+          visible={activity !== 'music' && activity !== 'watch' && !leftMusic}
           onOpen={(from) => {
             setMusicOrigin(from ?? null)
             setActivity('music')
           }}
+          onLeave={() => setLeftMusic(true)}
           insetRight={inset}
         />
       )}
