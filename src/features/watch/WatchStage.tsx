@@ -42,6 +42,7 @@ export function WatchStage({
   panelOpen = false,
   onTogglePanel,
   unread = 0,
+  origin,
 }: {
   roomId: string
   selfId: string | undefined
@@ -52,6 +53,8 @@ export function WatchStage({
   /** The stage covers the hub's rails, so chat needs a door in from here. */
   onTogglePanel?: () => void
   unread?: number
+  /** The control this opened from, so the reveal starts there. */
+  origin?: DOMRect | null
 }) {
   const { snapshot, queue, setQueue, connected, targetPosition, send } = useWatchSession(
     roomId,
@@ -406,15 +409,35 @@ export function WatchStage({
 
   const first = queue[0]
 
+  const revealX = origin ? `${Math.round(origin.left + origin.width / 2)}px` : '50%'
+  const revealY = origin ? `${Math.round(origin.top + origin.height / 2)}px` : '50%'
+
   return createPortal(
     <motion.div
+      /*
+       * Sized explicitly rather than by `inset-0`: several ancestors on this
+       * page can establish a containing block, and when one does a fixed
+       * element's insets resolve against something that is not the screen.
+       *
+       * The opening is a CSS keyframe for the same reason `MusicStage` uses
+       * one — animating `clip-path` through Motion on a portalled, fixed
+       * element inside an `AnimatePresence` left it parked on its first
+       * frame: a working page clipped to a zero-radius circle, which is to
+       * say invisible.
+       */
       ref={stageRef}
-      className="fixed inset-0 z-[135] flex flex-col bg-void transition-[padding] duration-500 ease-glass"
-      style={{ paddingRight: `${insetRight}rem`, cursor: chromeVisible ? undefined : 'none' }}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+      className="fixed left-0 top-0 z-[135] flex flex-col overflow-hidden bg-void transition-[padding] duration-500 ease-glass"
+      style={{
+        width: '100vw',
+        height: '100dvh',
+        paddingRight: `${insetRight}rem`,
+        cursor: chromeVisible ? undefined : 'none',
+        ['--reveal-x' as string]: revealX,
+        ['--reveal-y' as string]: revealY,
+        animation: 'stage-reveal 0.62s cubic-bezier(0.16, 1, 0.3, 1) both',
+      }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.35, ease: EASE }}
+      transition={{ duration: 0.3, ease: EASE }}
       onMouseMove={resetHideTimer}
       onTouchStart={resetHideTimer}
     >
