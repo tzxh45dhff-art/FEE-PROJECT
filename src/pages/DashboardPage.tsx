@@ -77,6 +77,8 @@ export function DashboardPage() {
   const [sideOpen, setSideOpen] = useState(false)
   /** Where the music page should open from — the box of whatever summoned it. */
   const [musicOrigin, setMusicOrigin] = useState<DOMRect | null>(null)
+  /** Same, for the watch page. */
+  const [watchOrigin, setWatchOrigin] = useState<DOMRect | null>(null)
 
   const activeRoomId = params.get('room')
   /* Validated rather than cast — `?activity=` is user-editable, and an
@@ -281,9 +283,11 @@ export function DashboardPage() {
         icon: entry.icon,
         active: activity === entry.id,
         live: entry.id === 'watch' && watch.viewers.length > 0,
-        /* The music page opens out of this control — see `MusicStage`. */
+        /* The music and watch pages open out of this control — see
+           `MusicStage` and `WatchStage`. */
         onClick: (from) => {
           if (entry.id === 'music') setMusicOrigin(from ?? null)
+          if (entry.id === 'watch') setWatchOrigin(from ?? null)
           setActivity(entry.id)
         },
       }))
@@ -442,6 +446,8 @@ export function DashboardPage() {
             key="watch-invite"
             name={watch.invite.name}
             onJoin={() => {
+              /* No button to grow out of here — the toast isn't one. */
+              setWatchOrigin(null)
               setActivity('watch')
               watch.dismiss()
             }}
@@ -454,6 +460,7 @@ export function DashboardPage() {
         {activity === 'watch' && activeRoom && (
           <WatchStage
             key="watch"
+            origin={watchOrigin}
             roomId={activeRoom.id}
             selfId={user?.id}
             onClose={() => setActivity(null)}

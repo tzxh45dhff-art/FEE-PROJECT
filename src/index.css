@@ -619,7 +619,8 @@
  * anything faster reads as a distraction rather than atmosphere.
  */
 /*
- * The music page opening out of the control that summoned it.
+ * A full-screen stage opening out of the control that summoned it — used by
+ * both the music and watch pages.
  *
  * A CSS keyframe rather than a Framer transition. The page is portalled,
  * fixed, and inside an `AnimatePresence`, and animating `clip-path` through
@@ -629,7 +630,7 @@
  *
  * `--reveal-x` / `--reveal-y` are set inline from the summoning control's box.
  */
-@keyframes music-reveal {
+@keyframes stage-reveal {
   from {
     clip-path: circle(0px at var(--reveal-x, 50%) var(--reveal-y, 50%));
     opacity: 0.55;

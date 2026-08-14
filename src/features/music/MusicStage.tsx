@@ -151,7 +151,7 @@ export function MusicStage({
         paddingRight: `${insetRight}rem`,
         ['--reveal-x' as string]: revealX,
         ['--reveal-y' as string]: revealY,
-        animation: 'music-reveal 0.62s cubic-bezier(0.16, 1, 0.3, 1) both',
+        animation: 'stage-reveal 0.62s cubic-bezier(0.16, 1, 0.3, 1) both',
       }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3, ease: EASE }}
