@@ -79,18 +79,29 @@ export function DashboardPage() {
     ? (activityParam as ActivityId)
     : null
 
+  /*
+   * Entering, switching, or leaving a room — in one URL write.
+   *
+   * It has to be one write. These setters go through `setSearchParams`, whose
+   * updater reads the *committed* location, and React batches everything in a
+   * click handler before committing any of it. So two calls in the same
+   * handler both start from the same "before" state and the second silently
+   * discards the first — which is exactly what happened when picking a room
+   * set `?room=` and then cleared the activity: the room never landed and
+   * clicking a room appeared to do nothing at all.
+   *
+   * Clearing the activity belongs here regardless. An activity only means
+   * something inside a room, so arriving in one starts you in the room itself
+   * rather than in whatever the last room happened to have open.
+   */
   const setActiveRoomId = useCallback(
     (id: string | null) => {
       setParams(
         (previous) => {
           const next = new URLSearchParams(previous)
           if (id) next.set('room', id)
-          else {
-            next.delete('room')
-            /* An activity outside a room is meaningless, and leaving it behind
-               would reopen the stage the moment another room was picked. */
-            next.delete('activity')
-          }
+          else next.delete('room')
+          next.delete('activity')
           return next
         },
         { replace: false },
@@ -311,10 +322,8 @@ export function DashboardPage() {
             hint: 'Back to the hub',
             icon: LogOut,
             danger: true,
-            onClick: () => {
-              setActiveRoomId(null)
-              setActivity(null)
-            },
+            /* Leaving clears the activity too — see `setActiveRoomId`. */
+            onClick: () => setActiveRoomId(null),
           } satisfies RailItem,
         ]
       : []),
@@ -460,7 +469,6 @@ export function DashboardPage() {
                 activeRoomId={activeRoom?.id}
                 onWalkIn={(room) => {
                   setActiveRoomId(room.id)
-                  setActivity(null)
                   setPanel(null)
                 }}
                 onJoin={async (code) => {
@@ -468,7 +476,6 @@ export function DashboardPage() {
                   /* Straight in — you typed a code to be somewhere, not to add
                      a row to a list. */
                   setActiveRoomId(room.id)
-                  setActivity(null)
                   setPanel(null)
                   return room
                 }}
