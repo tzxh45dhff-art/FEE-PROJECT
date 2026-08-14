@@ -18,6 +18,9 @@ model User {
   ownedRooms   Room[]       @relation("RoomOwner")
   memberships  Membership[]
   queued       QueueItem[]
+  queuedTracks TrackItem[]
+  playlists    Playlist[]
+  likes        LikedTrack[]
   messages     Message[]
 }
 
@@ -34,9 +37,113 @@ model Room {
   owner     User         @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members   Membership[]
   queue     QueueItem[]
+  tracks    TrackItem[]
+  playlists Playlist[]
+  likes     LikedTrack[]
   messages  Message[]
 
   @@index([ownerId])
+}
+
+/// A named running order, kept between sessions.
+///
+/// Belongs to a room rather than to the person who made it — the room is the
+/// unit everything else here is scoped to, and a playlist only one member
+/// could see would be a private feature inside a shared one. Authorship is
+/// recorded because the answer to "who made this" is part of what makes a
+/// shared library feel like a place rather than a folder.
+model Playlist {
+  id        String         @id @default(cuid())
+  name      String
+  createdAt DateTime       @default(now())
+
+  roomId    String
+  createdById String
+  room      Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdBy User           @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  tracks    PlaylistTrack[]
+
+  @@index([roomId, createdAt])
+}
+
+/// One song's place in one playlist.
+///
+/// The song is stored here rather than pointed at, because the things being
+/// collected are not rows in this database — they are YouTube ids and uploaded
+/// files. A reference table would need somewhere to point.
+model PlaylistTrack {
+  id         String   @id @default(cuid())
+  source     String
+  ref        String
+  title      String
+  artist     String?
+  album      String?
+  artwork    String?
+  duration   Int?
+  position   Int
+  createdAt  DateTime @default(now())
+
+  playlistId String
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  @@index([playlistId, position])
+}
+
+/// One person's saved song, inside one room.
+///
+/// Per person, unlike everything else on this page: what the room is playing
+/// is a shared decision, but what you personally keep is not. Scoped to the
+/// room as well so a library stays with the people it was built with.
+model LikedTrack {
+  id        String   @id @default(cuid())
+  source    String
+  ref       String
+  title     String
+  artist    String?
+  album     String?
+  artwork   String?
+  duration  Int?
+  createdAt DateTime @default(now())
+
+  roomId    String
+  userId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// One like per song per person — the toggle depends on it.
+  @@unique([userId, roomId, source, ref])
+  @@index([roomId, userId, createdAt])
+}
+
+/// The room's listening queue.
+///
+/// Its own table rather than a `kind` column on `QueueItem`: a track carries
+/// artist and album art that a video has no use for, and the two queues are
+/// read on different screens at different times. One table would mean every
+/// music query dragging video rows through a filter, and every video row
+/// carrying three columns that are always null.
+model TrackItem {
+  id        String   @id @default(cuid())
+  /// file | youtube — see MUSIC_SOURCES on the server
+  source    String
+  /// A YouTube video id, or a URL to the audio itself.
+  ref       String
+  title     String
+  artist    String?
+  album     String?
+  /// Cover art. The page's whole palette is derived from this when present.
+  artwork   String?
+  /// Seconds. Null until something has actually played it.
+  duration  Int?
+  position  Int
+  createdAt DateTime @default(now())
+
+  roomId    String
+  addedById String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  addedBy   User     @relation(fields: [addedById], references: [id], onDelete: Cascade)
+
+  @@index([roomId, position])
 }
 
 /// Room chat. Persisted, because a conversation people expect to scroll back

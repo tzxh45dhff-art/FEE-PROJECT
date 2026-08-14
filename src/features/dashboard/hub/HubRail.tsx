@@ -8,7 +8,8 @@ export type RailItem = {
   label: string
   hint?: string
   icon: LucideIcon
-  onClick: () => void
+  /** Given this control's box, so a screen can open *from* where it sits. */
+  onClick: (from?: DOMRect) => void
   active?: boolean
   /** Something is happening in here right now, even if you aren't in it. */
   live?: boolean
@@ -74,7 +75,7 @@ export function HubRail({
           <motion.button
             key={item.key}
             type="button"
-            onClick={item.onClick}
+            onClick={(event) => item.onClick(event.currentTarget.getBoundingClientRect())}
             aria-pressed={item.active ? true : undefined}
             variants={{
               hidden: { opacity: 0, x: side === 'left' ? -28 : 28, filter: 'blur(8px)' },

@@ -20,6 +20,9 @@ export type YTPlayer = {
   mute: () => void
   unMute: () => void
   isMuted: () => boolean
+  /** 0–100, unlike every other volume in this codebase. */
+  setVolume: (level: number) => void
+  getVolume: () => number
   destroy: () => void
 }
 

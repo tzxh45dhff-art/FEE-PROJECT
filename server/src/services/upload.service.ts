@@ -32,6 +32,31 @@ const PLAYABLE = new Set([
   'video/x-m4v',
 ])
 
+/**
+ * What a browser can play in an `<audio>` element.
+ *
+ * Kept apart from the video list because the two upload routes accept
+ * different things: dropping an MP3 into the watch queue is a mistake worth
+ * catching, and so is dropping a film into the listening queue.
+ *
+ * FLAC is in here and AAC-in-ADTS is not, for the same reason: what matters is
+ * whether the browsers people actually use will decode it, not whether the
+ * container is respectable.
+ */
+const PLAYABLE_AUDIO = new Set([
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/x-m4a',
+  'audio/aac',
+  'audio/ogg',
+  'audio/opus',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/webm',
+  'audio/flac',
+  'audio/x-flac',
+])
+
 const MAX_BYTES = 2 * 1024 * 1024 * 1024
 
 /**
@@ -59,7 +84,14 @@ const storage = multer.diskStorage({
      * is the only part worth keeping, and it is whitelisted.
      */
     const ext = path.extname(file.originalname).toLowerCase()
-    const safeExt = /^\.(mp4|webm|ogv|ogg|mov|m4v)$/.test(ext) ? ext : '.mp4'
+    const audio = file.mimetype.startsWith('audio/')
+    const allowed = audio
+      ? /^\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|weba)$/
+      : /^\.(mp4|webm|ogv|ogg|mov|m4v)$/
+    /* Falling back to the family's most universal container rather than
+       refusing: the mimetype has already been checked by `fileFilter`, so an
+       odd extension is a naming quirk, not a rejection. */
+    const safeExt = allowed.test(ext) ? ext : audio ? '.mp3' : '.mp4'
     const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 
     const name = inProgressName(`${unique}${safeExt}`)
@@ -84,6 +116,23 @@ const videoUpload = multer({
   },
 })
 
+/* A song is not a film, so the ceiling isn't a film's either — 2GB of "audio"
+   is a mistake or an attack, not an album track. */
+const MAX_AUDIO_BYTES = 200 * 1024 * 1024
+
+const audioUpload = multer({
+  storage,
+  limits: { fileSize: MAX_AUDIO_BYTES, files: 1 },
+  fileFilter: (_req, file, done) => {
+    if (PLAYABLE_AUDIO.has(file.mimetype)) return done(null, true)
+    done(
+      HttpError.badRequest(
+        "That file type can't be played in a browser. Use MP3, M4A, FLAC, WAV, or OGG.",
+      ),
+    )
+  },
+})
+
 /**
  * Accept one video, and clean up after it if it never fully arrives.
  *
@@ -98,6 +147,17 @@ const videoUpload = multer({
  * been promoted by `finishUpload` or already cleaned up by multer.
  */
 export function receiveVideo(req: Request, res: Response, next: NextFunction) {
+  discardPartialOnAbort(req, res)
+  videoUpload.single('video')(req, res, next)
+}
+
+/** The same contract for audio — see `receiveVideo`. */
+export function receiveAudio(req: Request, res: Response, next: NextFunction) {
+  discardPartialOnAbort(req, res)
+  audioUpload.single('audio')(req, res, next)
+}
+
+function discardPartialOnAbort(req: Request, res: Response) {
   res.on('close', () => {
     if (res.writableFinished) return
     const partial = partials.get(req)
@@ -105,8 +165,6 @@ export function receiveVideo(req: Request, res: Response, next: NextFunction) {
     partials.delete(req)
     void rm(partial, { force: true }).catch(() => undefined)
   })
-
-  videoUpload.single('video')(req, res, next)
 }
 
 /**
@@ -299,5 +357,61 @@ export async function listLibrary(): Promise<LibraryEntry[]> {
   /* Newest first: the thing you just dropped in is the thing you want. */
   return entries
     .filter((entry): entry is LibraryEntry => entry !== null)
+    .sort((a, b) => b.modifiedAt - a.modifiedAt)
+}
+
+/** Audio containers a browser will decode in an `<audio>` element. */
+const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|weba)$/i
+
+export type AudioLibraryEntry = {
+  file: string
+  title: string
+  ref: string
+  bytes: number
+  modifiedAt: number
+}
+
+/**
+ * Audio sitting in the same uploads folder.
+ *
+ * Separate from `listLibrary` rather than a flag on it: the two are read by
+ * different screens, and a single list would mean the music page filtering out
+ * films and the watch page filtering out songs on every request. There is also
+ * no `fastStart` question to ask here — audio files carry no `moov` atom worth
+ * misplacing at these sizes.
+ */
+export async function listAudioLibrary(): Promise<AudioLibraryEntry[]> {
+  const { readdir, stat } = await import('node:fs/promises')
+
+  let names: string[]
+  try {
+    names = await readdir(UPLOAD_DIR)
+  } catch {
+    return []
+  }
+
+  const entries = await Promise.all(
+    names
+      .filter((name) => !name.startsWith('.') && AUDIO_EXT.test(name))
+      .map(async (name) => {
+        try {
+          const info = await stat(path.join(UPLOAD_DIR, name))
+          if (!info.isFile()) return null
+
+          return {
+            file: name,
+            title: prettyTitle(name),
+            ref: `${UPLOAD_ROUTE}/${encodeURIComponent(name)}`,
+            bytes: info.size,
+            modifiedAt: info.mtimeMs,
+          } satisfies AudioLibraryEntry
+        } catch {
+          return null
+        }
+      }),
+  )
+
+  return entries
+    .filter((entry): entry is AudioLibraryEntry => entry !== null)
     .sort((a, b) => b.modifiedAt - a.modifiedAt)
 }

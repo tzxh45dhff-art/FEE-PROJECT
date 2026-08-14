@@ -109,14 +109,28 @@ function walledPlatform(raw: string): string | null {
  * fresh checkout while search — the one thing that genuinely needs the Data
  * API — stays optional.
  */
-async function youtubeOEmbed(id: string) {
+/**
+ * A video's real title, without an API key.
+ *
+ * oEmbed is public and unauthenticated, which is why it is worth the round
+ * trip: the alternative is showing "YouTube track" until the iframe loads and
+ * volunteers its own metadata, and by then it is already in the queue under
+ * the wrong name for everybody else in the room.
+ */
+export async function youtubeOEmbed(id: string) {
   try {
     const response = await fetch(
       `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`,
       { signal: AbortSignal.timeout(6000) },
     )
     if (!response.ok) return null
-    return (await response.json()) as { title?: string; thumbnail_url?: string }
+    return (await response.json()) as {
+      title?: string
+      thumbnail_url?: string
+      /* The uploading channel. For music this is usually the artist, or close
+         enough to be a better guess than nothing. */
+      author_name?: string
+    }
   } catch {
     return null
   }
@@ -187,12 +201,86 @@ export type SearchResult = {
   thumbnail: string
 }
 
-export async function searchYouTube(query: string): Promise<SearchResult[]> {
-  if (!env.youtubeApiKey) {
-    throw HttpError.badRequest(
-      'YouTube search needs YOUTUBE_API_KEY in server/.env. Pasting a link works without one.',
-    )
+/**
+ * Public Piped instances, used when there is no API key.
+ *
+ * Piped is an open-source YouTube front end whose search endpoint needs no
+ * credentials, which is the only reason searching works out of the box here.
+ * It is a real dependency on somebody else's volunteer server, so: several are
+ * tried in turn, each gets a short timeout, and the whole thing is a fallback
+ * rather than the primary path.
+ *
+ * The API key remains the better answer. This exists so that "search for a
+ * song" works the moment the app is cloned, not because it is more reliable.
+ */
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://pipedapi.adminforge.de',
+  'https://api.piped.private.coffee',
+]
+
+/** Piped returns `/watch?v=…`; the id is all we keep. */
+function pipedVideoId(url: string | undefined): string | null {
+  if (!url) return null
+  const match = /[?&]v=([\w-]{11})/.exec(url)
+  return match?.[1] ?? null
+}
+
+async function searchViaPiped(query: string): Promise<SearchResult[]> {
+  for (const instance of PIPED_INSTANCES) {
+    try {
+      const url = new URL(`${instance}/search`)
+      url.searchParams.set('q', query)
+      url.searchParams.set('filter', 'videos')
+
+      const response = await fetch(url, { signal: AbortSignal.timeout(6000) })
+      if (!response.ok) continue
+
+      const body = (await response.json()) as {
+        items?: {
+          url?: string
+          title?: string
+          uploaderName?: string
+          thumbnail?: string
+          duration?: number
+        }[]
+      }
+
+      const results = (body.items ?? [])
+        .map((item) => ({ ...item, id: pipedVideoId(item.url) }))
+        .filter((item): item is typeof item & { id: string } => Boolean(item.id))
+        /* Live streams report a duration of zero or less and behave badly in a
+           queue that assumes songs end. */
+        .filter((item) => (item.duration ?? 0) > 0)
+        .slice(0, 12)
+        .map((item) => ({
+          id: item.id,
+          title: item.title ?? 'Untitled',
+          channel: item.uploaderName ?? '',
+          /*
+           * Deliberately not the thumbnail Piped hands back. That URL points
+           * at the instance's own image proxy, which is the least reliable
+           * part of a volunteer-run service — a dead proxy leaves every result
+           * showing a broken image, and the artwork is most of what makes this
+           * grid readable. YouTube's own CDN serves this path for any video id.
+           */
+          thumbnail: `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
+        }))
+
+      if (results.length > 0) return results
+    } catch {
+      /* This instance is down, slow, or rate-limiting us. Try the next. */
+    }
   }
+
+  throw HttpError.badRequest(
+    'Search is temporarily unavailable. Add YOUTUBE_API_KEY to server/.env for reliable search — pasting a link always works.',
+  )
+}
+
+export async function searchYouTube(query: string): Promise<SearchResult[]> {
+  /* No key: fall back to a keyless instance rather than refusing outright. */
+  if (!env.youtubeApiKey) return searchViaPiped(query)
 
   const url = new URL('https://www.googleapis.com/youtube/v3/search')
   url.searchParams.set('part', 'snippet')
@@ -206,11 +294,16 @@ export async function searchYouTube(query: string): Promise<SearchResult[]> {
 
   const response = await fetch(url, { signal: AbortSignal.timeout(8000) })
   if (!response.ok) {
-    throw HttpError.badRequest(
-      response.status === 403
-        ? 'YouTube rejected the API key — check it is enabled for the Data API v3.'
-        : 'YouTube search is unavailable right now.',
-    )
+    /*
+     * A dead key should not mean a dead search box.
+     *
+     * 403 covers both a misconfigured key and the daily quota running out —
+     * and quota exhaustion is the common one, since a search costs 100 of the
+     * free tier's 10,000 daily units. Falling through keeps the feature
+     * working on the day it matters most.
+     */
+    if (response.status === 403) return searchViaPiped(query)
+    throw HttpError.badRequest('YouTube search is unavailable right now.')
   }
 
   const body = (await response.json()) as {
@@ -237,4 +330,15 @@ export async function searchYouTube(query: string): Promise<SearchResult[]> {
     }))
 }
 
-export const searchAvailable = () => Boolean(env.youtubeApiKey)
+/**
+ * Whether the client should offer a search box at all.
+ *
+ * Always true now: without a key there is still the keyless fallback above.
+ * The client's job is to show the box; saying whether any given query worked
+ * is the response's job, and it says so with a message rather than by having
+ * the field never appear.
+ */
+export const searchAvailable = () => true
+
+/** Whether search is running on the reliable path. Surfaced for diagnostics. */
+export const searchIsKeyed = () => Boolean(env.youtubeApiKey)

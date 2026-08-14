@@ -594,6 +594,73 @@
   }
 }
 
+/*
+ * The record's rotation.
+ *
+ * A keyframe rather than a transform driven from JavaScript: this runs on the
+ * compositor, so it keeps turning smoothly while the main thread is busy
+ * drawing the visualiser — and pausing the animation freezes it in place
+ * instead of snapping back to zero.
+ */
+@keyframes music-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+ * The ambient wash behind the music page.
+ *
+ * Two large radial blooms drifting across each other. Deliberately slow and
+ * deliberately low-contrast — this sits behind everything on the page, so
+ * anything faster reads as a distraction rather than atmosphere.
+ */
+/*
+ * The music page opening out of the control that summoned it.
+ *
+ * A CSS keyframe rather than a Framer transition. The page is portalled,
+ * fixed, and inside an `AnimatePresence`, and animating `clip-path` through
+ * Motion in that combination left the element parked on its initial frame —
+ * clipped to a zero-radius circle, which is a fully working page that cannot
+ * be seen. CSS owns this one property and cannot be talked out of running it.
+ *
+ * `--reveal-x` / `--reveal-y` are set inline from the summoning control's box.
+ */
+@keyframes music-reveal {
+  from {
+    clip-path: circle(0px at var(--reveal-x, 50%) var(--reveal-y, 50%));
+    opacity: 0.55;
+  }
+  to {
+    clip-path: circle(150vmax at var(--reveal-x, 50%) var(--reveal-y, 50%));
+    opacity: 1;
+  }
+}
+
+@keyframes music-drift {
+  0% {
+    transform: translate3d(-6%, -4%, 0) scale(1.05);
+  }
+  50% {
+    transform: translate3d(6%, 5%, 0) scale(1.18);
+  }
+  100% {
+    transform: translate3d(-6%, -4%, 0) scale(1.05);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Both of these are pure decoration, and both are large moving areas —
+     exactly what this preference exists to switch off. */
+  [style*='music-spin'],
+  [style*='music-drift'] {
+    animation: none !important;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════
    Reduced motion — background layers fall back to a static, still
    well-composed version rather than freezing mid-animation.
