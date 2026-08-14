@@ -103,13 +103,6 @@ function walledPlatform(raw: string): string | null {
 }
 
 /**
- * Titles and thumbnails without an API key.
- *
- * oEmbed is public and unauthenticated, which is why adding by link works on a
- * fresh checkout while search — the one thing that genuinely needs the Data
- * API — stays optional.
- */
-/**
  * A video's real title, without an API key.
  *
  * oEmbed is public and unauthenticated, which is why it is worth the round
@@ -206,9 +199,9 @@ export type SearchResult = {
  *
  * Piped is an open-source YouTube front end whose search endpoint needs no
  * credentials, which is the only reason searching works out of the box here.
- * It is a real dependency on somebody else's volunteer server, so: several are
- * tried in turn, each gets a short timeout, and the whole thing is a fallback
- * rather than the primary path.
+ * It is a real dependency on somebody else's volunteer server, so: they are
+ * asked in parallel, each gets a short timeout, and the whole thing is a
+ * fallback rather than the primary path.
  *
  * The API key remains the better answer. This exists so that "search for a
  * song" works the moment the app is cloned, not because it is more reliable.
@@ -226,56 +219,73 @@ function pipedVideoId(url: string | undefined): string | null {
   return match?.[1] ?? null
 }
 
+/**
+ * Ask every instance at once and take the first real answer.
+ *
+ * Tried in turn, one unresponsive instance spent its whole timeout before the
+ * next was even contacted — three of those in a row is nearly twenty seconds
+ * of someone watching a spinner to search for a song. Raced, the slowest
+ * instance costs nothing at all: the first one to answer wins and the rest are
+ * abandoned. They are volunteer servers being asked one small question, which
+ * is the case where racing is courteous rather than greedy.
+ */
 async function searchViaPiped(query: string): Promise<SearchResult[]> {
-  for (const instance of PIPED_INSTANCES) {
-    try {
-      const url = new URL(`${instance}/search`)
-      url.searchParams.set('q', query)
-      url.searchParams.set('filter', 'videos')
+  const attempts = PIPED_INSTANCES.map((instance) => askPiped(instance, query))
 
-      const response = await fetch(url, { signal: AbortSignal.timeout(6000) })
-      if (!response.ok) continue
+  try {
+    /* `any` resolves on the first *fulfilled* attempt, ignoring rejections —
+       exactly the semantics wanted, unlike `race`, which would surrender to
+       the first instance to fail. */
+    return await Promise.any(attempts)
+  } catch {
+    throw HttpError.badRequest(
+      'Search is temporarily unavailable. Add YOUTUBE_API_KEY to server/.env for reliable search — pasting a link always works.',
+    )
+  }
+}
 
-      const body = (await response.json()) as {
-        items?: {
-          url?: string
-          title?: string
-          uploaderName?: string
-          thumbnail?: string
-          duration?: number
-        }[]
-      }
+async function askPiped(instance: string, query: string): Promise<SearchResult[]> {
+  const url = new URL(`${instance}/search`)
+  url.searchParams.set('q', query)
+  url.searchParams.set('filter', 'videos')
 
-      const results = (body.items ?? [])
-        .map((item) => ({ ...item, id: pipedVideoId(item.url) }))
-        .filter((item): item is typeof item & { id: string } => Boolean(item.id))
-        /* Live streams report a duration of zero or less and behave badly in a
-           queue that assumes songs end. */
-        .filter((item) => (item.duration ?? 0) > 0)
-        .slice(0, 12)
-        .map((item) => ({
-          id: item.id,
-          title: item.title ?? 'Untitled',
-          channel: item.uploaderName ?? '',
-          /*
-           * Deliberately not the thumbnail Piped hands back. That URL points
-           * at the instance's own image proxy, which is the least reliable
-           * part of a volunteer-run service — a dead proxy leaves every result
-           * showing a broken image, and the artwork is most of what makes this
-           * grid readable. YouTube's own CDN serves this path for any video id.
-           */
-          thumbnail: `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
-        }))
+  const response = await fetch(url, { signal: AbortSignal.timeout(6000) })
+  if (!response.ok) throw new Error(`${instance} answered ${response.status}`)
 
-      if (results.length > 0) return results
-    } catch {
-      /* This instance is down, slow, or rate-limiting us. Try the next. */
-    }
+  const body = (await response.json()) as {
+    items?: {
+      url?: string
+      title?: string
+      uploaderName?: string
+      thumbnail?: string
+      duration?: number
+    }[]
   }
 
-  throw HttpError.badRequest(
-    'Search is temporarily unavailable. Add YOUTUBE_API_KEY to server/.env for reliable search — pasting a link always works.',
-  )
+  const results = (body.items ?? [])
+    .map((item) => ({ ...item, id: pipedVideoId(item.url) }))
+    .filter((item): item is typeof item & { id: string } => Boolean(item.id))
+    /* Live streams report a duration of zero or less and behave badly in a
+       queue that assumes songs end. */
+    .filter((item) => (item.duration ?? 0) > 0)
+    .slice(0, 12)
+    .map((item) => ({
+      id: item.id,
+      title: item.title ?? 'Untitled',
+      channel: item.uploaderName ?? '',
+      /*
+       * Deliberately not the thumbnail Piped hands back. That URL points at
+       * the instance's own image proxy, which is the least reliable part of a
+       * volunteer-run service — a dead proxy leaves every result showing a
+       * broken image, and the artwork is most of what makes this grid
+       * readable. YouTube's own CDN serves this path for any video id.
+       */
+      thumbnail: `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
+    }))
+
+  /* An empty answer is not a usable one — let a slower instance win instead. */
+  if (results.length === 0) throw new Error(`${instance} returned nothing`)
+  return results
 }
 
 export async function searchYouTube(query: string): Promise<SearchResult[]> {

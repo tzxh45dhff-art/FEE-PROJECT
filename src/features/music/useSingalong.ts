@@ -69,6 +69,8 @@ export function useSingalong({
   const chunks = useRef<Blob[]>([])
 
   const singingRef = useRef(false)
+  /** Peers we currently have an offer out to — see the collision note below. */
+  const makingOffer = useRef(new Set<string>())
 
   const announce = useCallback(
     (event: string, payload: Record<string, unknown>) => {
@@ -178,15 +180,38 @@ export function useSingalong({
     const socket = getSocket()
 
     const onJoined = async ({ socketId }: { socketId: string }) => {
-      /* Only those already singing offer, so two people picking up a
-         microphone at once do not both offer and collide. */
       if (!singingRef.current) return
-      const connection = createPeer(socketId)
-      const offer = await connection.createOffer()
-      await connection.setLocalDescription(offer)
-      announce('music:offer', { to: socketId, sdp: offer })
+      const peer = peers.current.get(socketId) ?? { connection: createPeer(socketId), stream: null }
+      const connection = peer.connection ?? createPeer(socketId)
+
+      /* Flagged for the duration, so an offer arriving from the other side
+         mid-negotiation can be recognised as a collision rather than treated
+         as an ordinary request. */
+      makingOffer.current.add(socketId)
+      try {
+        const offer = await connection.createOffer()
+        await connection.setLocalDescription(offer)
+        announce('music:offer', { to: socketId, sdp: offer })
+      } catch {
+        /* The connection went away mid-negotiation. */
+      } finally {
+        makingOffer.current.delete(socketId)
+      }
     }
 
+    /*
+     * Perfect negotiation, for the case where both sides offer at once.
+     *
+     * Two people enabling their microphone in the same moment each see the
+     * other's arrival and each send an offer. Both connections are then in
+     * `have-local-offer`, and applying the incoming one throws — a pair that
+     * never connects, for no reason either person can see.
+     *
+     * The standard resolution: one side is designated polite and gives way.
+     * Socket ids are the tie-break because both ends already agree on them,
+     * so each independently reaches the same conclusion with nothing to
+     * negotiate about who negotiates.
+     */
     const onOffer = async ({
       from,
       sdp,
@@ -195,16 +220,40 @@ export function useSingalong({
       sdp: RTCSessionDescriptionInit
     }) => {
       const connection = createPeer(from)
-      await connection.setRemoteDescription(new RTCSessionDescription(sdp))
-      const answer = await connection.createAnswer()
-      await connection.setLocalDescription(answer)
-      announce('music:answer', { to: from, sdp: answer })
+      const polite = (socket.id ?? '') > from
+
+      const collision =
+        makingOffer.current.has(from) || connection.signalingState !== 'stable'
+
+      /* The impolite side ignores the collision and expects the other to
+         yield; two peers both yielding would drop the connection entirely. */
+      if (collision && !polite) return
+
+      try {
+        if (collision) {
+          /* Withdraw our own offer, then take theirs. */
+          await connection.setLocalDescription({ type: 'rollback' })
+        }
+        await connection.setRemoteDescription(new RTCSessionDescription(sdp))
+        const answer = await connection.createAnswer()
+        await connection.setLocalDescription(answer)
+        announce('music:answer', { to: from, sdp: answer })
+      } catch {
+        /* A connection torn down between the offer and this handler. */
+      }
     }
 
     const onAnswer = async ({ from, sdp }: { from: string; sdp: RTCSessionDescriptionInit }) => {
       const peer = peers.current.get(from)
       if (!peer) return
-      await peer.connection.setRemoteDescription(new RTCSessionDescription(sdp))
+      try {
+        /* An answer only applies to an outstanding offer. After a rollback
+           there may be none, and applying it would throw. */
+        if (peer.connection.signalingState !== 'have-local-offer') return
+        await peer.connection.setRemoteDescription(new RTCSessionDescription(sdp))
+      } catch {
+        /* As above. */
+      }
     }
 
     const onCandidate = async ({
