@@ -86,6 +86,21 @@ export async function addToPlaylist(roomId: string, playlistId: string, track: T
   })
   if (!playlist) return null
 
+  /*
+   * Adding the same song twice is a slip, not an intention.
+   *
+   * The menu that reaches this offers every playlist at once with no memory of
+   * what is already in them, so the same track lands twice by simply being
+   * clicked twice. Answering with the unchanged playlist is quieter than an
+   * error and truer than a second row: what was asked for — this song, in
+   * this playlist — is already the case.
+   */
+  const already = await prisma.playlistTrack.findFirst({
+    where: { playlistId, source: track.source, ref: track.ref },
+    select: { id: true },
+  })
+  if (already) return findPlaylist(roomId, playlistId)
+
   const last = await prisma.playlistTrack.findFirst({
     where: { playlistId },
     orderBy: { position: 'desc' },
@@ -131,23 +146,29 @@ export function listLiked(roomId: string, userId: string) {
  * wrong the moment another tab changed it.
  */
 export async function toggleLiked(roomId: string, userId: string, track: TrackInput) {
-  const where = {
-    userId_roomId_source_ref: {
-      userId,
-      roomId,
-      source: track.source,
-      ref: track.ref,
-    },
+  /*
+   * Delete first, and let the result decide.
+   *
+   * Reading the row and then writing based on what was read is two steps with
+   * a gap in the middle, and a double-click or a second tab fits neatly into
+   * that gap: both see "not liked", both insert, and the second one hits the
+   * unique constraint as an unhandled error. `deleteMany` reports how many
+   * rows it actually removed, which turns the whole decision into one
+   * statement the database resolves on its own.
+   */
+  const removed = await prisma.likedTrack.deleteMany({
+    where: { userId, roomId, source: track.source, ref: track.ref },
+  })
+
+  if (removed.count > 0) return { liked: false }
+
+  try {
+    await prisma.likedTrack.create({ data: { ...normalise(track), roomId, userId } })
+  } catch {
+    /* Someone else's insert landed between the delete and this one. The row
+       exists and is liked, which is the state this call was asking for. */
   }
 
-  const existing = await prisma.likedTrack.findUnique({ where }).catch(() => null)
-
-  if (existing) {
-    await prisma.likedTrack.delete({ where })
-    return { liked: false }
-  }
-
-  await prisma.likedTrack.create({ data: { ...normalise(track), roomId, userId } })
   return { liked: true }
 }
 

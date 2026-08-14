@@ -21,6 +21,7 @@ import type { AudioHandle } from '@/features/music/types'
  */
 export function YouTubeTrackPlayer({
   videoId,
+  active,
   startAt,
   volume,
   onHandle,
@@ -29,6 +30,15 @@ export function YouTubeTrackPlayer({
   onDuration,
 }: {
   videoId: string
+  /**
+   * Whether YouTube is what the room is currently playing.
+   *
+   * The player stays mounted even when it is not — unmounting it means
+   * `destroy()`, and destroying it during its own ENDED event is what crashed
+   * the SDK when a queue ran out. Inactive, it simply pauses and stops
+   * publishing its handle, so the sync engine ignores it.
+   */
+  active: boolean
   startAt: number
   volume: number
   onHandle: (handle: AudioHandle | null) => void
@@ -43,6 +53,12 @@ export function YouTubeTrackPlayer({
   const buffering = useRef(false)
   const [ready, setReady] = useState(false)
 
+  const videoRef = useRef(videoId)
+  videoRef.current = videoId
+  const activeRef = useRef(active)
+  activeRef.current = active
+  /** The video the player is actually pointed at, to spot real changes. */
+  const loadedVideo = useRef<string | null>(null)
   const startRef = useRef(startAt)
   const endedRef = useRef(onEnded)
   const errorRef = useRef(onError)
@@ -54,6 +70,15 @@ export function YouTubeTrackPlayer({
   handleRef.current = onHandle
   durationRef.current = onDuration
 
+  /*
+   * Built once, then re-pointed.
+   *
+   * Creating a player per video meant every track change was a `destroy()`
+   * immediately followed by a `new Player()`, and catching the SDK between
+   * those two is what threw from inside its own minified code. `loadVideoById`
+   * is the API's own answer to "play something else" and keeps one player
+   * alive for the life of the page.
+   */
   useEffect(() => {
     let disposed = false
 
@@ -90,8 +115,9 @@ export function YouTubeTrackPlayer({
          * this — unmounts the entire React tree to a blank page.
          */
         try {
+          loadedVideo.current = videoRef.current
           player.current = new YT.Player(host, {
-            videoId,
+            videoId: videoRef.current,
             playerVars: {
               controls: 0,
               disablekb: 1,
@@ -101,21 +127,43 @@ export function YouTubeTrackPlayer({
               iv_load_policy: 3,
               origin: window.location.origin,
             },
+            /*
+             * Each guarded, because these run *inside* the SDK's own call
+             * stack. Anything that throws here — a stale ref, a setState on
+             * an unmounting tree — unwinds through minified third-party code
+             * that has no idea what to do with it, and surfaces as an
+             * unattributable error far from its cause.
+             */
             events: {
               onReady: ({ target }) => {
                 if (disposed) return
-                if (startRef.current > 1) target.seekTo(startRef.current, true)
-                const duration = target.getDuration()
-                if (duration > 0) durationRef.current(duration)
-                setReady(true)
+                try {
+                  if (startRef.current > 1) target.seekTo(startRef.current, true)
+                  const duration = target.getDuration()
+                  if (duration > 0) durationRef.current(duration)
+                  setReady(true)
+                } catch {
+                  /* The player went away between the event and this handler. */
+                }
               },
               onStateChange: ({ data }) => {
                 if (disposed) return
-                buffering.current = data === YT.PlayerState.BUFFERING
-                if (data === YT.PlayerState.ENDED) endedRef.current()
+                try {
+                  buffering.current = data === YT.PlayerState.BUFFERING
+                  /* Only when this player is the room's — a paused, inactive
+                     player reaching its end must not advance the queue. */
+                  if (data === YT.PlayerState.ENDED && activeRef.current) endedRef.current()
+                } catch {
+                  /* As above. */
+                }
               },
               onError: ({ data }) => {
-                if (!disposed) errorRef.current(youtubeError(data))
+                if (disposed) return
+                try {
+                  errorRef.current(youtubeError(data))
+                } catch {
+                  /* As above. */
+                }
               },
             },
           })
@@ -147,7 +195,9 @@ export function YouTubeTrackPlayer({
       hostNode.current?.remove()
       hostNode.current = null
     }
-  }, [videoId])
+    /* Deliberately empty: the player outlives any one video. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!ready || !player.current) return
@@ -155,8 +205,33 @@ export function YouTubeTrackPlayer({
     player.current.setVolume(Math.round(Math.min(1, Math.max(0, volume)) * 100))
   }, [volume, ready])
 
+  /* A different song on the same player, rather than a different player. */
+  useEffect(() => {
+    if (!ready || !player.current || !active) return
+    if (loadedVideo.current === videoId) return
+
+    loadedVideo.current = videoId
+    try {
+      player.current.loadVideoById({
+        videoId,
+        startSeconds: startRef.current > 1 ? startRef.current : undefined,
+      })
+    } catch {
+      errorRef.current('Could not switch to that track.')
+    }
+  }, [videoId, ready, active])
+
   useEffect(() => {
     if (!ready || !player.current) return
+    if (!active) {
+      /* Not ours to drive any more — stop making noise and stand down. */
+      try {
+        player.current.pauseVideo()
+      } catch {
+        /* Already gone. */
+      }
+      return
+    }
 
     const instance = player.current
     const handle: AudioHandle = {
@@ -173,7 +248,7 @@ export function YouTubeTrackPlayer({
 
     onHandle(handle)
     return () => onHandle(null)
-  }, [ready, onHandle])
+  }, [ready, onHandle, active])
 
   return (
     <div

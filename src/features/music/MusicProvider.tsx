@@ -259,6 +259,21 @@ export function MusicProvider({
       })
   }, [roomId, enabled, snapshot, queue.length, setQueue])
 
+  /*
+   * The last YouTube video this room played.
+   *
+   * Kept so the player below can outlive the track that introduced it — see
+   * the note there. Cleared only when the room changes, because that is the
+   * one moment the whole session is genuinely being torn down.
+   */
+  const [stickyYouTubeRef, setStickyYouTubeRef] = useState<string | null>(null)
+  useEffect(() => {
+    if (track?.source === 'youtube') setStickyYouTubeRef(track.ref)
+  }, [track?.source, track?.ref])
+  useEffect(() => {
+    setStickyYouTubeRef(null)
+  }, [roomId])
+
   /* Remembered past the end of the song, since the track is null by the time
      the continuation above needs to know what was playing. */
   const lastArtist = useRef<string | null>(null)
@@ -341,26 +356,51 @@ export function MusicProvider({
         cost the room its music, not its interface.
       */}
       <ErrorBoundary
-        resetKey={track?.id}
+        resetKey={track?.ref}
         fallback={() => null}
       >
-        {roomId && track?.source === 'file' && (
-        <TrackPlayer
-          key={track.id}
-          src={track.ref}
-          startAt={targetPosition()}
-          volume={volume}
-          onHandle={setHandle}
-          onEnded={onEnded}
-          onError={setError}
-          onDuration={onDuration}
-        />
-      )}
+        {/*
+          Keyed on what is playing, not on which queue row it came from.
 
-        {roomId && track?.source === 'youtube' && (
+          `track.id` is the queue row's id, and pressing play always inserts a
+          fresh row — so keying on it tore the player down and built a new one
+          even when the same song was chosen again. For an `<audio>` element
+          that is merely wasteful; for the YouTube API it is the thing that
+          breaks it, because a `destroy()` immediately followed by a
+          `new Player()` catches the SDK mid-teardown and it dereferences an
+          iframe it has already dropped.
+
+          Keyed on the ref, replaying the same song reuses the player and the
+          sync engine simply seeks it, which is both correct and what the API
+          is designed for.
+        */}
+        {roomId && track?.source === 'file' && (
+          <TrackPlayer
+            key={track.ref}
+            src={track.ref}
+            startAt={targetPosition()}
+            volume={volume}
+            onHandle={setHandle}
+            onEnded={onEnded}
+            onError={setError}
+            onDuration={onDuration}
+          />
+        )}
+
+        {/*
+          Mounted from the first YouTube track until you leave the room.
+
+          Not conditional on YouTube being what is playing *now*: taking it
+          away calls `destroy()`, and the moment that most often happens is a
+          queue running out — which is to say, during the SDK's own ENDED
+          event. That was the crash left after the remount one. Idle, it is a
+          paused off-screen iframe holding no attention and driving nothing.
+        */}
+        {roomId && stickyYouTubeRef && (
           <YouTubeTrackPlayer
-            key={track.id}
-            videoId={track.ref}
+            key="youtube"
+            videoId={stickyYouTubeRef}
+            active={track?.source === 'youtube'}
             startAt={targetPosition()}
             volume={volume}
             onHandle={setHandle}
