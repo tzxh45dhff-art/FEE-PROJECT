@@ -121,8 +121,33 @@ export function FilePlayer({
     }
 
     const hls = new Hls({
-      /* The room decides where playback is, so there is no value in holding a
-         long buffer — it only delays the seek when someone scrubs. */
+      /*
+       * Buffer as far ahead as the browser will allow, and start before play.
+       *
+       * The defaults are tuned for live streams that must not run ahead of the
+       * broadcast. This is a fixed file on object storage, and the room is
+       * frequently paused mid-film — every second spent paused is a second
+       * that could have been spent fetching, and on a slow line that is the
+       * difference between watching and stalling.
+       *
+       * `startFragPrefetch` is the one that matters most: it defaults to
+       * false, which means nothing at all is fetched until somebody presses
+       * play. The first press then pays for the whole startup.
+       *
+       * How far ahead it actually reaches is
+       *   min(max(8 · maxBufferSize / bitrate, maxBufferLength), maxMaxBufferLength)
+       * so `maxBufferSize` is the real lever and the seconds are its bounds.
+       * 400MB is deliberately past what any browser will grant: MSE enforces
+       * its own quota (Chrome allows on the order of 150MB of video) and
+       * hls.js backs off when it is refused, so this reads as "take whatever
+       * you can get" rather than as a literal allocation.
+       */
+      startFragPrefetch: true,
+      maxBufferLength: 60,
+      maxBufferSize: 400 * 1000 * 1000,
+      maxMaxBufferLength: 1800,
+      /* Behind the playhead, though, a long buffer only costs memory — the
+         room decides where playback is, and nobody scrubs backwards far. */
       backBufferLength: 30,
       enableWorker: true,
     })
