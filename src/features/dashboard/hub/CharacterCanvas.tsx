@@ -217,6 +217,35 @@ export default function CharacterCanvas({
   tilt: PointerTilt
   still?: boolean
 }) {
+  /*
+   * Let go of models nobody in the room is wearing any more.
+   *
+   * `useGLTF` caches by URL for the life of the page, which is right while a
+   * character is on screen and wrong once its owner has left: a long evening
+   * of people coming and going would otherwise accumulate every character the
+   * room had ever seen, textures and all, with no way back.
+   *
+   * Compared against the *previous* party rather than the current one, because
+   * the question being asked is which models just stopped being needed. Only
+   * URLs gone from the party are dropped, so this can never pull a model out
+   * from under someone still standing there — including the common case of two
+   * people wearing the same character, where the URL stays live until the last
+   * of them leaves.
+   */
+  const urls = members.map((member) => member.url).join('\n')
+  const previous = useRef<string[]>([])
+  useEffect(() => {
+    const current = urls.length > 0 ? urls.split('\n') : []
+    /* A party that is briefly empty mid-refetch is not a party nobody is in;
+       evicting on that would drop every model and reload it a frame later. */
+    if (current.length === 0) return
+
+    for (const url of previous.current) {
+      if (!current.includes(url)) useGLTF.clear(url)
+    }
+    previous.current = current
+  }, [urls])
+
   return (
     <Canvas
       dpr={[1, 1.75]}

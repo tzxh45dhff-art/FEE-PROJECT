@@ -65,15 +65,35 @@ function onBackdrop(source: HTMLCanvasElement) {
   return canvas.toDataURL('image/png')
 }
 
+/**
+ * Every texture hanging off a material, whatever slot it sits in.
+ *
+ * `material.dispose()` does *not* cascade to its maps — that is the one thing
+ * about three's disposal that consistently surprises, and it matters here more
+ * than anywhere else in the app: a character's textures are the largest single
+ * thing this codebase puts on the GPU, and baking the picker's thumbnails
+ * touches every model in the roster at once. Missing them meant opening the
+ * picker pinned the whole roster's texture memory for the life of the tab.
+ */
+function disposeTextures(material: unknown) {
+  if (!material || typeof material !== 'object') return
+
+  for (const value of Object.values(material as Record<string, unknown>)) {
+    const texture = value as { isTexture?: boolean; dispose?: () => void } | null
+    if (texture?.isTexture) texture.dispose?.()
+  }
+  ;(material as { dispose?: () => void }).dispose?.()
+}
+
 function dispose(root: Object3D) {
   root.traverse((node) => {
     const mesh = node as { geometry?: { dispose: () => void }; material?: unknown }
     mesh.geometry?.dispose()
     const material = mesh.material
     if (Array.isArray(material)) {
-      for (const entry of material) (entry as { dispose?: () => void }).dispose?.()
+      for (const entry of material) disposeTextures(entry)
     } else {
-      ;(material as { dispose?: () => void } | undefined)?.dispose?.()
+      disposeTextures(material)
     }
   })
 }

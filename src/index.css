@@ -892,3 +892,181 @@
       0 22px 52px -22px rgb(0 0 0 / 0.92);
   }
 }
+
+/* ---- Scroll reveals on the landing page ----
+   See `features/landing/components/Reveal.tsx` for why these fire once on
+   entry rather than tracking the scrollbar. */
+
+/*
+ * Text that arrives on a moving band of light.
+ *
+ * The type is transparent and filled by a gradient clipped to the glyphs, and
+ * the gradient is written so that the three states of a letter are three
+ * places along it:
+ *
+ *   [ settled chalk ......… | red → amber → blue glow | nothing at all ]
+ *
+ * Sliding that from right to left drags the lit edge across the line, so each
+ * letter goes from *absent*, to lit as the band crosses it, to plain chalk
+ * behind it. The word is not sitting there glowing — it is being written.
+ *
+ * The colours are the ones the app already uses to mean "somebody is here":
+ * the signal red of a live dot, the amber of a second person, the blue of a
+ * third. The line lights up in the colours of the room filling up.
+ */
+.sweep-text {
+  background-image: linear-gradient(
+    92deg,
+    var(--color-chalk) 0%,
+    var(--color-chalk) 26%,
+    /* the lit edge — narrow, and hottest at its front */
+    #ffd9a0 31%,
+    var(--color-signal-bright) 35%,
+    #ff4d8d 38%,
+    #a06bff 41%,
+    #6fb4ff 44%,
+    /* and then nothing, which is the part that has not arrived yet */
+    transparent 49%,
+    transparent 100%
+  );
+  background-size: 320% 100%;
+  /* Parked on the empty end of the gradient: the line is genuinely not there
+     yet, rather than there and faint. */
+  background-position: 100% 50%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  transition: background-position 1.5s cubic-bezier(0.28, 0.9, 0.3, 1);
+}
+
+/* Only promoted while it still has somewhere to go — a compositor layer per
+   heading, held for the life of the page, is memory spent on a finished
+   animation. */
+.sweep-text[data-swept='false'] {
+  will-change: background-position;
+}
+
+.sweep-text[data-swept='true'] {
+  background-position: 0% 50%;
+}
+
+/*
+ * A block arriving behind the same edge.
+ *
+ * Not a fade and not only a rise: the content is wiped in left to right by a
+ * `clip-path`, travelling the same direction as the light above it, with a
+ * short lift and a little blur burning off as it lands. One gesture repeated
+ * at two scales reads as a page with a direction; a fade reads as a page
+ * loading slowly.
+ */
+.reveal-mask {
+  /* Room for descenders, focus rings and shadows a tight clip would shave. */
+  margin: -0.4em;
+  padding: 0.4em;
+}
+
+.reveal-mask__inner {
+  clip-path: inset(0 100% 0 0);
+  transform: translateY(0.5em);
+  opacity: 0;
+  filter: blur(6px);
+  transition:
+    clip-path 1.05s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+    filter 0.7s ease,
+    opacity 0.5s ease;
+}
+
+.reveal-mask[data-shown='true'] .reveal-mask__inner {
+  clip-path: inset(0 0 0 0);
+  transform: none;
+  opacity: 1;
+  filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Arrive finished. The sweep and the wipe are both decoration, and the
+     words underneath them are the part that matters. */
+  .sweep-text,
+  .reveal-mask__inner {
+    transition: none;
+  }
+
+  .sweep-text {
+    background-position: 0% 50%;
+  }
+
+  .reveal-mask__inner {
+    clip-path: none;
+    transform: none;
+    opacity: 1;
+    filter: none;
+  }
+}
+
+/*
+ * No scrollbar.
+ *
+ * The page already shows its own position — the spine down the left is a real
+ * scrub bar with the chapters marked on it — so the native bar is a second,
+ * uglier answer to a question that has already been answered.
+ *
+ * Scrolling itself is untouched: this hides the bar, it does not lock the
+ * page, so the wheel, the keyboard, the trackpad and every assistive tool
+ * behave exactly as before. Both syntaxes are needed — Firefox takes the
+ * standard property, WebKit still only takes its pseudo-element.
+ */
+html {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/*
+ * The card that floats on the moving glass.
+ *
+ * `screen-panel` is opaque — correct for a device mockup, wrong here, because
+ * an opaque box on a moving surface reads as a hole cut in it rather than a
+ * pane resting on it. This is translucent and blurred instead, so the folds
+ * travel visibly behind the form and the card sits *in* the scene.
+ *
+ * The two edges do the floating. A bright inset hairline along the top is the
+ * light catching the near edge of a sheet of glass; a long, very soft drop
+ * shadow underneath is what separates it from the surface without drawing a
+ * border anybody notices.
+ */
+@utility float-panel {
+  /*
+   * Frosted, not tinted-dark.
+   *
+   * The backdrop now has spheres with coloured rims drifting behind this, and
+   * an almost-opaque panel wastes them — the whole point of glass is that you
+   * can see something is back there without being able to read it. So the fill
+   * is light and the blur does the work of making the text legible, rather
+   * than the other way round.
+   *
+   * `saturate` above 1 matters more than it looks: blurring alone washes the
+   * colour out of what is behind, and pushing saturation back up is what keeps
+   * an iridescent edge readable as colour through 30px of frost.
+   */
+  background:
+    linear-gradient(200deg, rgb(255 255 255 / 0.10), rgb(255 255 255 / 0.02) 46%),
+    rgb(8 8 11 / 0.42);
+  backdrop-filter: blur(30px) saturate(165%);
+  -webkit-backdrop-filter: blur(30px) saturate(165%);
+  border: 1px solid rgb(255 255 255 / 0.13);
+  box-shadow:
+    /* The lit near edge of a sheet of glass, and a fainter far one. */
+    inset 0 1px 0 0 rgb(255 255 255 / 0.22),
+    inset 0 -1px 0 0 rgb(255 255 255 / 0.05),
+    0 2px 10px -2px rgb(0 0 0 / 0.55),
+    0 50px 110px -36px rgb(0 0 0 / 0.9);
+}

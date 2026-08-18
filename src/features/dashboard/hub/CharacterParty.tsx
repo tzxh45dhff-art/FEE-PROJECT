@@ -5,6 +5,7 @@ import { FlatCharacter } from '@/features/dashboard/hub/FlatCharacter'
 import { Nameplate, type PlateStatus } from '@/features/dashboard/hub/Nameplate'
 import type { PartyMember } from '@/features/dashboard/hub/CharacterCanvas'
 import type { PointerTilt } from '@/hooks/usePointerTilt'
+import { usePageVisible } from '@/hooks/usePageVisible'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { hasRiggedCharacters, type Character } from '@/lib/characters'
 
@@ -57,6 +58,7 @@ export function CharacterParty({
   tilt,
   ground,
   insetRight = 0,
+  covered = false,
 }: {
   members: HubMember[]
   tilt: PointerTilt
@@ -64,8 +66,26 @@ export function CharacterParty({
   ground: number
   /** Rem of space the side panel is occupying, so the party stays centred. */
   insetRight?: number
+  /**
+   * Whether a full-screen activity is sitting on top of the hub.
+   *
+   * The party stays mounted underneath — leaving Watch should put you back in
+   * the room you left, not rebuild it — but there is nothing to be gained by
+   * animating a scene the stage is completely covering.
+   */
+  covered?: boolean
 }) {
   const reduced = usePrefersReducedMotion()
+  const visible = usePageVisible()
+
+  /*
+   * Frozen whenever nobody can see it: behind a stage, in a backgrounded tab,
+   * or for someone who asked for less motion. The canvas drops to R3F's
+   * `demand` loop, so it holds its last frame instead of rendering new ones —
+   * which is the whole cost of the scene, and it comes back the instant the
+   * hub is on top again.
+   */
+  const still = reduced || covered || !visible
 
   const rigged: PartyMember[] = members
     .filter((member) => member.character?.glb)
@@ -98,7 +118,7 @@ export function CharacterParty({
             <ModelBoundary fallback={<GlassFigure />}>
               <Suspense fallback={<GlassFigure />}>
                 <div className="pointer-events-auto absolute inset-0">
-                  <CharacterCanvas members={rigged} tilt={tilt} still={reduced} />
+                  <CharacterCanvas members={rigged} tilt={tilt} still={still} />
                 </div>
               </Suspense>
             </ModelBoundary>

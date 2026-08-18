@@ -10,20 +10,61 @@ import type { PlayerHandle, WatchSnapshot } from '@/features/watch/types'
  * the fresh buffer, and seek-loops until the network catches up. So:
  *
  * - While the player reports buffering, do nothing at all.
- * - Small drift has to *persist* before it earns a correction.
+ * - And for a while *after* it, too: the room's clock ran on while the player
+ *   stalled, so a player that has just recovered is behind by definition, and
+ *   reading that as fresh drift is what restarts the loop.
  * - Where the source allows any playback rate, absorb small drift by running
  *   fractionally fast or slow, which nobody can see. Seeking is the last
  *   resort, because a visible jump is worse than 400ms of being behind.
+ * - Where it does not — YouTube only accepts its own rate list — every
+ *   correction costs a rebuffer, so small drift is simply tolerated and the
+ *   threshold for a jump is wider.
  */
 
 /** Past this, jump. A gap this size is already obvious to everyone. */
 const HARD_SECONDS = 1.2
+/**
+ * The same threshold for a source that cannot be nudged.
+ *
+ * Wider, because every correction on such a source is a seek and every seek
+ * costs a rebuffer. Holding YouTube to 1.2s means paying for a stall to fix a
+ * gap nobody would have noticed, over and over.
+ */
+const HARD_SECONDS_COARSE = 2.4
 /** Below this, we are as in sync as playback timing can meaningfully be. */
 const SOFT_SECONDS = 0.3
-/** Small drift must last this long before it is treated as real. */
-const SUSTAIN_MS = 1500
 /** How hard to lean on the rate when catching up on a fine-rate source. */
 const NUDGE = 0.05
+/**
+ * After a seek, leave the player alone this long.
+ *
+ * This is the whole fix for the loop the comment above describes from the
+ * other side. Suppressing corrections *during* a buffer is not enough: the
+ * room's clock keeps running while the player stalls, so the instant the
+ * buffer clears the player is behind by however long it took, which is
+ * immediately another correction, which is another buffer. The cooldown is
+ * what turns that spiral into a single seek that gets a chance to settle.
+ */
+const SEEK_COOLDOWN_MS = 5000
+/**
+ * How far past the target to aim, on a source that rebuffers when it seeks.
+ *
+ * Seeking to where the room is *now* guarantees landing behind, because the
+ * seek itself takes time. Aiming at where the room will be once the buffer
+ * clears lands near-level instead. Seeded with a typical figure and then
+ * measured, since it depends on the network and the video.
+ */
+const INITIAL_SEEK_COST = 0.8
+/**
+ * Clamp on the measured figure.
+ *
+ * Held well inside `HARD_SECONDS_COARSE` on purpose. The lead deliberately
+ * overshoots, so if it were ever allowed to exceed the threshold it is
+ * correcting against, landing would itself be a correctable gap — in the other
+ * direction — and the loop this whole file exists to kill would come back
+ * wearing the opposite sign.
+ */
+const MAX_SEEK_COST = 1.5
 
 export function useDriftCorrection({
   handle,
@@ -36,67 +77,111 @@ export function useDriftCorrection({
   targetPosition: () => number
   enabled: boolean
 }) {
-  const driftingSince = useRef<number | null>(null)
   const nudged = useRef(false)
+  /** Corrections are suppressed until this moment. See `SEEK_COOLDOWN_MS`. */
+  const settleUntil = useRef(0)
+  /** Running estimate of what a seek costs this source, in seconds. */
+  const seekCost = useRef(INITIAL_SEEK_COST)
+  /** When the last corrective seek was issued, while it is still recovering. */
+  const seekedAt = useRef<number | null>(null)
 
   const rate = snapshot?.rate ?? 1
   const playing = snapshot?.playing ?? false
+  const seq = snapshot?.seq ?? -1
+
+  /*
+   * Held in a ref rather than read from the closure.
+   *
+   * `targetPosition` is rebuilt whenever the snapshot object changes, and the
+   * snapshot is rebuilt for things that have nothing to do with playback —
+   * somebody walking into the room re-creates it with a new viewer list. With
+   * that identity in the dependency array the interval below was torn down and
+   * restarted on every one of those, so the timer could be reset forever and
+   * the correction it was counting towards never ran.
+   */
+  const positionOf = useRef(targetPosition)
+  positionOf.current = targetPosition
+
+  /*
+   * A control event just moved playback deliberately — a play, a seek, a rate
+   * change. The player is about to re-buffer around the new position, and
+   * reading that as drift would spend a second correction on top of the one
+   * the room asked for. Give it the same settling time a correction gets.
+   */
+  useEffect(() => {
+    settleUntil.current = performance.now() + SEEK_COOLDOWN_MS
+  }, [seq])
 
   useEffect(() => {
-    if (!handle || !enabled || !playing) {
-      driftingSince.current = null
-      return
+    if (!handle || !enabled || !playing) return
+
+    const restoreRate = () => {
+      if (!nudged.current) return
+      handle.setRate(rate)
+      nudged.current = false
+    }
+
+    /* Coarse sources pay a rebuffer per correction, so they aim ahead of the
+       room by roughly what that rebuffer will cost them. */
+    const coarse = !handle.supportsFineRate
+    const correct = () => {
+      const lead = coarse ? seekCost.current : 0
+      handle.seek(positionOf.current() + lead)
+      settleUntil.current = performance.now() + SEEK_COOLDOWN_MS
+      seekedAt.current = performance.now()
+      restoreRate()
     }
 
     const tick = () => {
       if (handle.isBuffering()) {
-        /* Not drift — just slow. Reset the clock so a long buffer doesn't cash
-           out into a correction the moment playback resumes. */
-        driftingSince.current = null
-        if (nudged.current) {
-          handle.setRate(rate)
-          nudged.current = false
-        }
+        /* Not drift — just slow. Stand the rate back up so a nudge does not
+           ride out through the stall, and wait. */
+        restoreRate()
         return
       }
 
-      const drift = targetPosition() - handle.getPosition()
+      /*
+       * Playing again after a correction: learn what that correction actually
+       * cost, so the next one aims better. Eased rather than replaced, because
+       * a single slow fetch is not the new normal.
+       */
+      if (seekedAt.current !== null) {
+        const cost = (performance.now() - seekedAt.current) / 1000
+        seekCost.current = Math.min(
+          MAX_SEEK_COST,
+          seekCost.current * 0.7 + Math.max(0, cost) * 0.3,
+        )
+        seekedAt.current = null
+      }
+
+      /* Still settling from the last correction. Measuring drift here reads
+         the recovery as a fresh problem and starts the loop over. */
+      if (performance.now() < settleUntil.current) return
+
+      const drift = positionOf.current() - handle.getPosition()
       const size = Math.abs(drift)
 
-      if (size >= HARD_SECONDS) {
-        handle.seek(targetPosition())
-        driftingSince.current = null
-        if (nudged.current) {
-          handle.setRate(rate)
-          nudged.current = false
-        }
+      if (size >= (coarse ? HARD_SECONDS_COARSE : HARD_SECONDS)) {
+        correct()
         return
       }
 
-      if (size >= SOFT_SECONDS) {
-        if (handle.supportsFineRate) {
-          /* Behind → speed up a touch; ahead → ease off. Imperceptible, and it
-             converges without a single visible jump. */
-          handle.setRate(rate * (drift > 0 ? 1 + NUDGE : 1 - NUDGE))
-          nudged.current = true
-          return
-        }
-
-        const since = driftingSince.current
-        if (since === null) {
-          driftingSince.current = performance.now()
-        } else if (performance.now() - since > SUSTAIN_MS) {
-          handle.seek(targetPosition())
-          driftingSince.current = null
-        }
+      /*
+       * Small drift is only worth chasing on a source that can absorb it by
+       * running fractionally fast. Seeking a coarse source to close a gap of
+       * a few hundred milliseconds spends a rebuffer of roughly a second to
+       * fix something smaller than the fix — it makes both the sync and the
+       * viewing worse. Below the coarse threshold, it is left alone.
+       */
+      if (size >= SOFT_SECONDS && handle.supportsFineRate) {
+        /* Behind → speed up a touch; ahead → ease off. Imperceptible, and it
+           converges without a single visible jump. */
+        handle.setRate(rate * (drift > 0 ? 1 + NUDGE : 1 - NUDGE))
+        nudged.current = true
         return
       }
 
-      driftingSince.current = null
-      if (nudged.current) {
-        handle.setRate(rate)
-        nudged.current = false
-      }
+      restoreRate()
     }
 
     const timer = setInterval(tick, 1000)
@@ -107,5 +192,5 @@ export function useDriftCorrection({
         nudged.current = false
       }
     }
-  }, [handle, enabled, playing, rate, targetPosition])
+  }, [handle, enabled, playing, rate])
 }

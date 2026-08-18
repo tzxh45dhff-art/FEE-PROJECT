@@ -1,7 +1,6 @@
 import { Route, Routes, useLocation } from 'react-router-dom'
 
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { NeonFlowBackdrop } from '@/components/background/NeonFlowBackdrop'
 import { Header } from '@/components/layout/Header'
 import { LiquidGlassFilter } from '@/components/layout/LiquidGlassFilter'
 import { SignInPage, SignUpPage } from '@/pages/AuthPages'
@@ -18,23 +17,32 @@ export default function App() {
   const { pathname } = useLocation()
 
   /*
-   * The marketing page is built on a wall of dark poster art — dropping an
-   * off-white canvas behind it would gut the whole thing. So the neon canvas
-   * is the *app* surface (auth, dashboard) and the landing page keeps its
-   * cinematic dark. Two deliberate skins, not one compromise.
-   */
-  const onLanding = pathname === '/'
-  /*
-   * The hub paints its own full-screen world, so the neon canvas behind it would
-   * be an animating WebGL surface nobody can see — and it has to share frames
+   * The hub paints its own full-screen world, so anything behind it would be
+   * an animating surface nobody can see — and it would have to share frames
    * with the hub's own canvas and particle field.
    */
   const onHub = pathname === '/dashboard'
 
+  /*
+   * Everything that is not the hub is dark now.
+   *
+   * This used to be two skins: cinematic dark for the marketing page, an
+   * off-white neon canvas for auth. That split stopped making sense once the
+   * landing page became the lit room and the black silk behind it — signing up
+   * threw the visitor from that into a bright page belonging to a different
+   * product. Auth is the step immediately after the landing's call to action,
+   * so it now inherits the same material.
+   *
+   * Keyed off "not the hub" rather than off `/` specifically, because the
+   * catch-all route renders the landing page at unknown paths too — testing
+   * for the exact path left those rendering the dark page over the light
+   * backdrop.
+   */
+  const dark = !onHub
+
   return (
-    <div className={onLanding ? 'relative min-h-svh bg-void' : 'relative min-h-svh'}>
+    <div className={dark ? 'relative min-h-svh bg-void' : 'relative min-h-svh'}>
       <LiquidGlassFilter />
-      {!onLanding && !onHub && <NeonFlowBackdrop />}
       <Header />
 
       {/*
