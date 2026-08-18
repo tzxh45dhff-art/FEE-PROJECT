@@ -12,16 +12,60 @@ import path from 'node:path'
  * kilobytes names a few hundred short segments, and the player fetches the
  * first one and starts.
  *
- * Deliberately a remux, not a re-encode. The source is already H.264 and AAC,
- * which is exactly what HLS wants, so the streams are copied through untouched:
- * a two-hour film is minutes of I/O rather than hours of CPU, and the picture
- * is bit-for-bit what was uploaded. The cost is that there is one quality
- * rather than a ladder — worth paying, because re-encoding to get that ladder
- * is the difference between this being usable today and being a weekend.
+ * The top rung is a remux, not a re-encode. The source is already H.264 and
+ * AAC, which is exactly what HLS wants, so it is copied through untouched:
+ * bit-for-bit what was uploaded, for nothing but I/O. Anyone whose connection
+ * can carry the original still gets the original, exactly as before.
+ *
+ * Below it sit encoded fallbacks, and those are the point. A single rendition
+ * means a player on a slow line has nothing to drop to — it stalls, refills,
+ * and stalls again, because the only stream on offer is wider than the pipe.
+ * No amount of buffering config fixes that; there has to be something lighter
+ * to switch to. That costs real CPU once, at publish time, so that nobody pays
+ * for it in stalls every time they watch.
  */
 
 /** Six seconds is the HLS convention: quick to start, few enough requests. */
 const SEGMENT_SECONDS = 6
+
+/**
+ * The fallback renditions, generated below whatever was uploaded.
+ *
+ * Widths rather than heights, because films are not 16:9 — the 1920×900 print
+ * that prompted this is 2.13:1, and "720p" means nothing useful there. Width
+ * is what actually tracks the bitrate a rung needs.
+ *
+ * The bitrates are deliberately well clear of each other. Rungs that sit close
+ * together give the player a choice that changes nothing, and it will hunt
+ * between them; roughly halving each time means every switch is a real one.
+ */
+const LADDER = [
+  { width: 1280, bitrate: 1_200_000 },
+  { width: 854, bitrate: 600_000 },
+]
+
+/**
+ * The best H.264 encoder this machine actually has.
+ *
+ * VideoToolbox is Apple's hardware encoder and it is not a small difference —
+ * it is the difference between publishing a feature film over a coffee and
+ * leaving it running overnight. Its quality per bit is worse than x264's,
+ * which would matter if these were the picture people watch; they are the
+ * fallback for a line that cannot carry the picture at all, so speed wins.
+ *
+ * Probed once and cached, because `ffmpeg -encoders` is not free and the
+ * answer cannot change while the process is running.
+ */
+let encoderProbe: Promise<string> | null = null
+
+function h264Encoder(): Promise<string> {
+  encoderProbe ??= run('ffmpeg', ['-hide_banner', '-encoders'])
+    .then((out) => (out.includes('h264_videotoolbox') ? 'h264_videotoolbox' : 'libx264'))
+    /* Falling back rather than failing: if the probe itself breaks, libx264 is
+       present in every practical ffmpeg build and the encode can still run. */
+    .catch(() => 'libx264')
+  return encoderProbe
+}
 
 export type AudioTrack = { index: number; language: string; label: string }
 export type SubtitleTrack = { index: number; language: string; label: string; codec: string }
@@ -149,6 +193,69 @@ export async function probe(input: string): Promise<ProbeResult> {
 }
 
 /**
+ * How often the source carries a keyframe, in seconds.
+ *
+ * This decides where the copied rung's segments can possibly fall. A stream
+ * can only be cut at a keyframe, so ffmpeg does not honour `-hls_time` exactly
+ * on a copy — it runs on to the next keyframe at or after each boundary. A
+ * film with keyframes every 2.04s therefore yields 6.125s segments from a
+ * nominal 6, which is precisely what the published print shows.
+ *
+ * Knowing the number lets the encoded rungs be forced onto that same grid, so
+ * every rendition splits at the same instants and switching between them is
+ * seamless. Read from the opening two minutes rather than the whole file: this
+ * is a property of how the thing was encoded, and walking every packet of a
+ * feature to confirm it costs far more than it could ever tell us.
+ *
+ * Null when it can't be established — an irregular source (scene-change
+ * keyframes) has no grid to snap to, and the caller falls back to the nominal
+ * segment length.
+ */
+async function keyframeInterval(input: string): Promise<number | null> {
+  try {
+    const raw = await run('ffprobe', [
+      '-v',
+      'error',
+      '-select_streams',
+      'v:0',
+      '-read_intervals',
+      '%+120',
+      '-show_entries',
+      'packet=pts_time,flags',
+      '-of',
+      'csv=p=0',
+      input,
+    ])
+
+    /* Rows look like `1.234,K__` — the K flag marks a keyframe. */
+    const times = raw
+      .split('\n')
+      .filter((line) => line.includes('K'))
+      .map((line) => Number(line.split(',')[0]))
+      .filter((value) => Number.isFinite(value))
+      .sort((a, b) => a - b)
+
+    if (times.length < 4) return null
+
+    const gaps = times.slice(1).map((time, index) => time - times[index]!)
+    gaps.sort((a, b) => a - b)
+    const median = gaps[Math.floor(gaps.length / 2)]!
+
+    /*
+     * Only trust a genuinely regular source. If the middle gap does not
+     * describe most of the others, keyframes are being placed by content
+     * rather than by a clock, and there is no grid to snap anything to.
+     */
+    const regular = gaps.filter((gap) => Math.abs(gap - median) < 0.02).length
+    if (regular < gaps.length * 0.8) return null
+
+    return median > 0.1 ? median : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Subtitle formats that convert cleanly to WebVTT.
  *
  * These are text; `subrip`, `ass` and friends are timed strings that ffmpeg can
@@ -216,10 +323,16 @@ export function canRemux(probed: ProbeResult) {
 /**
  * Write an HLS ladder for `input` into `outDir`.
  *
- * Produces one video rendition and every audio track the source carries, as a
- * master playlist plus a directory of fragmented-MP4 segments. Audio is a
- * separate group rather than being muxed into the video, which is what lets a
- * viewer switch from English to Hindi without re-fetching the picture.
+ * Produces the source rendition plus every fallback below it, and every audio
+ * track the source carries, as a master playlist over a directory of
+ * fragmented-MP4 segments. Audio is a separate group rather than being muxed
+ * into each video rendition — which is both what lets a viewer switch from
+ * English to Hindi without re-fetching the picture, and what stops the audio
+ * from being duplicated once per rung.
+ *
+ * One ffmpeg pass builds all of it. The source is decoded once and fanned out
+ * to the encoders, so adding a rung costs an encode rather than another full
+ * read of the file.
  */
 export async function toHls(
   input: string,
@@ -249,23 +362,52 @@ export async function toHls(
   const audioDir = (position: number) => `a${position}`
 
   /*
+   * Which rungs are worth making.
+   *
+   * Anything at or above the source's own width is dropped: re-encoding a
+   * 720p upload *up* to 1280 would spend real CPU to produce a stream that is
+   * larger than the original and looks worse than it. When the width can't be
+   * probed the rung is kept, and the `min(…,iw)` in the scaler below is what
+   * guarantees it still cannot upscale.
+   */
+  const fallbacks = LADDER.filter((rung) => probed.width === null || rung.width < probed.width)
+  /* Rung 0 is the untouched source; the rest follow in descending quality. */
+  const videoRungs = [null, ...fallbacks]
+  const encoder = await h264Encoder()
+
+  /*
+   * The grid every rendition is cut on.
+   *
+   * The copied rung can only break at the source's own keyframes, so it will
+   * overrun a nominal six seconds to the next one. Rounding up to that same
+   * multiple — 6.125s for a source with keyframes every 2.04s — and forcing
+   * the encoders onto it means all the rungs agree about where segments
+   * start, instead of drifting steadily apart over the length of a film.
+   */
+  const gop = await keyframeInterval(input)
+  const segmentSeconds = gop
+    ? Number((Math.ceil(SEGMENT_SECONDS / gop) * gop).toFixed(3))
+    : SEGMENT_SECONDS
+
+  /*
    * ffmpeg writes into these directories but will not create them, and the
    * failure when they are missing is a bare "No such file or directory" from
    * deep inside the muxer.
    */
   /* The segment template is `v%v`, so the directory is a literal "v" followed
-     by the variant name — `v0` for the picture, `va0`, `va1`… for the audio. */
+     by the variant name — `v0`, `v1`… for the picture, `va0`, `va1`… for the
+     audio, which takes a name so it cannot collide with a video index. */
   await Promise.all([
-    mkdir(path.join(outDir, 'v0'), { recursive: true }),
+    ...videoRungs.map((_, index) => mkdir(path.join(outDir, `v${index}`), { recursive: true })),
     ...probed.audio.map((_, position) =>
       mkdir(path.join(outDir, `v${audioDir(position)}`), { recursive: true }),
     ),
   ])
 
-  /* Video is variant 0; each audio track follows, all pointing at one group so
-     the player treats them as alternatives to each other. */
+  /* Every video rung, then every audio track, all pointing at one group so the
+     player treats the audio as alternatives and the video as qualities. */
   const streamMap = [
-    'v:0,agroup:aud',
+    ...videoRungs.map((_, index) => `v:${index},agroup:aud`),
     ...probed.audio.map(
       (track, position) =>
         `a:${track.index},agroup:aud,language:${track.language},name:${audioDir(position)}` +
@@ -273,21 +415,63 @@ export async function toHls(
     ),
   ].join(' ')
 
+  /*
+   * Per-rung encoder settings.
+   *
+   * Keyframes are forced onto a fixed grid so that every encoded rung splits
+   * at the same timestamps. Without that the renditions disagree about where
+   * segments begin and switching between them is a visible stutter — the
+   * player has to throw away and refetch whatever it had buffered.
+   *
+   * The copy rung keeps the source's own keyframes and so lands a fraction
+   * either side of the grid. It cannot be made to do otherwise without
+   * re-encoding it, which is the one thing this is built to avoid.
+   */
+  const videoArgs = videoRungs.flatMap((rung, index) => {
+    if (rung === null) return [`-c:v:${index}`, 'copy']
+
+    return [
+      `-c:v:${index}`,
+      encoder,
+      `-filter:v:${index}`,
+      `scale='min(${rung.width},iw)':-2`,
+      `-b:v:${index}`,
+      String(rung.bitrate),
+      /* A ceiling and a drain rate, so a busy scene cannot spike past what the
+         rung promises in the playlist and strand the very players who chose it
+         because that promise fit their connection. */
+      `-maxrate:v:${index}`,
+      String(Math.round(rung.bitrate * 1.15)),
+      `-bufsize:v:${index}`,
+      String(rung.bitrate * 2),
+      `-force_key_frames:v:${index}`,
+      `expr:gte(t,n_forced*${segmentSeconds})`,
+      `-pix_fmt:v:${index}`,
+      'yuv420p',
+      /* x264 only. VideoToolbox has no preset ladder — it is already as fast
+         as it is going to be. */
+      ...(encoder === 'libx264' ? [`-preset:v:${index}`, 'veryfast'] : []),
+    ]
+  })
+
   const args = [
     '-hide_banner',
     '-nostdin',
     '-i',
     input,
-    '-map',
-    '0:v:0',
+    /* The same source video, once per rung — ffmpeg decodes it a single time
+       and feeds every encoder from that. */
+    ...videoRungs.flatMap(() => ['-map', '0:v:0']),
     ...probed.audio.flatMap((track) => ['-map', `0:a:${track.index}`]),
-    /* The whole point: copy the streams, encode nothing. */
-    '-c',
+    ...videoArgs,
+    /* Audio is already AAC and is shared by every rung, so it is copied once
+       and never re-encoded. */
+    '-c:a',
     'copy',
     '-f',
     'hls',
     '-hls_time',
-    String(SEGMENT_SECONDS),
+    String(segmentSeconds),
     '-hls_playlist_type',
     'vod',
     '-hls_segment_type',

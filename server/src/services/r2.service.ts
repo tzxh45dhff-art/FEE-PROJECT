@@ -131,7 +131,30 @@ export async function uploadDirectory(
   const CONCURRENCY = 6
   let done = 0
 
-  const queue = [...files]
+  /*
+   * Segments first, playlists last, and the master last of all.
+   *
+   * A playlist is a promise that the things it names already exist. Uploading
+   * it first — which is what directory order happens to do, since `master.m3u8`
+   * sorts ahead of the `v0/` it describes — publishes that promise before it is
+   * true, and for the hour a feature film takes to upload, every player is
+   * fetching segments that are not there yet.
+   *
+   * Republishing over an existing film is where this really bites: the old
+   * version is serving perfectly well until a new master claims renditions
+   * whose segments are still being written. Ordering it this way means the
+   * switchover is the single last upload, and until that moment viewers keep
+   * getting the version that already works.
+   *
+   * The master is held back entirely rather than merely sorted last: with six
+   * workers running, "last into the queue" still finishes alongside whatever
+   * five large segments went in just before it, and a tiny playlist wins that
+   * race every time.
+   */
+  const isMaster = (file: string) => file.endsWith('master.m3u8')
+  const master = files.filter(isMaster)
+  const rank = (file: string) => (file.endsWith('.m3u8') ? 1 : 0)
+  const queue = files.filter((file) => !isMaster(file)).sort((a, b) => rank(a) - rank(b))
   const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
     for (;;) {
       const file = queue.shift()
@@ -146,6 +169,14 @@ export async function uploadDirectory(
   })
 
   await Promise.all(workers)
+
+  /* Everything it names is now on the bucket, so the film can be switched over. */
+  for (const file of master) {
+    await uploadFile(path.join(localDir, file), `${keyPrefix}/${file.split(path.sep).join('/')}`)
+    done += 1
+    onProgress?.(done, files.length)
+  }
+
   return files.length
 }
 
