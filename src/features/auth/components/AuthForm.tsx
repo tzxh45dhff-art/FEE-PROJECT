@@ -57,7 +57,9 @@ export function AuthForm({ mode, onSubmit }: AuthFormProps) {
   }
 
   return (
-    <div className="screen-panel w-full max-w-md rounded-panel p-8 md:p-10">
+    /* Floats on the moving glass rather than sitting in a hole cut out of it
+       — see `float-panel`. */
+    <div className="float-panel w-full max-w-md rounded-panel p-8 md:p-10">
       <h1 className="font-display text-[clamp(2rem,5vw,2.9rem)] font-semibold leading-[1.05] tracking-[-0.035em] text-chalk">
         {copy.title}
       </h1>

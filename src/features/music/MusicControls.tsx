@@ -122,6 +122,9 @@ export function MusicControls({
               if (scrubbing !== null) onSeek(scrubbing)
               setScrubbing(null)
             }}
+            /* Tabbing away mid-scrub would otherwise leave the bar following a
+               drag that is no longer happening. */
+            onBlur={() => setScrubbing(null)}
             className="absolute inset-x-0 h-8 w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
           />
         </label>

@@ -5,6 +5,8 @@ import { Vector3, type Group, type PerspectiveCamera } from 'three'
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
 
 import { measure, standUp } from '@/features/dashboard/hub/measure'
+import { usePageVisible } from '@/hooks/usePageVisible'
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 
 /**
  * Lazily imported alongside the hub's own canvas — both sit behind the same
@@ -95,11 +97,18 @@ export default function CharacterPreviewCanvas({
   url: string
   sway?: number
 }) {
+  const reduced = usePrefersReducedMotion()
+  const visible = usePageVisible()
+  const still = reduced || !visible
+
   return (
     <Canvas
       dpr={[1, 1.5]}
       camera={{ position: [0, 1.42, 2.2], fov: 26 }}
       gl={{ alpha: true, antialias: true }}
+      /* A settings panel left open in a backgrounded tab was still turning a
+         character on the GPU. Held on its last frame instead. */
+      frameloop={still ? 'demand' : 'always'}
       style={{ background: 'transparent' }}
     >
       <Rig />

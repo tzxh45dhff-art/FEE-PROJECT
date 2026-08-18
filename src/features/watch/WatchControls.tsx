@@ -124,12 +124,21 @@ export function WatchControls({
               if (scrubbing !== null) onSeek(scrubbing)
               setScrubbing(null)
             }}
-            onKeyUp={(event) => {
-              if (scrubbing !== null && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
-                onSeek(scrubbing)
-                setScrubbing(null)
-              }
+            /*
+              Any key that moved the thumb commits the seek — not just the
+              arrows. A range input also answers Home, End, PageUp and PageDown,
+              and listing only the arrows meant those four moved the handle and
+              then silently threw the seek away, which is a keyboard user
+              scrubbing to no effect.
+            */
+            onKeyUp={() => {
+              if (scrubbing === null) return
+              onSeek(scrubbing)
+              setScrubbing(null)
             }}
+            /* Tabbing away mid-scrub would otherwise leave the bar following a
+               drag that is no longer happening. */
+            onBlur={() => setScrubbing(null)}
             className="absolute inset-x-0 h-6 w-full cursor-pointer appearance-none bg-transparent outline-none disabled:cursor-default [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-chalk [&::-webkit-slider-thumb]:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-signal)_40%,transparent)]"
           />
         </div>

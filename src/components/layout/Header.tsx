@@ -7,13 +7,14 @@ import { Logo } from '@/components/layout/Logo'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthContext'
 import { useEntrance } from '@/features/transition/EntranceContext'
-import { useLiquidLens } from '@/hooks/useLiquidLens'
 import { cn } from '@/lib/utils'
 
+/* One per chapter on the landing page's timeline, and named the same, so the
+   nav and the spine are two views of the same set of stops. */
 const MARKETING_LINKS = [
-  { label: 'Devices', href: '/#devices' },
-  { label: 'Inside the room', href: '/#features' },
-  { label: 'Room types', href: '/#rooms' },
+  { label: 'Watch', href: '/#watch' },
+  { label: 'Listen', href: '/#listen' },
+  { label: 'Together', href: '/#together' },
 ]
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -42,19 +43,20 @@ export function Header() {
   const onLanding = pathname === '/'
 
   /*
-   * The glass is a separate layer *behind* the bar, never the bar itself —
-   * liquidGL sets `pointer-events: none` on any lens, which would make every
-   * nav link and button in here unclickable.
+   * Glass by `backdrop-filter`, not by a WebGL lens.
+   *
+   * This bar used to run liquidGL, which photographs the page behind it with
+   * html2canvas and refracts the picture. It is a lovely effect on a static
+   * page and a liability on this one: the photograph is taken once and goes
+   * stale the moment anything under the bar moves, it cannot see a `<video>`
+   * or a WebGL canvas at all, and while the snapshot is missing the bar reads
+   * as a flat dark rectangle with a hard edge — which is exactly what it was
+   * doing over the new hero.
+   *
+   * A real `backdrop-filter` blurs whatever is genuinely underneath, every
+   * frame, including the parallaxing hero image. It is also what the rest of
+   * the app already uses, so the bar now matches the surfaces it floats over.
    */
-  useLiquidLens(glassRef, {
-    enabled: onLanding,
-    refraction: 0.035,
-    aberration: 1.4,
-    bevelDepth: 0.1,
-    bevelWidth: 0.2,
-    specular: true,
-    shadow: false,
-  })
 
   /*
    * Tied to scroll position rather than flipped at a threshold, so the bar
@@ -80,11 +82,11 @@ export function Header() {
     <header className="pointer-events-none fixed inset-x-0 top-0 z-[130] flex justify-center px-4 pt-4 md:pt-5">
       <motion.div
         className={cn(
-          'pointer-events-auto relative flex items-center gap-3 rounded-full sm:gap-6',
-          /* On the landing page the fill comes from the WebGL lens behind;
-             elsewhere it's the CSS pill, since those routes sit on canvas
-             backdrops that html2canvas can't photograph. */
-          onLanding ? 'border border-white/12' : 'glass-pill-ink',
+          'pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-full border border-white/10 sm:gap-6',
+          /* Off the landing page the bar is always solid; on it the fill fades
+             in with scroll, so it is barely there over the hero and fully
+             readable once page content is running underneath. */
+          onLanding ? 'backdrop-blur-2xl backdrop-saturate-150' : 'glass-pill-ink',
         )}
         initial={false}
         animate={{
@@ -101,18 +103,19 @@ export function Header() {
                 paddingRight: padX,
                 paddingTop: padY,
                 paddingBottom: padY,
-                // Fades the glass in over the hero without a hard cut.
-                ['--glass-alpha' as string]: glassAlpha,
               }
             : undefined
         }
         transition={{ duration: phase === 'reveal' ? 0.85 : 0.55, ease: EASE }}
       >
+        {/* The tint itself, opacity-driven by scroll. Separate from the bar so
+            the blur above stays constant while only the fill comes up. */}
         {onLanding && (
-          <div
+          <motion.div
             ref={glassRef}
             aria-hidden
-            className="absolute inset-0 -z-10 rounded-full"
+            className="absolute inset-0 -z-10 rounded-full bg-gradient-to-b from-[rgb(24_24_29/0.92)] to-[rgb(11_11_15/0.92)] shadow-[inset_0_1px_0_0_rgb(255_255_255/0.12)]"
+            style={{ opacity: glassAlpha }}
           />
         )}
 
@@ -175,13 +178,17 @@ export function Header() {
                   came here to do, and on a phone this was the only route to
                   it — the marketing links are already gone below `md`, so the
                   width it needs is there. */}
+              {/* On the landing page these open a panel over the page instead
+                  of navigating away from the argument it is making — the query
+                  parameter is how this bar, which every route shares, reaches
+                  that page without either of them knowing about the other. */}
               <Button asChild variant="ghost" size="sm" flat>
-                <Link to="/signin">Sign in</Link>
+                <Link to={onLanding ? '/?signin' : '/signin'}>Sign in</Link>
               </Button>
               <Button asChild variant="outline" size="sm" flat>
                 {/* "Create room" is the pitch, but it costs a phone's whole
                     remaining header width to say it. */}
-                <Link to="/signup">
+                <Link to={onLanding ? '/?signup' : '/signup'}>
                   <span className="sm:hidden">Sign up</span>
                   <span className="hidden sm:inline">Create room</span>
                 </Link>

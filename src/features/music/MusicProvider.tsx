@@ -38,6 +38,11 @@ export function MusicProvider({
     Boolean(roomId) && enabled,
   )
 
+  /* Read by the drift interval below without being a dependency of it — see
+     the note there on why its identity cannot be trusted. */
+  const positionOf = useRef(targetPosition)
+  positionOf.current = targetPosition
+
   const [handle, setHandle] = useState<AudioHandle | null>(null)
   const [analyserSource, setAnalyserSource] = useState<MediaElementAudioSourceNode | null>(null)
   const [needsGesture, setNeedsGesture] = useState(false)
@@ -137,12 +142,25 @@ export function MusicProvider({
 
     const timer = setInterval(() => {
       if (handle.isBuffering()) return
-      const drift = Math.abs(handle.getPosition() - targetPosition())
-      if (drift > tolerance) handle.seek(targetPosition())
+      const target = positionOf.current()
+      const drift = Math.abs(handle.getPosition() - target)
+      if (drift > tolerance) handle.seek(target)
     }, 5000)
 
     return () => clearInterval(timer)
-  }, [handle, snapshot?.playing, needsGesture, targetPosition, track?.source])
+    /*
+     * `targetPosition` is deliberately not a dependency, and is read from a ref
+     * instead.
+     *
+     * Its identity changes whenever the snapshot object does, and the snapshot
+     * is rebuilt for things that are not playback at all — `music:listeners`
+     * fires every time somebody joins, leaves, or picks up a microphone. Each
+     * of those tore this interval down and started it again, and since the
+     * interval is five seconds long, a room with any activity in it could reset
+     * the timer indefinitely and never once run the check.
+     */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handle, snapshot?.playing, needsGesture, track?.source])
 
   useEffect(() => {
     const tick = () => {

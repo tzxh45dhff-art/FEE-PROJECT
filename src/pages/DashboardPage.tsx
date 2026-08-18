@@ -27,6 +27,7 @@ import { useChat } from '@/features/room-panel/useChat'
 import { useMeshCall } from '@/features/room-panel/useMeshCall'
 import { useWatchPulse } from '@/features/watch/useWatchPulse'
 import { WatchInvite } from '@/features/watch/WatchInvite'
+import { GamesStage } from '@/features/games/GamesStage'
 import { WatchStage } from '@/features/watch/WatchStage'
 import { CreateRoomForm } from '@/features/dashboard/components/CreateRoomForm'
 import { usePresence, type Present } from '@/features/rooms/usePresence'
@@ -79,6 +80,8 @@ export function DashboardPage() {
   const [musicOrigin, setMusicOrigin] = useState<DOMRect | null>(null)
   /** Same, for the watch page. */
   const [watchOrigin, setWatchOrigin] = useState<DOMRect | null>(null)
+  /** Same, for the games page. */
+  const [gamesOrigin, setGamesOrigin] = useState<DOMRect | null>(null)
 
   const activeRoomId = params.get('room')
   /* Validated rather than cast — `?activity=` is user-editable, and an
@@ -288,6 +291,7 @@ export function DashboardPage() {
         onClick: (from) => {
           if (entry.id === 'music') setMusicOrigin(from ?? null)
           if (entry.id === 'watch') setWatchOrigin(from ?? null)
+          if (entry.id === 'games') setGamesOrigin(from ?? null)
           setActivity(entry.id)
         },
       }))
@@ -385,6 +389,9 @@ export function DashboardPage() {
             tilt={tilt}
             ground={groundFor(preferences, scene?.id)}
             insetRight={inset}
+            /* Every activity opens a stage that covers the hub completely, so
+               the party behind it has nothing to draw for. */
+            covered={activity !== null}
           />
 
           <HubRail side="left" items={leftItems} />
@@ -500,8 +507,43 @@ export function DashboardPage() {
           </ErrorBoundary>
         )}
 
-        {/* The other two are still stubs, and say so rather than miming. */}
-        {activity && activity !== 'watch' && activity !== 'music' && (
+        {activity === 'games' && activeRoom && (
+          /*
+           * Bounded like the others: this one runs a physics loop and a WebGL
+           * canvas, and a throw inside `useFrame` would otherwise take the hub
+           * down with it rather than just the game.
+           */
+          <ErrorBoundary
+            key="games"
+            resetKey={activeRoom.id}
+            fallback={(_error, reset) => (
+              <StageFailed
+                title="The game hit a problem"
+                onRetry={reset}
+                onClose={() => setActivity(null)}
+              />
+            )}
+          >
+            <GamesStage
+              roomId={activeRoom.id}
+              selfId={user?.id}
+              members={party.map((member) => ({
+                id: member.id,
+                name: member.name,
+                you: member.you,
+              }))}
+              origin={gamesOrigin}
+              onClose={() => setActivity(null)}
+              insetRight={inset}
+              panelOpen={sideOpen}
+              unread={chat.unread}
+              onTogglePanel={() => setSideOpen((open) => !open)}
+            />
+          </ErrorBoundary>
+        )}
+
+        {/* Code is still a stub, and says so rather than miming. */}
+        {activity && activity !== 'watch' && activity !== 'music' && activity !== 'games' && (
           <ActivityStage id={activity} onClose={() => setActivity(null)} />
         )}
       </AnimatePresence>
