@@ -141,6 +141,33 @@ export function YouTubePlayer({
                   /* Only when this player is the room's — a paused, inactive
                      player reaching its end must not advance the queue. */
                   if (data === YT.PlayerState.ENDED && activeRef.current) endedRef.current()
+
+                  /*
+                   * An inactive player that reports itself playing is put back
+                   * down, every time it says so.
+                   *
+                   * Switching to a server video pauses this one exactly once,
+                   * on the transition. But a pause that lands while the SDK is
+                   * still buffering is dropped — YouTube finishes the load it
+                   * already had in flight and starts playing anyway, and since
+                   * `active` does not change again, nothing ever pauses it a
+                   * second time. The result is a hidden iframe playing audio
+                   * underneath the video that replaced it, for the rest of the
+                   * session. It needs a slow connection to happen, which is
+                   * why it survived: on a fast one the buffer is over before
+                   * anyone can pick the next thing.
+                   *
+                   * Muting as well as pausing is the belt to that braces —
+                   * mute takes effect immediately and is not refused mid-load,
+                   * so even a pause that loses the race is silent.
+                   */
+                  if (
+                    !activeRef.current &&
+                    (data === YT.PlayerState.PLAYING || data === YT.PlayerState.BUFFERING)
+                  ) {
+                    player.current?.mute()
+                    player.current?.pauseVideo()
+                  }
                 } catch {
                   /* As above. */
                 }
@@ -210,6 +237,10 @@ export function YouTubePlayer({
     if (!ready || !player.current) return
     if (!active) {
       try {
+        /* Muted before it is paused, and deliberately in that order: mute
+           takes effect on a player that is still loading, where pause does
+           not. See the note in `onStateChange`. */
+        player.current.mute()
         player.current.pauseVideo()
       } catch {
         /* Already gone. */
@@ -218,6 +249,15 @@ export function YouTubePlayer({
     }
 
     const instance = player.current
+    /* Back on screen, so undo the mute the inactive branch applied. Safe to
+       do unconditionally: nothing in the room's controls can mute YouTube —
+       the handle below exposes no volume — so the only mute it can ever be
+       clearing is that one. */
+    try {
+      instance.unMute()
+    } catch {
+      /* Already gone. */
+    }
     const handle: PlayerHandle = {
       play: () => instance.playVideo(),
       pause: () => instance.pauseVideo(),
