@@ -158,7 +158,25 @@ export function attachPresenceGateway(httpServer: HttpServer) {
     socket.on('presence:character', (raw: unknown) => {
       const roomId = roomIdFrom(raw)
       if (!roomId) return
-      character = characterIdFrom(raw)
+
+      /*
+       * An absent id means "I don't know yet", never "take my character away".
+       *
+       * The client computes this from the signed-in user, so it is briefly
+       * undefined on a remount or while the session is re-fetched. Writing
+       * that through replaced a character somebody had chosen with nothing at
+       * all, and because every other client falls back to an id-derived
+       * character when presence carries none, the room would suddenly draw
+       * them as someone else entirely — the wrong avatar, on everyone else's
+       * screen but their own, until they changed it again.
+       *
+       * There is no way to be wearing no character, so there is nothing this
+       * could legitimately be clearing.
+       */
+      const announced = characterIdFrom(raw)
+      if (!announced) return
+
+      character = announced
       if (setCharacter(roomId, socket.id, character)) broadcast(roomId)
     })
 

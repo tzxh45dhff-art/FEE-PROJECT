@@ -58,7 +58,7 @@ export function DashboardPage() {
   const { user } = useAuth()
   const { phase } = useEntrance()
   const { rooms, loading, error, create, join, setOnline } = useRooms()
-  const { preferences, update } = usePreferences()
+  const { preferences, update } = usePreferences(user?.id)
   const tilt = usePointerTilt()
 
   /*

@@ -97,6 +97,31 @@ free_ngrok() {
   fi
 }
 
+# A watcher stuck this early has nothing bound yet, so `free_port` cannot see
+# it — this is what let one sit there silently starving every later `tsx`
+# invocation of whatever it was contending over, with the backend hanging on
+# startup printing nothing at all. Matched on the absolute path into *this*
+# project's `node_modules`, not a bare "tsx watch", so it can never reach into
+# an unrelated project running the same command elsewhere on the machine.
+free_stale_watchers() {
+  local pattern="$ROOT/server/node_modules/.bin/tsx watch src/server.ts"
+  local pids
+  pids="$(pgrep -f "$pattern" 2>/dev/null)"
+  [ -z "$pids" ] && return 0
+
+  echo "Clearing $(echo "$pids" | wc -l | tr -d ' ') stale backend watcher(s) from earlier runs..."
+  # shellcheck disable=SC2086
+  kill $pids 2>/dev/null
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 0.3
+    pgrep -f "$pattern" >/dev/null 2>&1 || return 0
+  done
+  pids="$(pgrep -f "$pattern" 2>/dev/null)"
+  # shellcheck disable=SC2086
+  [ -n "$pids" ] && kill -9 $pids 2>/dev/null
+}
+
+free_stale_watchers
 free_port
 free_ngrok
 
