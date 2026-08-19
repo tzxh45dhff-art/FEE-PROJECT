@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { useAuth } from '@/features/auth/AuthContext'
 import { AuthForm } from '@/features/auth/components/AuthForm'
-import { GlassBackdrop } from '@/features/landing/components/GlassBackdrop'
+import { StoneBackdrop } from '@/features/landing/components/StoneBackdrop'
 import { useEntrance } from '@/features/transition/EntranceContext'
 
 /**
@@ -15,7 +15,7 @@ import { useEntrance } from '@/features/transition/EntranceContext'
 function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <GlassBackdrop className="pointer-events-none fixed inset-0 -z-10" />
+      <StoneBackdrop className="pointer-events-none fixed inset-0 -z-10" />
       <main className="relative grid min-h-svh place-items-center px-6 py-32">{children}</main>
     </>
   )
