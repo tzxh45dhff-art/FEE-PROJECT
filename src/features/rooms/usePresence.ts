@@ -37,9 +37,17 @@ export function usePresence(
   const characterRef = useRef(characterId)
   characterRef.current = characterId
 
-  /** Announce a change of character to every room you're standing in. */
+  /**
+   * Announce a change of character to every room you're standing in.
+   *
+   * Silent until there is something to say. This is derived from the signed-in
+   * user, so it is undefined on the first render and again whenever the
+   * session is re-read — and an announcement carrying nothing is not a
+   * different character, it is an absence of information. The server now
+   * ignores those, but not sending them is what keeps the two ends honest.
+   */
   useEffect(() => {
-    if (!key) return
+    if (!key || !characterId) return
     const connection = getSocket()
     for (const roomId of key.split(',')) {
       connection.emit('presence:character', { roomId, characterId })
