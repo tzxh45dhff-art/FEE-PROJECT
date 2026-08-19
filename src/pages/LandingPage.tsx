@@ -6,14 +6,14 @@ import { ActivityBeats } from '@/features/landing/components/ActivityBeats'
 import { HowItWorks } from '@/features/landing/components/HowItWorks'
 import { Questions } from '@/features/landing/components/Questions'
 import { RoomHero } from '@/features/landing/components/RoomHero'
-import { GlassBackdrop } from '@/features/landing/components/GlassBackdrop'
+import { StoneBackdrop } from '@/features/landing/components/StoneBackdrop'
 import { ClosingInvite, TogetherProof } from '@/features/landing/components/TogetherProof'
 import { InTheRoom, UnderTheHood } from '@/features/landing/components/UnderTheHood'
 
 /**
  * The landing page.
  *
- * Everything sits on one moving sheet of dark glass, and the sections travel
+ * Everything sits on one unbroken face of dark stone, and the sections travel
  * over it. There is no progress rail: the page is short enough to read and a
  * second, permanent indicator of how far down you are was chrome competing
  * with the content it was measuring.
@@ -53,11 +53,13 @@ export function LandingPage() {
       </a>
 
       {/*
-        The silk sits behind everything below the hero, fixed, so the sections
-        slide over a surface that is itself slowly moving. Pinned rather than
-        repeated per section: one context for the page, not one per panel.
+        Fixed behind everything, so the sections slide across one continuous
+        surface rather than each carrying its own patch of it. Pinned rather
+        than repeated per section: one WebGL context for the page, not one per
+        panel — and being fixed is also what keeps the stone still while the
+        content moves over it, which is what makes it read as a wall.
       */}
-      <GlassBackdrop className="pointer-events-none fixed inset-0 -z-10" />
+      <StoneBackdrop className="pointer-events-none fixed inset-0 -z-10" />
 
       <main className="relative">
         <RoomHero />
