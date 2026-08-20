@@ -15,8 +15,8 @@ import { useEntrance } from '@/features/transition/EntranceContext'
 function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <StoneBackdrop className="pointer-events-none fixed inset-0 -z-10" />
-      <main className="relative grid min-h-svh place-items-center px-6 py-32">{children}</main>
+      <StoneBackdrop className="pointer-events-none fixed inset-0 z-0" />
+      <main className="relative z-10 grid min-h-svh place-items-center px-6 py-32">{children}</main>
     </>
   )
 }
