@@ -59,9 +59,9 @@ export function LandingPage() {
         panel — and being fixed is also what keeps the stone still while the
         content moves over it, which is what makes it read as a wall.
       */}
-      <StoneBackdrop className="pointer-events-none fixed inset-0 -z-10" />
+      <StoneBackdrop className="pointer-events-none fixed inset-0 z-0" />
 
-      <main className="relative">
+      <main className="stone-type relative z-10">
         <RoomHero />
         <ActivityBeats />
         <HowItWorks />

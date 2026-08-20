@@ -1045,28 +1045,53 @@ body::-webkit-scrollbar {
  */
 @utility float-panel {
   /*
-   * Frosted, not tinted-dark.
+   * A polished slab set against a rough wall.
    *
-   * The backdrop now has spheres with coloured rims drifting behind this, and
-   * an almost-opaque panel wastes them — the whole point of glass is that you
-   * can see something is back there without being able to read it. So the fill
-   * is light and the blur does the work of making the text legible, rather
-   * than the other way round.
+   * The backdrop is stone now, and the pleasure of the pairing is the contrast
+   * of materials: something smooth, cool and man-made resting on something
+   * coarse and not. So this is no longer tuned to let colour through — there
+   * is no colour behind it to save — it is tuned to be visibly a different
+   * substance from the surface it sits on.
    *
-   * `saturate` above 1 matters more than it looks: blurring alone washes the
-   * colour out of what is behind, and pushing saturation back up is what keeps
-   * an iridescent edge readable as colour through 30px of frost.
+   * The blur is the load-bearing part. Grain read through it goes soft while
+   * the panel's own edge stays sharp, and that difference alone is what tells
+   * the eye one thing is in front of the other. Saturation is left near
+   * neutral, because pushing it on a grey wall only makes the frost look dirty.
    */
   background:
-    linear-gradient(200deg, rgb(255 255 255 / 0.10), rgb(255 255 255 / 0.02) 46%),
-    rgb(8 8 11 / 0.42);
-  backdrop-filter: blur(30px) saturate(165%);
-  -webkit-backdrop-filter: blur(30px) saturate(165%);
-  border: 1px solid rgb(255 255 255 / 0.13);
+    linear-gradient(198deg, rgb(255 255 255 / 0.075), rgb(255 255 255 / 0.012) 52%),
+    rgb(9 9 12 / 0.66);
+  backdrop-filter: blur(22px) saturate(105%);
+  -webkit-backdrop-filter: blur(22px) saturate(105%);
+  border: 1px solid rgb(255 255 255 / 0.11);
   box-shadow:
-    /* The lit near edge of a sheet of glass, and a fainter far one. */
-    inset 0 1px 0 0 rgb(255 255 255 / 0.22),
-    inset 0 -1px 0 0 rgb(255 255 255 / 0.05),
-    0 2px 10px -2px rgb(0 0 0 / 0.55),
-    0 50px 110px -36px rgb(0 0 0 / 0.9);
+    /* The lit near edge of the slab, and a fainter far one. */
+    inset 0 1px 0 0 rgb(255 255 255 / 0.16),
+    inset 0 -1px 0 0 rgb(255 255 255 / 0.04),
+    /*
+     * A tight contact shadow, then a wide one. The tight shadow is what makes
+     * it look placed against the wall rather than hovering in front of it —
+     * without it a panel on a textured ground reads as a cut-out.
+     */
+    0 1px 2px 0 rgb(0 0 0 / 0.6),
+    0 10px 24px -8px rgb(0 0 0 / 0.7),
+    0 44px 90px -40px rgb(0 0 0 / 0.85);
 }
+
+@utility stone-type {
+  /*
+   * Type set on a rough wall.
+   *
+   * A pale fleck landing under a letter costs it its edge, and at body size
+   * that is the difference between reading and squinting. A short, dark shadow
+   * gives every glyph its own ground without announcing itself as a shadow —
+   * the wide second one lifts the whole block a little off the grain.
+   *
+   * Inherited deliberately, so a section gets it once rather than every
+   * heading and paragraph opting in and one of them being forgotten.
+   */
+  text-shadow:
+    0 1px 2px rgb(0 0 0 / 0.7),
+    0 2px 18px rgb(0 0 0 / 0.55);
+}
+

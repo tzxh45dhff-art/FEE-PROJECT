@@ -45,7 +45,7 @@ export function StoneBackdrop({ className }: { className?: string }) {
              * point; shrinking it turns the flecks into noise.
              */
             backgroundSize: '520px 520px',
-            opacity: 0.9,
+            opacity: 0.72,
           }}
         />
       )}
@@ -58,7 +58,7 @@ export function StoneBackdrop({ className }: { className?: string }) {
         className="absolute inset-0"
         style={{
           background:
-            'radial-gradient(120% 90% at 30% 20%, transparent 0%, transparent 42%, rgb(0 0 0 / 0.55) 100%)',
+            'radial-gradient(120% 90% at 30% 20%, transparent 0%, transparent 38%, rgb(0 0 0 / 0.62) 100%)',
         }}
       />
     </div>
