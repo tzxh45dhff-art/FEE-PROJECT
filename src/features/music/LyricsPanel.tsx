@@ -112,11 +112,17 @@ export function LyricsPanel({
 
   if (lyrics.kind === 'plain') {
     return (
-      <div className="relative min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-3xl bg-white/[0.035] ring-1 ring-inset ring-white/[0.07] backdrop-blur-2xl backdrop-saturate-150">
         <div
           ref={scroller}
-          className="h-full overflow-y-auto overscroll-contain px-6 py-8 sm:px-10"
-          style={{ WebkitOverflowScrolling: 'touch' }}
+          className="scrollbar-none h-full overflow-y-auto overscroll-contain px-6 py-10 sm:px-10"
+          style={{
+            WebkitOverflowScrolling: 'touch',
+            maskImage:
+              'linear-gradient(to bottom, transparent 0, #000 7%, #000 93%, transparent 100%)',
+            WebkitMaskImage:
+              'linear-gradient(to bottom, transparent 0, #000 7%, #000 93%, transparent 100%)',
+          }}
         >
           <p className="mx-auto max-w-xl whitespace-pre-wrap text-[1.05rem] leading-[1.9] text-chalk/80">
             {lyrics.plain}
@@ -131,10 +137,18 @@ export function LyricsPanel({
   }
 
   return (
-    <div className="relative min-h-0 flex-1">
+    <div
+      className={cn(
+        'relative min-h-0 flex-1 overflow-hidden rounded-3xl',
+        /* Glass rather than a panel. The record behind it carries the colour
+           of the sleeve, and letting that through is what keeps this reading
+           as part of the page instead of a card dropped on top of it. */
+        'bg-white/[0.035] ring-1 ring-inset ring-white/[0.07] backdrop-blur-2xl backdrop-saturate-150',
+      )}
+    >
       <div
         ref={scroller}
-        className="h-full overflow-y-auto overscroll-contain px-6 sm:px-10"
+        className="scrollbar-none h-full overflow-y-auto overscroll-contain px-6 sm:px-10"
         /*
          * Air above and below, so the first and last lines can still reach the
          * middle of the view.
@@ -143,9 +157,23 @@ export function LyricsPanel({
          * the containing block's *width*, so on a wide screen this became a
          * padding taller than the panel and the scroll broke outright.
          */
-        style={{ paddingBlock: '38vh', WebkitOverflowScrolling: 'touch' }}
+        style={{
+          paddingBlock: '38vh',
+          WebkitOverflowScrolling: 'touch',
+          /*
+           * The fade is a mask on the text itself, not a gradient laid over
+           * it. Overlays have to be painted in some colour, and any colour
+           * that is not exactly what is behind them draws two hard edges
+           * across the view — which is precisely what made this read as a
+           * box pasted onto the page. A mask has no colour to get wrong.
+           */
+          maskImage:
+            'linear-gradient(to bottom, transparent 0, #000 11%, #000 89%, transparent 100%)',
+          WebkitMaskImage:
+            'linear-gradient(to bottom, transparent 0, #000 11%, #000 89%, transparent 100%)',
+        }}
       >
-        <div className="mx-auto max-w-xl">
+        <div className="mx-auto max-w-2xl">
           {lyrics.lines.map((line, at) => {
             const current = at === index
             const past = at < index
@@ -185,14 +213,19 @@ export function LyricsPanel({
                 onClick={() => onSeek(line.at)}
                 aria-current={current ? 'true' : undefined}
                 className={cn(
-                  'block w-full py-2 text-left font-display font-semibold tracking-[-0.01em]',
-                  'rounded-lg outline-none transition-all duration-500 ease-glass',
+                  'block w-full py-2.5 text-left font-display font-semibold tracking-[-0.015em]',
+                  'rounded-xl outline-none transition-all duration-500 ease-glass',
                   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
                   current
-                    ? 'text-[1.5rem] leading-tight text-chalk sm:text-[1.75rem]'
+                    ? 'text-[1.4rem] leading-[1.25] text-chalk sm:text-[1.6rem]'
                     : cn(
-                        'text-[1.15rem] leading-snug sm:text-[1.35rem] hover:text-chalk/70',
-                        past ? 'text-chalk/25' : 'text-chalk/40',
+                        /* A small step down rather than a large one. The eye
+                           finds the sung line by its brightness; making it
+                           much bigger as well shoves every other line a few
+                           pixels sideways on every change, which is what
+                           turns following along into a flicker. */
+                        'text-[1.2rem] leading-[1.35] sm:text-[1.4rem] hover:text-chalk/65',
+                        past ? 'text-chalk/22' : 'text-chalk/38',
                       ),
                 )}
               >
@@ -202,11 +235,6 @@ export function LyricsPanel({
           })}
         </div>
       </div>
-
-      {/* Fades rather than hard edges, so lines arrive and leave instead of
-          being clipped at the boundary. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-void to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-void to-transparent" />
 
       {held && (
         <button
