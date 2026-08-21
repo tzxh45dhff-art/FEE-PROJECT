@@ -103,3 +103,13 @@ export const SESSION_TTL = '30d'
 
 export const ROOM_TYPES = ['friends', 'couple', 'study', 'family', 'team'] as const
 export type RoomType = (typeof ROOM_TYPES)[number]
+
+/**
+ * Who can find a room, and who can walk in.
+ *
+ * `open` is listed on Discover and anyone signed in may join. `private` is
+ * listed to nobody and the code is the only way in — holding it is the
+ * permission, the same as an invite link.
+ */
+export const ROOM_VISIBILITIES = ['open', 'private'] as const
+export type RoomVisibility = (typeof ROOM_VISIBILITIES)[number]

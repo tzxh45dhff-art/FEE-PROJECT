@@ -3,7 +3,7 @@ import { readFile, writeFile, mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { publicUrl, r2Enabled, uploadDirectory } from './r2.service.js'
+import { deletePrefix, publicUrl, r2Enabled, uploadDirectory } from './r2.service.js'
 import { extractSubtitles, probe, toHls } from './transcode.service.js'
 import { UPLOAD_DIR } from './upload.service.js'
 
@@ -59,6 +59,30 @@ async function record(entry: PublishedEntry) {
   const index = await readPublished()
   index[entry.file] = entry
   await writeFile(indexPath(), JSON.stringify(index, null, 2))
+}
+
+/**
+ * Unpublish a file: its segments off the bucket, its entry out of the index.
+ *
+ * Bucket first, index second. If the bucket call fails the entry stays, and
+ * the next attempt tries again — which is recoverable. Dropping the entry
+ * first and then failing would strand a few thousand objects with nothing left
+ * that knows their prefix, and storage is the one thing R2 charges for.
+ *
+ * A file that was never published is not an error here; there is simply
+ * nothing to undo.
+ */
+export async function unpublish(file: string) {
+  const index = await readPublished()
+  const entry = index[file]
+  if (!entry) return { removed: 0, wasPublished: false }
+
+  const removed = r2Enabled() ? await deletePrefix(entry.keyPrefix) : 0
+
+  delete index[file]
+  await writeFile(indexPath(), JSON.stringify(index, null, 2))
+
+  return { removed, wasPublished: true }
 }
 
 /** What has already been published for a given file, if anything. */

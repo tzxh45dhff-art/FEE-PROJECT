@@ -1,4 +1,4 @@
-import { Clapperboard, ListPlus, Play } from 'lucide-react'
+import { Clapperboard, ListPlus, Play, Trash2 } from 'lucide-react'
 
 import { formatTime } from '@/features/watch/types'
 import { cn } from '@/lib/utils'
@@ -31,6 +31,7 @@ export function PosterCard({
   playing,
   onPlay,
   onQueue,
+  onDelete,
 }: {
   item: Playable
   current?: boolean
@@ -38,6 +39,8 @@ export function PosterCard({
   onPlay: () => void
   /** Absent where queueing without playing makes no sense. */
   onQueue?: () => void
+  /** Only for things that live on this server — nothing else is ours to delete. */
+  onDelete?: () => void
 }) {
   const disabled = item.playable === false
 
@@ -120,6 +123,23 @@ export function PosterCard({
             className="grid size-7 shrink-0 place-items-center rounded-full text-dusk opacity-0 outline-none transition-all duration-200 hover:text-chalk focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal group-hover/card:opacity-100"
           >
             <ListPlus aria-hidden className="size-3.5" />
+          </button>
+        )}
+
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label={`Delete ${item.title} from the server`}
+            /*
+             * Visible on touch, revealed on hover with a pointer.
+             * `group-hover` is a mouse idea — a phone has no hover state, so
+             * a control that only appears on it is a control a phone can
+             * never reach.
+             */
+            className="grid size-8 shrink-0 place-items-center rounded-full text-dusk outline-none transition-all duration-200 hover:bg-rose-500/15 hover:text-rose-300 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:size-7 sm:opacity-0 sm:group-hover/card:opacity-100"
+          >
+            <Trash2 aria-hidden className="size-3.5" />
           </button>
         )}
       </div>

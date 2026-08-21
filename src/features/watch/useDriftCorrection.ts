@@ -133,6 +133,24 @@ export function useDriftCorrection({
     }
 
     const tick = () => {
+      /*
+       * The player is stopped even though the room says it is running.
+       *
+       * They can disagree: fullscreen on a phone hands the video to the OS
+       * player and its pause button never reaches this app, autoplay can be
+       * refused, a headphone click can stop it. While that is true, every
+       * correction seeks a stopped video — which does not catch anything up,
+       * it just paints the frame at the new position, so a paused film appears
+       * to creep forward a frame at a time.
+       *
+       * Standing down here rather than trying to fix it: whatever put the
+       * player and the room out of step is the thing that should resolve it.
+       */
+      if (handle.isPaused()) {
+        restoreRate()
+        return
+      }
+
       if (handle.isBuffering()) {
         /* Not drift — just slow. Stand the rate back up so a nudge does not
            ride out through the stall, and wait. */

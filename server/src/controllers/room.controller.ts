@@ -1,13 +1,18 @@
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
-import { ROOM_TYPES } from '../config/env.js'
+import { ROOM_TYPES, ROOM_VISIBILITIES } from '../config/env.js'
 import * as roomService from '../services/room.service.js'
 import { HttpError } from '../utils/HttpError.js'
 
 const newRoom = z.object({
   name: z.string().trim().min(1, 'Give the room a name').max(48),
   type: z.enum(ROOM_TYPES, { errorMap: () => ({ message: 'Pick a room type' }) }),
+  /* Defaulted rather than required, so an older client that does not send it
+     still creates the closed kind instead of failing or falling open. */
+  visibility: z
+    .enum(ROOM_VISIBILITIES, { errorMap: () => ({ message: 'Pick who can join' }) })
+    .default('private'),
 })
 
 export async function list(req: Request, res: Response) {

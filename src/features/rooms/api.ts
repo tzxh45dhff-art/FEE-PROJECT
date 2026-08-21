@@ -8,11 +8,15 @@ export type RoomMember = {
   lastSeen: string
 }
 
+export type RoomVisibility = 'open' | 'private'
+
 export type Room = {
   id: string
   slug: string
   name: string
   type: string
+  /** `open` is listed on Discover; `private` is reachable only by its code. */
+  visibility: RoomVisibility
   createdAt: string
   ownerId: string
   members: RoomMember[]
@@ -24,7 +28,7 @@ export function fetchRooms() {
   return api.get<{ rooms: Room[] }>('/rooms').then((r) => r.rooms)
 }
 
-export function createRoom(input: { name: string; type: string }) {
+export function createRoom(input: { name: string; type: string; visibility: RoomVisibility }) {
   return api.post<{ room: Room }>('/rooms', input).then((r) => r.room)
 }
 
@@ -37,6 +41,7 @@ export type DiscoverableRoom = {
   slug: string
   name: string
   type: string
+  visibility: RoomVisibility
   createdAt: string
   memberCount: number
   onlineCount: number

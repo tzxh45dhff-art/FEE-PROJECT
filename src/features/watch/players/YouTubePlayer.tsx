@@ -266,6 +266,9 @@ export function YouTubePlayer({
       getPosition: () => instance.getCurrentTime() || 0,
       getDuration: () => instance.getDuration() || 0,
       isBuffering: () => buffering.current,
+      /* 2 is PAUSED in the iframe API's state enum. Read live rather than
+         tracked, so a pause from YouTube's own controls counts too. */
+      isPaused: () => instance.getPlayerState?.() === 2,
       /* YouTube only accepts its own rate list, so drift is corrected by
          seeking rather than by nudging the speed. */
       supportsFineRate: false,

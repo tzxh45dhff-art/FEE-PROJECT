@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Clapperboard, FolderOpen, ListVideo, Loader2, Search, Upload } from 'lucide-react'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@/components/ui/button'
 import * as watchApi from '@/features/watch/api'
 import { PosterCard, PosterGrid } from '@/features/watch/PosterCard'
 import type { LibraryEntry, QueueItem, SearchResult } from '@/features/watch/types'
@@ -61,6 +62,9 @@ export function WatchBrowser({
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[] | null>(null)
   const [library, setLibrary] = useState<LibraryEntry[] | null>(null)
+  /** Which file is being asked about, so the confirm is inline rather than a window.confirm. */
+  const [pendingDelete, setPendingDelete] = useState<LibraryEntry | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<number | null>(null)
@@ -85,6 +89,39 @@ export function WatchBrowser({
       )
       .finally(() => setBusy(false))
   }, [view, roomId])
+
+  /*
+   * Asking, not doing.
+   *
+   * This removes the file and everything published from it, and there is no
+   * undo behind it — so the click opens a question rather than performing the
+   * deletion. Inline rather than `window.confirm`, which cannot say which file
+   * or that the streamed copy goes with it, and which some mobile browsers
+   * suppress outright.
+   */
+  const removeFile = useCallback((entry: LibraryEntry) => {
+    setError(null)
+    setPendingDelete(entry)
+  }, [])
+
+  const confirmDelete = useCallback(async () => {
+    const entry = pendingDelete
+    if (!entry || deleting) return
+
+    setDeleting(true)
+    setError(null)
+    try {
+      await watchApi.deleteFromLibrary(roomId, entry.file)
+      /* Dropped locally rather than refetched: the answer is already known,
+         and a round trip here would blank the grid for a moment. */
+      setLibrary((current) => current?.filter((item) => item.file !== entry.file) ?? null)
+      setPendingDelete(null)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not delete that file')
+    } finally {
+      setDeleting(false)
+    }
+  }, [pendingDelete, deleting, roomId])
 
   const add = useCallback(
     async (item: Parameters<typeof watchApi.addToQueue>[1], playNow: boolean) => {
@@ -151,7 +188,7 @@ export function WatchBrowser({
   const heading = useMemo(() => NAV.find((entry) => entry.id === view)!, [view])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col">
       <input
         ref={filePicker}
         type="file"
@@ -388,6 +425,7 @@ export function WatchBrowser({
                                   false,
                                 )
                               }
+                              onDelete={() => void removeFile(entry)}
                             />
                           ))}
                         </PosterGrid>
@@ -435,6 +473,63 @@ export function WatchBrowser({
           </AnimatePresence>
         </div>
       </div>
+
+      <AnimatePresence>
+        {pendingDelete && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="absolute inset-0 z-50 grid place-items-center bg-void/70 p-5 backdrop-blur-sm"
+            onClick={() => !deleting && setPendingDelete(null)}
+          >
+            <motion.div
+              role="alertdialog"
+              aria-modal="true"
+              aria-label={`Delete ${pendingDelete.title}`}
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(event) => event.stopPropagation()}
+              className="w-full max-w-sm rounded-2xl border border-white/12 bg-[rgb(16_16_20/0.97)] p-5 shadow-[0_30px_80px_-24px_rgb(0_0_0/0.9)]"
+            >
+              <h3 className="font-display text-[1.02rem] font-semibold tracking-[-0.015em] text-chalk">
+                Delete this from the server?
+              </h3>
+              <p className="mt-2 break-words text-[0.85rem] leading-relaxed text-mist">
+                <span className="text-chalk">{pendingDelete.title}</span> will be removed from the
+                uploads folder
+                {pendingDelete.hls ? ', along with the streamed copy on the CDN' : ''}. This cannot
+                be undone.
+              </p>
+
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  flat
+                  onClick={() => setPendingDelete(null)}
+                  disabled={deleting}
+                >
+                  Keep it
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  flat
+                  onClick={() => void confirmDelete()}
+                  disabled={deleting}
+                  className="border-rose-400/40 text-rose-200 hover:border-rose-400/70 hover:text-rose-100"
+                >
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

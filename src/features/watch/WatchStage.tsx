@@ -62,6 +62,13 @@ export function WatchStage({
   )
 
   const [handle, setHandle] = useState<PlayerHandle | null>(null)
+
+  /* Read through refs by the player-intent callback below, so it can stay a
+     stable function while still seeing the current room and player. */
+  const snapshotRef = useRef(snapshot)
+  snapshotRef.current = snapshot
+  const handleRef = useRef(handle)
+  handleRef.current = handle
   const [queueOpen, setQueueOpen] = useState(false)
   const [canSearch, setCanSearch] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -368,6 +375,39 @@ export function WatchStage({
   const playNow = useCallback((next: QueueItem) => send('watch:load', { itemId: next.id }), [send])
 
   /*
+   * The player was played or paused by something outside this app.
+   *
+   * Fullscreen on a phone hands the video to the OS player, whose pause button
+   * — like the lock screen's, and a headphone click — reaches the element
+   * directly. Treated as a control the room issued, so pausing there pauses it
+   * for everybody, exactly as the app's own button does.
+   *
+   * Ignored when it merely agrees with the room, which is the common case: the
+   * element fires `pause` when *we* pause it, and echoing that back would send
+   * a second command for every one the room already made.
+   */
+  const onPlayerIntent = useCallback(
+    (playing: boolean) => {
+      const room = snapshotRef.current
+      if (!room || room.playing === playing) return
+      /* An ended film pauses itself. That is `watch:ended`'s business, and
+         reporting it here as a pause would fight the advance to the next
+         thing in the queue. */
+      if (handleRef.current?.getDuration() && !playing) {
+        const handle = handleRef.current
+        const duration = handle.getDuration()
+        if (duration > 0 && handle.getPosition() >= duration - 0.5) return
+      }
+
+      send('watch:control', {
+        action: playing ? 'play' : 'pause',
+        position: handleRef.current?.getPosition(),
+      })
+    },
+    [send],
+  )
+
+  /*
    * Choosing something should play it.
    *
    * Identified by id, never by position. The add is REST and the room's queue
@@ -480,6 +520,7 @@ export function WatchStage({
                 onEnded={onEnded}
                 onError={setError}
                 onAudioTracksChanged={syncAudioTracks}
+                onIntentChanged={onPlayerIntent}
               />
             )}
 

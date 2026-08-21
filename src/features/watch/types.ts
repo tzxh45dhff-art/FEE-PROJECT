@@ -110,6 +110,15 @@ export type PlayerHandle = {
    */
   isBuffering: () => boolean
   /**
+   * True when the player itself is stopped, whatever the room believes.
+   *
+   * The two can disagree — the OS player's pause button in fullscreen, a
+   * blocked autoplay, a headphone click — and while they do, correcting drift
+   * means seeking a stopped video, which paints a new still frame per attempt
+   * instead of catching anything up.
+   */
+  isPaused: () => boolean
+  /**
    * Whether arbitrary playback rates are honoured. HTML5 video can be nudged
    * to 1.03 to soak up small drift; YouTube only accepts a fixed set, so it
    * has to correct by seeking instead.

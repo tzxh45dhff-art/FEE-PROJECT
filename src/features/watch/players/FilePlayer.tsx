@@ -38,6 +38,7 @@ export function FilePlayer({
   onEnded,
   onError,
   onAudioTracksChanged,
+  onIntentChanged,
 }: {
   src: string
   startAt: number
@@ -53,6 +54,19 @@ export function FilePlayer({
    * this is only the doorbell telling the caller to go read it again.
    */
   onAudioTracksChanged?: () => void
+  /**
+   * The player was played or paused by something that is not us.
+   *
+   * On a phone, fullscreen hands the video to the operating system's own
+   * player, and its pause button talks straight to the element — as do the
+   * lock screen, the headphone button, and CarPlay. None of that goes through
+   * this app's controls, so without this the room never hears about it: it
+   * goes on believing the film is running, its clock keeps advancing, and the
+   * drift correction starts seeking a stopped video to catch it up. Each seek
+   * paints one new frame, which is what a paused film creeping forward every
+   * few seconds actually is.
+   */
+  onIntentChanged?: (playing: boolean) => void
 }) {
   const video = useRef<HTMLVideoElement>(null)
   const buffering = useRef(false)
@@ -70,6 +84,9 @@ export function FilePlayer({
      re-renders — attaching HLS twice tears down playback mid-frame. */
   const onErrorRef = useRef(onError)
   onErrorRef.current = onError
+  /* Through a ref so the element's handlers never need re-binding. */
+  const onIntentRef = useRef(onIntentChanged)
+  onIntentRef.current = onIntentChanged
   const onTracksRef = useRef(onAudioTracksChanged)
   onTracksRef.current = onAudioTracksChanged
 
@@ -276,6 +293,7 @@ export function FilePlayer({
       getPosition: () => element.currentTime || 0,
       getDuration: () => (Number.isFinite(element.duration) ? element.duration : 0),
       isBuffering: () => buffering.current,
+      isPaused: () => element.paused,
       supportsFineRate: true,
       getAudioTracks,
       getAudioTrack,
@@ -314,6 +332,13 @@ export function FilePlayer({
         if (video.current && startRef.current > 1) video.current.currentTime = startRef.current
         setReady(true)
       }}
+      /*
+       * Reported for any pause, ours included — the room is keyed on intent
+       * and re-broadcasting a pause it already knows about is a no-op, where
+       * missing one is the bug above.
+       */
+      onPause={() => onIntentRef.current?.(false)}
+      onPlay={() => onIntentRef.current?.(true)}
       onWaiting={() => {
         buffering.current = true
       }}

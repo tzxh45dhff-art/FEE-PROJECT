@@ -31,6 +31,17 @@ model Room {
   name      String
   /// friends | couple | study | family | team — see ROOM_TYPES on the client
   type      String
+  /// open | private.
+  ///
+  /// `open` is listed on Discover and anyone signed in may walk in. `private`
+  /// is not listed anywhere and the code is the only way in, which is the
+  /// same model as an invite link.
+  ///
+  /// Defaults to private, including for every room that already existed. The
+  /// safe direction for a default is the closed one: a room that should have
+  /// been listed and is not is a moment's confusion, where a room that should
+  /// have been shut and was listed to everybody is the actual harm.
+  visibility String       @default("private")
   createdAt DateTime     @default(now())
 
   ownerId   String

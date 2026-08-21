@@ -26,6 +26,8 @@ roomRoutes.get('/:id/watch/search', asyncHandler(watchController.search))
 roomRoutes.post('/:id/watch/resolve', asyncHandler(watchController.resolve))
 roomRoutes.post('/:id/watch/upload', receiveVideo, asyncHandler(watchController.upload))
 roomRoutes.get('/:id/watch/library', asyncHandler(watchController.library))
+/* Encoded, because a film's name is arbitrary — spaces, brackets, dots. */
+roomRoutes.delete('/:id/watch/library/:file', asyncHandler(watchController.removeFromLibrary))
 roomRoutes.get('/:id/watch/queue', asyncHandler(watchController.queue))
 roomRoutes.post('/:id/watch/queue', asyncHandler(watchController.add))
 roomRoutes.post('/:id/watch/queue/reorder', asyncHandler(watchController.reorder))
