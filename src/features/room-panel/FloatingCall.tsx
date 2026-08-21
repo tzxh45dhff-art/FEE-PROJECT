@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Maximize2, MicOff, Minimize2, VideoOff, WifiOff, X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -10,6 +11,14 @@ import { cn } from '@/lib/utils'
  * watching one of them — during a film, a game, or with the panel shut
  * entirely — so it lives above the whole screen rather than inside any one
  * activity, and it is the only piece of call UI that outlives the panel.
+ *
+ * Rendered into `document.body` rather than in place. The dashboard's root is
+ * an animated element with `overflow: hidden`, and an ancestor carrying a
+ * transform becomes the containing block for anything `fixed` inside it — so
+ * left where it is declared, this window would be positioned against that
+ * element and clipped by it rather than floating over the whole app. A portal
+ * takes it out of that entirely, which is what makes "above everything, in
+ * every section" a structural guarantee instead of a coincidence of z-index.
  *
  * Dragging is written straight to the element's transform rather than through
  * state. A pointermove fires far more often than React can usefully re-render,
@@ -210,7 +219,7 @@ export function FloatingCall({
 
   const live = stream && !cameraOff && !failed
 
-  return (
+  return createPortal(
     <div
       ref={shell}
       role="dialog"
@@ -291,6 +300,7 @@ export function FloatingCall({
           <VideoOff aria-label="Camera off" className="size-3 shrink-0 text-mist" />
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
