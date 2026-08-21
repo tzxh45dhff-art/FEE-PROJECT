@@ -12,19 +12,22 @@ export function Footer() {
   return (
     <footer className="relative z-10 border-t border-white/[0.06] bg-abyss px-6 py-12 md:px-10">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-8 md:flex-row md:justify-between md:gap-6">
-        <a href="#top" className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
+        <a href="#top" className="flex min-h-11 items-center gap-2.5 transition-opacity hover:opacity-80 sm:min-h-0">
           <Logo />
           <span className="font-display text-[0.95rem] font-semibold tracking-[-0.02em] text-chalk">
             SyncRoom
           </span>
         </a>
 
-        <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-x-7 gap-y-3">
+        <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-x-7 gap-y-1 sm:gap-y-3">
           {FOOTER_LINKS.map((link) => (
             <a
               key={link.label}
               href={link.href}
-              className="rounded-sm text-sm text-mist transition-colors hover:text-chalk"
+              /* Padded to a thumb-sized row on a phone and back to plain
+                 text once there is a cursor — the link was a 20px-tall strip,
+                 which is a miss as often as a hit. */
+              className="flex min-h-11 items-center rounded-sm text-sm text-mist transition-colors hover:text-chalk sm:min-h-0"
             >
               {link.label}
             </a>

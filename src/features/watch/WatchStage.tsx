@@ -623,7 +623,7 @@ export function WatchStage({
                   aria-label="Chat and call"
                   aria-pressed={panelOpen}
                   className={cn(
-                    'relative flex h-10 items-center gap-2 rounded-full border px-3.5 outline-none transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
+                    'relative flex h-11 items-center gap-2 rounded-full border px-3.5 outline-none transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:h-10',
                     panelOpen
                       ? 'border-signal/50 bg-signal/15 text-chalk'
                       : 'border-white/15 bg-white/[0.05] text-chalk backdrop-blur-md hover:border-white/30 hover:bg-white/[0.1]',

@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { DockNav } from '@/components/layout/DockNav'
 import { Logo } from '@/components/layout/Logo'
+import { MobileNav } from '@/components/layout/MobileNav'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthContext'
 import { useEntrance } from '@/features/transition/EntranceContext'
@@ -82,7 +83,7 @@ export function Header() {
     <header className="pointer-events-none fixed inset-x-0 top-0 z-[130] flex justify-center px-4 pt-4 md:pt-5">
       <motion.div
         className={cn(
-          'pointer-events-auto relative flex items-center gap-3 overflow-hidden rounded-full border border-white/10 sm:gap-6',
+          'pointer-events-auto relative flex items-center gap-2 overflow-hidden rounded-full border border-white/10 min-[380px]:gap-3 sm:gap-6',
           /* Off the landing page the bar is always solid; on it the fill fades
              in with scroll, so it is barely there over the hero and fully
              readable once page content is running underneath. */
@@ -121,13 +122,21 @@ export function Header() {
 
         <Link
           to={user ? '/dashboard' : '/'}
-          className="flex shrink-0 items-center gap-2.5 rounded-full transition-opacity hover:opacity-80"
+          className="flex min-h-11 shrink-0 items-center gap-2.5 rounded-full transition-opacity hover:opacity-80 sm:min-h-0"
         >
           <Logo />
-          <span className="font-display text-[1.02rem] font-semibold tracking-[-0.02em] text-chalk">
+          {/* The mark alone on the narrowest phones. With the menu trigger and
+              both auth buttons in the same row, the wordmark is what pushes
+              "Sign up" off the edge — and the mark still identifies the site. */}
+          <span className="hidden font-display text-[1.02rem] font-semibold tracking-[-0.02em] text-chalk min-[380px]:inline">
             SyncRoom
           </span>
         </Link>
+
+        {/* Same links, the other half of the breakpoint — the dock is
+            pointer-driven and hides below `md`, so without this the landing
+            page's own sections had no route on a phone. */}
+        <MobileNav links={links} />
 
         {links.length > 0 && (
           <DockNav

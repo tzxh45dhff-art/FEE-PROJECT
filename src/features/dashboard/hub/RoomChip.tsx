@@ -28,8 +28,17 @@ export function RoomChip({ room }: { room: Room }) {
   }
 
   return (
-    <div className="glass-pill-ink pointer-events-auto flex items-center gap-4 rounded-full py-2 pl-4 pr-2">
-      <span className="flex items-center gap-2.5">
+    /*
+     * Bounded to the viewport, and tighter on a phone.
+     *
+     * The room name and the slug are both arbitrary-length strings, so at a
+     * natural width this chip simply grew past a narrow screen and took the
+     * copy button off the edge with it — the one control that carries the
+     * room's whole social mechanic. Capping the chip and letting both strings
+     * truncate keeps the button on screen at any name length.
+     */
+    <div className="glass-pill-ink pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-2.5 rounded-full py-2 pl-3 pr-2 sm:max-w-none sm:gap-4 sm:pl-4">
+      <span className="flex min-w-0 flex-1 items-center gap-2.5 sm:flex-none">
         <span
           aria-hidden
           className="size-2.5 shrink-0 rounded-full"
@@ -45,12 +54,12 @@ export function RoomChip({ room }: { room: Room }) {
         </span>
       </span>
 
-      <span aria-hidden className="h-8 w-px bg-white/10" />
+      <span aria-hidden className="h-8 w-px shrink-0 bg-white/10" />
 
       <button
         type="button"
         onClick={copy}
-        className="flex items-center gap-2 rounded-full px-3 py-2 text-left outline-none transition-colors duration-300 hover:bg-white/[0.07] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+        className="flex min-w-0 shrink items-center gap-2 rounded-full px-2 py-2 text-left outline-none transition-colors duration-300 hover:bg-white/[0.07] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:shrink-0 sm:px-3"
       >
         <span className="min-w-0">
           <span className="block text-[0.62rem] uppercase tracking-[0.18em] text-dusk">

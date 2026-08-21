@@ -31,11 +31,21 @@ const buttonVariants = cva(
           'text-mist [--wash:rgb(255_255_255/0.09)] hover:text-chalk active:scale-[0.98]',
         link: 'h-auto overflow-visible rounded-none px-0 text-mist underline-offset-4 hover:text-chalk hover:underline',
       },
+      /*
+       * Touch first, then tighten.
+       *
+       * A 36px control is comfortable with a cursor and marginal with a
+       * thumb — below the 44px both Apple and Google put the floor at, and
+       * the small sizes are exactly the ones that end up in dense bars where
+       * a miss is most annoying. So the compact sizes are full-height on a
+       * phone and shrink at `sm`, rather than being small everywhere and
+       * hardest to hit where hitting them is hardest.
+       */
       size: {
-        sm: 'h-9 px-4 text-sm [&_svg]:size-4',
-        md: 'h-11 px-6 text-[0.95rem] [&_svg]:size-4',
+        sm: 'h-11 px-4 text-sm sm:h-9 [&_svg]:size-4',
+        md: 'h-12 px-6 text-[0.95rem] sm:h-11 [&_svg]:size-4',
         lg: 'h-14 px-8 text-base tracking-[-0.01em] [&_svg]:size-5',
-        icon: 'size-10 [&_svg]:size-4',
+        icon: 'size-11 sm:size-10 [&_svg]:size-4',
       },
     },
     defaultVariants: {

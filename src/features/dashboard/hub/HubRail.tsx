@@ -51,7 +51,14 @@ export function HubRail({
          * cap is loosened a little there and the labels below are allowed to
          * wrap rather than truncate, which is what actually buys the room.
          */
-        'pointer-events-auto absolute top-1/2 z-20 flex w-[15.5rem] max-w-[46vw] flex-col gap-2.5',
+        /*
+         * Lower on a phone. Centred vertically the two rails meet in the
+         * middle of the screen, which on a narrow one is exactly where the
+         * character's head and chest are — the thing the hub is built to
+         * show. Dropping them towards the legs keeps the figure readable
+         * without moving the controls out of thumb reach.
+         */
+        'pointer-events-auto absolute top-[62%] z-20 flex w-[15.5rem] max-w-[46vw] flex-col gap-2.5 sm:top-1/2',
         'sm:max-w-[42vw] sm:gap-3',
         'transition-[right] duration-500 ease-glass',
         side === 'left' ? 'left-4 md:left-8' : 'items-end',
