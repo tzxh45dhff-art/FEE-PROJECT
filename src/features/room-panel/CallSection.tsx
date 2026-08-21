@@ -49,7 +49,18 @@ function ControlButton({
  * are small and two-up. The point is seeing that people are there, not filling
  * the screen with faces — anyone who wants that has the watch stage.
  */
-export function CallSection({ call, selfName }: { call: Call; selfName: string }) {
+export function CallSection({
+  call,
+  selfName,
+  poppedOut,
+  onPopOut,
+}: {
+  call: Call
+  selfName: string
+  /** Socket id of the face in the floating window, or 'self'. */
+  poppedOut: string | null
+  onPopOut: (who: string | null) => void
+}) {
   const joining = call.status === 'requesting'
   const live = call.status === 'live'
 
@@ -106,6 +117,8 @@ export function CallSection({ call, selfName }: { call: Call; selfName: string }
           muted={call.muted}
           cameraOff={call.cameraOff || !call.hasCamera}
           isSelf
+          poppedOut={poppedOut === 'self'}
+          onPopOut={() => onPopOut('self')}
         />
         {call.peers.map((peer) => (
           <CallTile
@@ -115,6 +128,8 @@ export function CallSection({ call, selfName }: { call: Call; selfName: string }
             muted={peer.muted}
             cameraOff={peer.cameraOff}
             failed={peer.failed}
+            poppedOut={poppedOut === peer.socketId}
+            onPopOut={() => onPopOut(peer.socketId)}
           />
         ))}
       </div>

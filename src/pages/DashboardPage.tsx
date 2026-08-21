@@ -24,6 +24,7 @@ import { MusicStage } from '@/features/music/MusicStage'
 import { CallInvite } from '@/features/room-panel/CallInvite'
 import { RoomPanel, PANEL_WIDTH_REM } from '@/features/room-panel/RoomPanel'
 import { useChat } from '@/features/room-panel/useChat'
+import { FloatingCall } from '@/features/room-panel/FloatingCall'
 import { useMeshCall } from '@/features/room-panel/useMeshCall'
 import { useWatchPulse } from '@/features/watch/useWatchPulse'
 import { WatchInvite } from '@/features/watch/WatchInvite'
@@ -157,6 +158,59 @@ export function DashboardPage() {
    */
   const chat = useChat(activeRoomId)
   const call = useMeshCall(activeRoomId)
+
+  /*
+   * Which face is floating over the screen, by socket id — or 'self'.
+   *
+   * Held here rather than in the panel because the whole point of it is to
+   * outlive the panel: you pop somebody out so you can shut the panel and
+   * still see them while a film is on.
+   */
+  const [poppedOut, setPoppedOut] = useState<string | null>(null)
+
+  /*
+   * The floating face has to be a face that is still there.
+   *
+   * Peers leave, connections drop, the call ends, and the room changes — each
+   * of which can strand a window showing a stream that will never produce
+   * another frame. Cleared here rather than in each of those paths, so a new
+   * way to leave cannot forget to do it.
+   */
+  const floating = useMemo(() => {
+    if (!poppedOut) return null
+    if (poppedOut === 'self') {
+      return {
+        stream: call.localStream,
+        name: user?.name ?? 'You',
+        muted: call.muted,
+        cameraOff: call.cameraOff || !call.hasCamera,
+        failed: false,
+        isSelf: true,
+      }
+    }
+    const peer = call.peers.find((entry) => entry.socketId === poppedOut)
+    if (!peer) return null
+    return {
+      stream: peer.stream,
+      name: peer.name,
+      muted: peer.muted,
+      cameraOff: peer.cameraOff,
+      failed: peer.failed,
+      isSelf: false,
+    }
+  }, [
+    poppedOut,
+    call.localStream,
+    call.peers,
+    call.muted,
+    call.cameraOff,
+    call.hasCamera,
+    user?.name,
+  ])
+
+  useEffect(() => {
+    if (poppedOut && (call.status !== 'live' || !floating)) setPoppedOut(null)
+  }, [poppedOut, call.status, floating])
 
   /* Nothing to talk to once you have left. */
   useEffect(() => {
@@ -582,12 +636,26 @@ export function DashboardPage() {
             key="room-panel"
             chat={chat}
             call={call}
+            poppedOut={poppedOut}
+            onPopOut={(who) => setPoppedOut((current) => (current === who ? null : who))}
             selfId={user?.id}
             selfName={user?.name ?? 'You'}
             onClose={() => setSideOpen(false)}
           />
         )}
       </AnimatePresence>
+
+      {call.status === 'live' && floating && (
+        <FloatingCall
+          stream={floating.stream}
+          name={floating.name}
+          muted={floating.muted}
+          cameraOff={floating.cameraOff}
+          failed={floating.failed}
+          isSelf={floating.isSelf}
+          onClose={() => setPoppedOut(null)}
+        />
+      )}
 
       <AnimatePresence>
         {panel === 'rooms' && (

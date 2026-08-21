@@ -24,12 +24,16 @@ const EASE = [0.16, 1, 0.3, 1] as const
 export function RoomPanel({
   chat,
   call,
+  poppedOut,
+  onPopOut,
   selfId,
   selfName,
   onClose,
 }: {
   chat: ReturnType<typeof useChat>
   call: ReturnType<typeof useMeshCall>
+  poppedOut: string | null
+  onPopOut: (who: string | null) => void
   selfId: string | undefined
   selfName: string
   onClose: () => void
@@ -68,7 +72,12 @@ export function RoomPanel({
         </button>
       </header>
 
-      <CallSection call={call} selfName={selfName} />
+      <CallSection
+        call={call}
+        selfName={selfName}
+        poppedOut={poppedOut}
+        onPopOut={onPopOut}
+      />
 
       <ChatSection
         messages={chat.messages}
