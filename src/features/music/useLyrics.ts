@@ -14,16 +14,22 @@ import type { Lyrics, Track } from '@/features/music/types'
  * A track that has been skipped past is not worth waiting for, so an in-flight
  * lookup is abandoned when the track changes.
  */
-export function useLyrics(roomId: string | null, track: Track | null, active: boolean) {
+export function useLyrics(roomId: string | null, track: Track | null) {
   const [lyrics, setLyrics] = useState<Lyrics | null>(null)
   const [loading, setLoading] = useState(false)
 
   const key = track ? `${track.id}` : null
 
   useEffect(() => {
-    /* Nothing is fetched until the view is actually open. The panel is a
-       deliberate act, and a room that never opens it should never ask. */
-    if (!roomId || !track || !active) {
+    /*
+     * Fetched for whatever is playing, whether or not the view is open.
+     *
+     * The button that opens it is only offered when there is something behind
+     * it, and there is no way to know that without asking — a button that
+     * leads to "no lyrics" half the time is worse than no button. The server
+     * caches, so a room of six asks once and a re-listen asks nothing.
+     */
+    if (!roomId || !track) {
       setLyrics(null)
       setLoading(false)
       return
@@ -51,9 +57,13 @@ export function useLyrics(roomId: string | null, track: Track | null, active: bo
     return () => controller.abort()
     /* `track` itself is deliberately not a dependency — see the note above. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, key, active])
+  }, [roomId, key])
 
-  return { lyrics, loading }
+  /* Whether there is anything worth opening. Null while the answer is still
+     unknown, so the button can stay away rather than flicker in and out. */
+  const available = lyrics === null ? null : lyrics.kind !== 'none'
+
+  return { lyrics, loading, available }
 }
 
 /**

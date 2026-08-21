@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { ChevronDown, Heart, Mic, Quote } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ChevronDown, Heart, MessagesSquare, Mic, Quote } from 'lucide-react'
 
 import { CoverHeading } from '@/features/music/CoverHeading'
 import { LyricsPanel } from '@/features/music/LyricsPanel'
@@ -31,6 +31,9 @@ export function NowPlaying({
   onCollapse,
   onOpenQueue,
   queueOpen,
+  panelOpen = false,
+  onTogglePanel,
+  unread = 0,
 }: {
   palette: CoverPalette | null
   /** So the avatar strip can leave you out of it. */
@@ -40,6 +43,9 @@ export function NowPlaying({
   onCollapse: () => void
   onOpenQueue: () => void
   queueOpen: boolean
+  panelOpen?: boolean
+  onTogglePanel?: () => void
+  unread?: number
 }) {
   const {
     snapshot,
@@ -66,11 +72,18 @@ export function NowPlaying({
    * one person wanted to read along.
    */
   const [showLyrics, setShowLyrics] = useState(false)
-  const { lyrics, loading: lyricsLoading } = useLyrics(
-    snapshot?.roomId ?? null,
-    track,
-    showLyrics,
-  )
+  const { lyrics, loading: lyricsLoading, available } = useLyrics(snapshot?.roomId ?? null, track)
+
+  /*
+   * A track with no words puts the record back in the middle.
+   *
+   * Left open, the next song in the queue would land on an empty column with
+   * the record shoved to one side for nothing — the layout would be paying
+   * for a panel with nothing in it.
+   */
+  useEffect(() => {
+    if (available === false) setShowLyrics(false)
+  }, [available])
 
   const { read } = useAudioAnalyser({
     source: analyserSource,
@@ -142,6 +155,9 @@ export function NowPlaying({
           <Heart aria-hidden className={cn('size-4', liked && 'fill-current')} />
         </button>
 
+        {/* Offered only once the lookup has found something. A button that
+            leads to "no lyrics" half the time is worse than no button. */}
+        {available && (
         <button
           type="button"
           onClick={() => setShowLyrics((open) => !open)}
@@ -157,16 +173,48 @@ export function NowPlaying({
         >
           <Quote aria-hidden className="size-4" />
         </button>
+        )}
+
+        {/* The record view draws its own header over the stage's, so the way
+            back to the room has to be repeated here or it disappears for as
+            long as somebody is looking at the record. */}
+        {onTogglePanel && (
+          <button
+            type="button"
+            onClick={onTogglePanel}
+            aria-pressed={panelOpen}
+            aria-label="Chat"
+            className={cn(
+              'relative grid size-9 shrink-0 place-items-center rounded-full outline-none transition-colors duration-300',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
+              panelOpen
+                ? 'bg-signal/15 text-chalk ring-1 ring-inset ring-signal/50'
+                : 'bg-white/[0.06] text-mist ring-1 ring-inset ring-white/10 hover:bg-white/[0.12] hover:text-chalk',
+            )}
+          >
+            <MessagesSquare aria-hidden className="size-4" />
+            {unread > 0 && !panelOpen && (
+              <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-signal px-1 text-[0.6rem] font-semibold leading-4 text-white">
+                {unread > 9 ? '9+' : unread}
+              </span>
+            )}
+          </button>
+        )}
       </header>
 
-      {showLyrics ? (
-        <LyricsPanel
-          lyrics={lyrics}
-          loading={lyricsLoading}
-          onSeek={(seconds) => send('music:control', { action: 'seek', position: seconds })}
-        />
-      ) : (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-6 pb-6">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:items-stretch lg:gap-8 lg:px-8">
+        {/* The record. Narrows and moves left to make room for the words on a
+            wide screen; on a narrow one the words take the whole column
+            instead, because two of these side by side would leave neither
+            readable. */}
+        <div
+          className={cn(
+            'flex min-h-0 flex-col items-center justify-center gap-8 px-6',
+            showLyrics
+              ? 'hidden lg:flex lg:w-[44%] lg:shrink-0 lg:px-0'
+              : 'flex-1',
+          )}
+        >
         {/* The record is the subject of this screen, so it takes as much of it
             as the shortest edge allows rather than a fixed size. */}
         <Vinyl
@@ -221,8 +269,18 @@ export function NowPlaying({
             </div>
           )}
         </div>
+        </div>
+
+        {showLyrics && (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <LyricsPanel
+              lyrics={lyrics}
+              loading={lyricsLoading}
+              onSeek={(seconds) => send('music:control', { action: 'seek', position: seconds })}
+            />
+          </div>
+        )}
       </div>
-      )}
 
       <div className="flex shrink-0 flex-col items-center gap-4 px-6 pb-6">
         {(error ?? singalong.error) && (

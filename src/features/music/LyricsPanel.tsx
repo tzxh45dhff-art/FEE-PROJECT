@@ -113,7 +113,11 @@ export function LyricsPanel({
   if (lyrics.kind === 'plain') {
     return (
       <div className="relative min-h-0 flex-1">
-        <div ref={scroller} className="h-full overflow-y-auto px-6 py-8 sm:px-10">
+        <div
+          ref={scroller}
+          className="h-full overflow-y-auto overscroll-contain px-6 py-8 sm:px-10"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
           <p className="mx-auto max-w-xl whitespace-pre-wrap text-[1.05rem] leading-[1.9] text-chalk/80">
             {lyrics.plain}
           </p>
@@ -130,10 +134,16 @@ export function LyricsPanel({
     <div className="relative min-h-0 flex-1">
       <div
         ref={scroller}
-        className="h-full overflow-y-auto px-6 sm:px-10"
-        /* Half a screen of air top and bottom, so the first and last lines can
-           still reach the middle. */
-        style={{ paddingBlock: '45%' }}
+        className="h-full overflow-y-auto overscroll-contain px-6 sm:px-10"
+        /*
+         * Air above and below, so the first and last lines can still reach the
+         * middle of the view.
+         *
+         * Viewport units, not a percentage: percentage padding resolves against
+         * the containing block's *width*, so on a wide screen this became a
+         * padding taller than the panel and the scroll broke outright.
+         */
+        style={{ paddingBlock: '38vh', WebkitOverflowScrolling: 'touch' }}
       >
         <div className="mx-auto max-w-xl">
           {lyrics.lines.map((line, at) => {

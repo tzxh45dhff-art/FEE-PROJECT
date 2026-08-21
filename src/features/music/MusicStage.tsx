@@ -379,6 +379,9 @@ export function MusicStage({
                 onCollapse={() => setExpanded(false)}
                 onOpenQueue={() => setQueueOpen((open) => !open)}
                 queueOpen={queueOpen}
+                panelOpen={panelOpen}
+                onTogglePanel={onTogglePanel}
+                unread={unread}
               />
             </div>
           </motion.div>
