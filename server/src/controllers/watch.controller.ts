@@ -1,13 +1,20 @@
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { iceConfig } from '../services/turn.service.js'
-import { publishInBackground, readPublished } from '../services/publish.service.js'
+import {
+  isPublishing,
+  publishInBackground,
+  readPublished,
+  unpublish,
+} from '../services/publish.service.js'
 import {
   discardUpload,
   finishUpload,
   listLibrary,
+  UPLOAD_DIR,
   UPLOAD_ROUTE,
 } from '../services/upload.service.js'
 
@@ -146,6 +153,39 @@ export async function library(req: Request, res: Response) {
       }
     }),
   })
+}
+
+/**
+ * Remove a film from the server: the file, its published segments, its entry.
+ *
+ * All three, because any one left behind is a different kind of wrong. The
+ * file alone leaves a few thousand R2 objects nothing points at; the index
+ * entry alone leaves the library offering something that will not play.
+ *
+ * The name is matched against what the folder actually holds rather than
+ * being joined onto a path. A request is a string from outside, and the only
+ * safe way to turn one into a filesystem path is to refuse to build a path at
+ * all until it has been found in a listing that was made here.
+ */
+export async function removeFromLibrary(req: Request, res: Response) {
+  await gate(req)
+
+  const requested = String(req.params.file ?? '')
+  const items = await listLibrary()
+  const match = items.find((item) => item.file === requested)
+  if (!match) throw HttpError.notFound('No such file on the server')
+
+  /* Publishing reads the source and writes thousands of objects under a
+     prefix this would be deleting from — let it finish rather than racing it
+     into a half-published state nothing can clean up. */
+  if (isPublishing(match.file)) {
+    throw HttpError.badRequest('That one is still being published. Try again once it finishes.')
+  }
+
+  const { removed, wasPublished } = await unpublish(match.file)
+  await rm(path.join(UPLOAD_DIR, match.file), { force: true })
+
+  res.json({ file: match.file, wasPublished, objectsRemoved: removed })
 }
 
 export async function queue(req: Request, res: Response) {

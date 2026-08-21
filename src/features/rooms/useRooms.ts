@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import * as roomsApi from '@/features/rooms/api'
-import type { Room } from '@/features/rooms/api'
+import type { Room, RoomVisibility } from '@/features/rooms/api'
 
 /**
  * The caller's rooms, plus a `create` that folds the new room into the list
@@ -27,11 +27,13 @@ export function useRooms() {
     void load()
   }, [load])
 
-  const create = useCallback(async (input: { name: string; type: string }) => {
-    const room = await roomsApi.createRoom(input)
-    setRooms((current) => [room, ...current])
-    return room
-  }, [])
+  const create = useCallback(async (input: { name: string; type: string; visibility: RoomVisibility }) => {
+      const room = await roomsApi.createRoom(input)
+      setRooms((current) => [room, ...current])
+      return room
+    },
+    [],
+  )
 
   /** Join by shared code. Replaces the room if you were already a member. */
   const join = useCallback(async (code: string) => {

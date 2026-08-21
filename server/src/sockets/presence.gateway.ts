@@ -35,6 +35,10 @@ function roomIdFrom(raw: unknown): string | null {
   return typeof value === 'string' ? value : null
 }
 
+/* Namespaced so a watch channel can never collide with a real room id. */
+const WATCH_PREFIX = 'watch:'
+const watchChannel = (roomId: string) => `${WATCH_PREFIX}${roomId}`
+
 function characterIdFrom(raw: unknown): string | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
   const value = (raw as { characterId?: unknown }).characterId
@@ -84,8 +88,16 @@ export function attachPresenceGateway(httpServer: HttpServer) {
   io.on('connection', (socket) => {
     const self = state.get(socket)!
 
+    /*
+     * To the people standing in the room, and to anyone merely watching it.
+     *
+     * `to().to()` unions the two and socket.io de-duplicates, so a socket in
+     * both — which is every member who has the room open — still receives one
+     * copy.
+     */
     const broadcast = (roomId: string) => {
-      io.to(roomId).emit('presence:update', { roomId, present: presenceFor(roomId) })
+      const present = presenceFor(roomId)
+      io.to(roomId).to(watchChannel(roomId)).emit('presence:update', { roomId, present })
     }
 
     /*
@@ -153,6 +165,46 @@ export function attachPresenceGateway(httpServer: HttpServer) {
       character = characterIdFrom(raw) ?? character
       desired.set(roomId, true)
       void reconcile(roomId)
+    })
+
+    /*
+     * Watching a room without being in it.
+     *
+     * The room list needs live counts for every room you belong to, and the
+     * obvious way to get them — joining them all — is exactly wrong: the join
+     * is what puts you in the presence map, so anyone with the dashboard open
+     * would appear to be standing in every room at once.
+     *
+     * So this subscribes to the updates and nothing else. No `addPresence`,
+     * which means a watcher is counted by nobody, including themselves.
+     * Membership is still required: the counts are a fact about a room you
+     * belong to, not a public one.
+     */
+    socket.on('presence:watch', (raw: unknown) => {
+      const ids = (raw as { roomIds?: unknown })?.roomIds
+      if (!Array.isArray(ids)) return
+
+      void (async () => {
+        /* Leave whatever was being watched before, so a stale list does not
+           keep delivering updates for rooms this socket has moved on from. */
+        for (const room of socket.rooms) {
+          if (room.startsWith(WATCH_PREFIX)) socket.leave(room)
+        }
+
+        for (const value of ids.slice(0, 60)) {
+          if (typeof value !== 'string') continue
+          try {
+            await assertMembership(self.userId, value)
+          } catch {
+            continue
+          }
+          socket.join(watchChannel(value))
+          /* Answer immediately rather than waiting for the next change —
+             otherwise a room that nobody touches reads as empty until
+             somebody happens to move. */
+          socket.emit('presence:update', { roomId: value, present: presenceFor(value) })
+        }
+      })()
     })
 
     socket.on('presence:character', (raw: unknown) => {

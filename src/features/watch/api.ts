@@ -147,3 +147,15 @@ export function clearQueue(roomId: string) {
     return response.items
   })
 }
+
+/**
+ * Delete a film from the server — the file, its published segments, its entry.
+ *
+ * The name is encoded because a film's filename is arbitrary: spaces,
+ * brackets, ampersands and dots all turn up in the ones people actually have.
+ */
+export function deleteFromLibrary(roomId: string, file: string) {
+  return api.del<{ file: string; wasPublished: boolean; objectsRemoved: number }>(
+    `/rooms/${roomId}/watch/library/${encodeURIComponent(file)}`,
+  )
+}

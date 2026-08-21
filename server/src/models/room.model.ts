@@ -15,6 +15,8 @@ export type RoomWithMembers = {
   slug: string
   name: string
   type: string
+  /** open | private — see ROOM_VISIBILITIES. */
+  visibility: string
   createdAt: Date
   ownerId: string
   members: {
@@ -28,6 +30,7 @@ export type RoomWithMembers = {
 export function createRoom(data: {
   name: string
   type: string
+  visibility: string
   slug: string
   ownerId: string
 }): Promise<RoomWithMembers> {
@@ -66,8 +69,19 @@ export async function findRoomsForUser(userId: string): Promise<RoomWithMembers[
  * Newest first and capped, because this is a browse list rather than a search —
  * an unbounded query here would grow into the slowest request in the app.
  */
-export function findAllRooms(limit = 60): Promise<RoomWithMembers[]> {
+/**
+ * The rooms a given person may see on Discover.
+ *
+ * Open rooms, plus any private one they are already in — a room you belong to
+ * should not vanish from your own listing because it is unlisted to everyone
+ * else. Filtered in the query rather than after it, so a private room's name
+ * never leaves the database on a request that had no business seeing it.
+ */
+export function findDiscoverableRooms(userId: string, limit = 60): Promise<RoomWithMembers[]> {
   return prisma.room.findMany({
+    where: {
+      OR: [{ visibility: 'open' }, { members: { some: { userId } } }],
+    },
     orderBy: { createdAt: 'desc' },
     take: limit,
     include: { members: memberSelect },

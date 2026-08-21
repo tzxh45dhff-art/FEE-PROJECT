@@ -1,4 +1,4 @@
-import type { RoomType } from '../config/env.js'
+import type { RoomType, RoomVisibility } from '../config/env.js'
 import * as roomModel from '../models/room.model.js'
 import type { RoomWithMembers } from '../models/room.model.js'
 import { HttpError } from '../utils/HttpError.js'
@@ -12,6 +12,7 @@ export function serialiseRoom(room: RoomWithMembers) {
     slug: room.slug,
     name: room.name,
     type: room.type,
+    visibility: room.visibility,
     createdAt: room.createdAt,
     ownerId: room.ownerId,
     members: room.members.map((member) => ({
@@ -39,13 +40,14 @@ export async function listRooms(userId: string) {
  * people who have actually joined.
  */
 export async function discoverRooms(userId: string) {
-  const rooms = await roomModel.findAllRooms()
+  const rooms = await roomModel.findDiscoverableRooms(userId)
 
   return rooms.map((room) => ({
     id: room.id,
     slug: room.slug,
     name: room.name,
     type: room.type,
+    visibility: room.visibility,
     createdAt: room.createdAt,
     memberCount: room.members.length,
     onlineCount: presenceFor(room.id).length,
@@ -53,10 +55,14 @@ export async function discoverRooms(userId: string) {
   }))
 }
 
-export async function createRoom(userId: string, input: { name: string; type: RoomType }) {
+export async function createRoom(
+  userId: string,
+  input: { name: string; type: RoomType; visibility: RoomVisibility },
+) {
   const room = await roomModel.createRoom({
     name: input.name,
     type: input.type,
+    visibility: input.visibility,
     slug: slugify(input.name),
     ownerId: userId,
   })
@@ -74,9 +80,23 @@ export async function getRoom(userId: string, roomId: string) {
   return serialiseRoom(room)
 }
 
+/**
+ * Walk into a room found on Discover.
+ *
+ * Gated on the room being open, which it previously was not: any signed-in
+ * person holding an id could join anything, and ids are handed out by the
+ * discover listing itself. A private room is reachable only through its code,
+ * where holding the code is the permission.
+ *
+ * Reported as "not found" rather than "forbidden" on purpose — the id of a
+ * private room should not be confirmable by probing this route.
+ */
 export async function joinRoom(userId: string, roomId: string) {
   const room = await roomModel.findRoomById(roomId)
   if (!room) throw HttpError.notFound('Room not found')
+
+  const isMember = room.members.some((member) => member.user.id === userId)
+  if (room.visibility !== 'open' && !isMember) throw HttpError.notFound('Room not found')
 
   await roomModel.joinRoom(userId, roomId)
 

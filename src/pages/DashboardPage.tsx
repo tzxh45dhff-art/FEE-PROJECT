@@ -31,6 +31,7 @@ import { GamesStage } from '@/features/games/GamesStage'
 import { WatchStage } from '@/features/watch/WatchStage'
 import { CreateRoomForm } from '@/features/dashboard/components/CreateRoomForm'
 import { usePresence, type Present } from '@/features/rooms/usePresence'
+import { usePresenceWatch } from '@/features/rooms/usePresenceWatch'
 import { useRooms } from '@/features/rooms/useRooms'
 import { useEntrance } from '@/features/transition/EntranceContext'
 import { usePointerTilt } from '@/hooks/usePointerTilt'
@@ -202,6 +203,15 @@ export function DashboardPage() {
   const myCharacter = user ? characterFor(user.id, preferences.characterId)?.id : undefined
 
   usePresence(presenceRooms, handlePresence, myCharacter)
+
+  /*
+   * Every room you belong to, watched read-only, so the list is right before
+   * you walk into any of them. Previously these counts came from the one REST
+   * fetch on load and went stale the moment anybody moved — which is why a
+   * room with someone already in it looked empty until you joined it.
+   */
+  const watchedRooms = useMemo(() => rooms.map((room) => room.id).sort(), [rooms])
+  usePresenceWatch(watchedRooms, handlePresence)
 
   /* Leaving stops the updates, so the last-known list would otherwise stick
      around and keep showing a live count for a room you walked out of. */

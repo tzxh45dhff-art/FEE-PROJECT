@@ -1,7 +1,13 @@
 import { createReadStream } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { S3Client, PutBucketCorsCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import {
+  S3Client,
+  DeleteObjectsCommand,
+  ListObjectsV2Command,
+  PutBucketCorsCommand,
+  PutObjectCommand,
+} from '@aws-sdk/client-s3'
 import { Upload } from '@aws-sdk/lib-storage'
 
 import { env } from '../config/env.js'
@@ -224,4 +230,50 @@ export async function verifyAccess() {
       ContentType: 'text/plain',
     }),
   )
+}
+
+/**
+ * Remove everything published under one key prefix.
+ *
+ * A film is not an object, it is a few thousand of them — the master playlist,
+ * a playlist per rendition, an init segment each, and every `.m4s` besides. So
+ * this lists and deletes rather than taking a filename, and it pages, because
+ * a feature at six seconds a segment runs well past the thousand keys a single
+ * list call returns.
+ *
+ * Deletes are batched a thousand at a time, which is the API's own ceiling.
+ * Returns how many objects actually went, so the caller can say something
+ * true rather than something hopeful.
+ */
+export async function deletePrefix(keyPrefix: string) {
+  const client = s3()
+  let removed = 0
+  let token: string | undefined
+
+  do {
+    const listed = await client.send(
+      new ListObjectsV2Command({
+        Bucket: env.r2.bucket,
+        Prefix: `${keyPrefix}/`,
+        ContinuationToken: token,
+      }),
+    )
+
+    const keys = (listed.Contents ?? []).map((object) => ({ Key: object.Key! })).filter((o) => o.Key)
+    if (keys.length > 0) {
+      await client.send(
+        new DeleteObjectsCommand({
+          Bucket: env.r2.bucket,
+          Delete: { Objects: keys, Quiet: true },
+        }),
+      )
+      removed += keys.length
+    }
+
+    /* Paging continues off the *listing*, which is why this reads the token
+       back rather than assuming one pass emptied the prefix. */
+    token = listed.IsTruncated ? listed.NextContinuationToken : undefined
+  } while (token)
+
+  return removed
 }
