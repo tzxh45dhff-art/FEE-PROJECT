@@ -60,7 +60,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path),
+  /* The signal is for reads that a fast-changing UI can outrun — lyrics for a
+     track that has already been skipped past, and the like. */
+  get: <T>(path: string, signal?: AbortSignal) => request<T>(path, { signal }),
   post: <T>(path: string, data?: unknown) =>
     request<T>(path, { method: 'POST', body: data === undefined ? undefined : JSON.stringify(data) }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),

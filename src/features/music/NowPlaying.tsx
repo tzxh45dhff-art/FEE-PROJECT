@@ -1,6 +1,9 @@
-import { ChevronDown, Heart, Mic } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, Heart, Mic, Quote } from 'lucide-react'
 
 import { CoverHeading } from '@/features/music/CoverHeading'
+import { LyricsPanel } from '@/features/music/LyricsPanel'
+import { useLyrics } from '@/features/music/useLyrics'
 import { useMusic } from '@/features/music/MusicContext'
 import { MusicControls } from '@/features/music/MusicControls'
 import type { CoverPalette } from '@/features/music/useCoverPalette'
@@ -55,6 +58,20 @@ export function NowPlaying({
   } = useMusic()
 
   const track = snapshot?.track ?? null
+
+  /*
+   * Local, not shared. Whether the words are showing is a way of looking at
+   * the song rather than a fact about it — the same as being fullscreen — and
+   * pushing it through the room would put them on everybody's screen because
+   * one person wanted to read along.
+   */
+  const [showLyrics, setShowLyrics] = useState(false)
+  const { lyrics, loading: lyricsLoading } = useLyrics(
+    snapshot?.roomId ?? null,
+    track,
+    showLyrics,
+  )
+
   const { read } = useAudioAnalyser({
     source: analyserSource,
     playing: snapshot?.playing ?? false,
@@ -124,8 +141,31 @@ export function NowPlaying({
         >
           <Heart aria-hidden className={cn('size-4', liked && 'fill-current')} />
         </button>
+
+        <button
+          type="button"
+          onClick={() => setShowLyrics((open) => !open)}
+          aria-pressed={showLyrics}
+          aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+          className={cn(
+            'grid size-9 shrink-0 place-items-center rounded-full outline-none transition-colors duration-300',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
+            showLyrics
+              ? 'bg-chalk text-void'
+              : 'bg-white/[0.06] text-mist ring-1 ring-inset ring-white/10 hover:bg-white/[0.12] hover:text-chalk',
+          )}
+        >
+          <Quote aria-hidden className="size-4" />
+        </button>
       </header>
 
+      {showLyrics ? (
+        <LyricsPanel
+          lyrics={lyrics}
+          loading={lyricsLoading}
+          onSeek={(seconds) => send('music:control', { action: 'seek', position: seconds })}
+        />
+      ) : (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-6 pb-6">
         {/* The record is the subject of this screen, so it takes as much of it
             as the shortest edge allows rather than a fixed size. */}
@@ -181,7 +221,10 @@ export function NowPlaying({
             </div>
           )}
         </div>
+      </div>
+      )}
 
+      <div className="flex shrink-0 flex-col items-center gap-4 px-6 pb-6">
         {(error ?? singalong.error) && (
           <p
             role="alert"

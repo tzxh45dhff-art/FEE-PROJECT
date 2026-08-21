@@ -4,6 +4,7 @@ import { getSocket } from '@/lib/socket'
 import type {
   AudioLibraryEntry,
   LibraryTrack,
+  Lyrics,
   LikedTrack,
   Playlist,
   QueuedTrack,
@@ -188,4 +189,22 @@ export function fetchSuggestions(roomId: string, artist?: string | null) {
   return api.get<{ history: LibraryTrack[]; more: TrackSearchResult[] }>(
     `/rooms/${roomId}/music/suggestions${query}`,
   )
+}
+
+/**
+ * Lyrics for a track.
+ *
+ * The whole track is sent rather than an id: the lyrics source knows nothing
+ * about this room's library, and matches on title, artist and length.
+ */
+export function fetchLyrics(
+  roomId: string,
+  track: { title: string; artist: string | null; album: string | null; duration: number | null },
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({ title: track.title })
+  if (track.artist) params.set('artist', track.artist)
+  if (track.album) params.set('album', track.album)
+  if (track.duration) params.set('duration', String(Math.round(track.duration)))
+  return api.get<Lyrics>(`/rooms/${roomId}/music/lyrics?${params}`, signal)
 }
