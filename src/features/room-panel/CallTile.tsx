@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { MicOff, VideoOff, WifiOff } from 'lucide-react'
+import { MicOff, PictureInPicture2, VideoOff, WifiOff } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -16,6 +16,8 @@ export function CallTile({
   cameraOff,
   failed = false,
   isSelf = false,
+  poppedOut = false,
+  onPopOut,
 }: {
   stream: MediaStream | null
   name: string
@@ -23,6 +25,9 @@ export function CallTile({
   cameraOff: boolean
   failed?: boolean
   isSelf?: boolean
+  /** This face is currently in the floating window, so the slot stands empty. */
+  poppedOut?: boolean
+  onPopOut?: () => void
 }) {
   const video = useRef<HTMLVideoElement>(null)
 
@@ -32,10 +37,10 @@ export function CallTile({
     }
   }, [stream])
 
-  const live = stream && !cameraOff && !failed
+  const live = stream && !cameraOff && !failed && !poppedOut
 
   return (
-    <div className="relative aspect-[4/3] overflow-hidden rounded-card bg-deep ring-1 ring-inset ring-white/[0.08]">
+    <div className="group/tile relative aspect-[4/3] overflow-hidden rounded-card bg-deep ring-1 ring-inset ring-white/[0.08]">
       <video
         ref={video}
         autoPlay
@@ -51,7 +56,16 @@ export function CallTile({
         )}
       />
 
-      {!live && (
+      {poppedOut && (
+        <div className="absolute inset-0 grid place-items-center bg-white/[0.03]">
+          <span className="flex flex-col items-center gap-1.5 px-2 text-center">
+            <PictureInPicture2 aria-hidden className="size-4 text-dusk" />
+            <span className="text-[0.6rem] leading-tight text-dusk">Floating</span>
+          </span>
+        </div>
+      )}
+
+      {!live && !poppedOut && (
         <div className="absolute inset-0 grid place-items-center">
           {failed ? (
             <span className="flex flex-col items-center gap-1.5 px-2 text-center">
@@ -66,6 +80,17 @@ export function CallTile({
             </span>
           )}
         </div>
+      )}
+
+      {onPopOut && !poppedOut && (
+        <button
+          type="button"
+          onClick={onPopOut}
+          aria-label={`Float ${isSelf ? 'your' : name + "'s"} video`}
+          className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-black/60 text-chalk opacity-0 backdrop-blur-sm transition-all duration-200 hover:bg-black/85 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-signal group-hover/tile:opacity-100"
+        >
+          <PictureInPicture2 aria-hidden className="size-3" />
+        </button>
       )}
 
       <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/80 to-transparent px-2 pb-1.5 pt-4">
