@@ -134,3 +134,18 @@ export function formatTime(seconds: number) {
   const mm = hours > 0 ? String(minutes).padStart(2, '0') : String(minutes)
   return `${hours > 0 ? `${hours}:` : ''}${mm}:${String(secs).padStart(2, '0')}`
 }
+
+/** One line of time-synced lyrics, stamped in seconds from the start. */
+export type LyricLine = { at: number; text: string }
+
+/**
+ * What a lyrics lookup came back with.
+ *
+ * Three outcomes rather than a nullable string, because they are three
+ * different things to show: a karaoke view, a page of words with no
+ * highlighting possible, and an honest nothing.
+ */
+export type Lyrics =
+  | { kind: 'synced'; lines: LyricLine[]; plain: string | null }
+  | { kind: 'plain'; plain: string }
+  | { kind: 'none' }

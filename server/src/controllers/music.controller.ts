@@ -3,6 +3,7 @@ import type { Request, Response } from 'express'
 import { z } from 'zod'
 
 import * as libraryModel from '../models/library.model.js'
+import { lyricsFor } from '../services/lyrics.service.js'
 import * as trackModel from '../models/track.model.js'
 import { MUSIC_SOURCES } from '../services/music.service.js'
 import { assertMembership } from '../services/room.service.js'
@@ -33,6 +34,33 @@ async function gate(req: Request) {
   const roomId = req.params.id!
   await assertMembership(req.userId!, roomId)
   return roomId
+}
+
+/**
+ * Lyrics for whatever is playing.
+ *
+ * A read, and a personal one — the room does not agree on whether the lyrics
+ * are showing any more than it agrees on who is fullscreen, so this is a plain
+ * fetch rather than anything that travels over the socket.
+ */
+export async function lyrics(req: Request, res: Response) {
+  await assertMembership(req.userId!, req.params.id!)
+
+  const title = typeof req.query.title === 'string' ? req.query.title : ''
+  if (!title.trim()) throw HttpError.badRequest('A title is needed to find lyrics')
+
+  const artist = typeof req.query.artist === 'string' ? req.query.artist : null
+  const album = typeof req.query.album === 'string' ? req.query.album : null
+  const duration = Number(req.query.duration)
+
+  res.json(
+    await lyricsFor({
+      title,
+      artist,
+      album,
+      duration: Number.isFinite(duration) && duration > 0 ? duration : null,
+    }),
+  )
 }
 
 export async function capabilities(req: Request, res: Response) {
