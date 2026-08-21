@@ -1095,3 +1095,23 @@ body::-webkit-scrollbar {
     0 2px 18px rgb(0 0 0 / 0.55);
 }
 
+
+/*
+ * Stop iOS Safari zooming when a field takes focus.
+ *
+ * Safari treats any focused input whose text is under 16px as too small to
+ * read and zooms the whole page to compensate — which throws the layout off
+ * centre mid-form and does not zoom back out on blur. The fields are sized in
+ * rem for the design, so this lifts only the rendered text, only on phones,
+ * and leaves every other screen alone.
+ *
+ * Checkboxes and radios are excluded: they have no text to read, and giving
+ * them a font-size changes how the control itself is drawn.
+ */
+@media (max-width: 639px) {
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

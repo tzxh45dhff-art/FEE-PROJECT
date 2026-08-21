@@ -44,7 +44,16 @@ export function StoneBackdrop({ className }: { className?: string }) {
              * Stretching it would smooth away the tooth that is the whole
              * point; shrinking it turns the flecks into noise.
              */
-            backgroundSize: '520px 520px',
+            /*
+             * Smaller tile on a phone.
+             * 
+             * The grain is a fixed physical size, so on a 375px screen a
+             * 520px tile shows barely one repeat and the flecks land at the
+             * same scale as the type — busy right where the text is. Scaling
+             * the tile down puts the texture back below the words instead of
+             * competing with them.
+             */
+            backgroundSize: 'clamp(300px, 60vw, 520px) auto',
             opacity: 0.72,
           }}
         />

@@ -307,7 +307,7 @@ export function MusicBrowser({
                   setOpenPlaylist(null)
                 }}
                 className={cn(
-                  'relative flex shrink-0 items-center gap-2.5 rounded-full px-3.5 py-2 text-left outline-none transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal md:rounded-xl',
+                  'relative flex min-h-11 shrink-0 items-center gap-2.5 rounded-full px-3.5 py-2 text-left outline-none transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal md:min-h-0 md:rounded-xl',
                   active ? 'text-chalk' : 'text-mist hover:text-chalk',
                 )}
               >

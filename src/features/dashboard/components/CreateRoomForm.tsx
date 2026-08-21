@@ -32,11 +32,17 @@ export function CreateRoomForm({ onCreate }: CreateRoomFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="panel rounded-card p-6 md:p-8">
-      <h3 className="font-display text-xl font-semibold tracking-[-0.02em] text-chalk">
-        Start something new
-      </h3>
-      <p className="mt-2 text-[0.9rem] leading-relaxed text-mist">
+    /*
+     * No heading and no panel of its own.
+     *
+     * This is only ever rendered inside the hub drawer, which already draws
+     * the glass, the padding, and a header carrying this exact title — so
+     * repeating them stacked the same sentence twice down the screen and put
+     * a card inside a card. Obvious on a phone, where the two sat directly on
+     * top of each other with nothing between them.
+     */
+    <form onSubmit={handleSubmit}>
+      <p className="text-[0.9rem] leading-relaxed text-mist">
         Pick a type and SyncRoom sets the mood. You can change it later.
       </p>
 

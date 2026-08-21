@@ -104,7 +104,7 @@ export function WatchControls({
           {formatTime(shown)}
         </span>
 
-        <div className="relative flex h-6 flex-1 items-center">
+        <div className="relative flex h-11 flex-1 items-center sm:h-6">
           <div className="absolute inset-x-0 h-1 overflow-hidden rounded-full bg-white/15">
             <div
               className="h-full rounded-full bg-signal transition-[width] duration-200 ease-linear"
@@ -139,7 +139,7 @@ export function WatchControls({
             /* Tabbing away mid-scrub would otherwise leave the bar following a
                drag that is no longer happening. */
             onBlur={() => setScrubbing(null)}
-            className="absolute inset-x-0 h-6 w-full cursor-pointer appearance-none bg-transparent outline-none disabled:cursor-default [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-chalk [&::-webkit-slider-thumb]:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-signal)_40%,transparent)]"
+            className="absolute inset-x-0 h-11 w-full cursor-pointer sm:h-6 appearance-none bg-transparent outline-none disabled:cursor-default [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-chalk [&::-webkit-slider-thumb]:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-signal)_40%,transparent)]"
           />
         </div>
 
@@ -168,7 +168,7 @@ export function WatchControls({
           onClick={onSkip}
           disabled={disabled || queueCount === 0}
           aria-label="Skip to next"
-          className="grid size-10 shrink-0 place-items-center rounded-full border border-white/12 bg-white/[0.05] text-chalk outline-none transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-35"
+          className="grid size-11 shrink-0 place-items-center sm:size-10 rounded-full border border-white/12 bg-white/[0.05] text-chalk outline-none transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-35"
         >
           <SkipForward aria-hidden className="size-4" />
         </button>
@@ -193,7 +193,7 @@ export function WatchControls({
               aria-label="Subtitles"
               aria-pressed={subtitleTrack >= 0}
               className={cn(
-                'grid size-10 shrink-0 place-items-center rounded-full border outline-none transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-35',
+                'grid size-11 shrink-0 place-items-center sm:size-10 rounded-full border outline-none transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-35',
                 subtitleTrack >= 0
                   ? 'border-signal/50 bg-signal/15 text-chalk'
                   : 'border-white/12 bg-white/[0.05] text-chalk hover:border-white/30 hover:bg-white/[0.1]',
@@ -249,7 +249,7 @@ export function WatchControls({
               onClick={() => setLanguageOpen((open) => !open)}
               disabled={disabled}
               aria-label="Audio language"
-              className="grid size-10 shrink-0 place-items-center rounded-full border border-white/12 bg-white/[0.05] text-chalk outline-none transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-35"
+              className="grid size-11 shrink-0 place-items-center sm:size-10 rounded-full border border-white/12 bg-white/[0.05] text-chalk outline-none transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-35"
             >
               <Languages aria-hidden className="size-4" />
             </button>
@@ -285,7 +285,7 @@ export function WatchControls({
             onClick={() => setRateOpen((open) => !open)}
             disabled={disabled}
             aria-label="Playback speed"
-            className="h-10 rounded-full border border-white/12 bg-white/[0.05] px-3.5 font-mono text-[0.78rem] text-chalk outline-none transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-35"
+            className="h-11 rounded-full border sm:h-10 border-white/12 bg-white/[0.05] px-3.5 font-mono text-[0.78rem] text-chalk outline-none transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-35"
           >
             {snapshot.rate}×
           </button>
@@ -320,7 +320,7 @@ export function WatchControls({
           aria-label="Queue"
           aria-pressed={queueOpen}
           className={cn(
-            'flex h-10 shrink-0 items-center gap-2 rounded-full border px-3.5 outline-none transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
+            'flex h-11 shrink-0 items-center gap-2 rounded-full border sm:h-10 px-3.5 outline-none transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
             queueOpen
               ? 'border-signal/50 bg-signal/15 text-chalk'
               : 'border-white/12 bg-white/[0.05] text-chalk hover:border-white/30 hover:bg-white/[0.1]',
@@ -334,7 +334,7 @@ export function WatchControls({
           type="button"
           onClick={onToggleFullscreen}
           aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-          className="grid size-10 shrink-0 place-items-center rounded-full border border-white/12 bg-white/[0.05] text-chalk outline-none transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          className="grid size-11 shrink-0 place-items-center sm:size-10 rounded-full border border-white/12 bg-white/[0.05] text-chalk outline-none transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
         >
           {isFullscreen ? (
             <Minimize aria-hidden className="size-4" />

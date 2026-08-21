@@ -194,7 +194,7 @@ export function MusicStage({
                   aria-label="Chat"
                   aria-pressed={panelOpen}
                   className={cn(
-                    'relative flex h-9 items-center gap-2 rounded-full border px-3.5 outline-none backdrop-blur-md transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
+                    'relative flex h-11 items-center gap-2 rounded-full border px-3.5 outline-none backdrop-blur-md sm:h-9 transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
                     panelOpen
                       ? 'border-signal/50 bg-signal/15 text-chalk'
                       : 'border-white/10 bg-white/[0.04] text-chalk hover:bg-white/[0.1]',
@@ -212,7 +212,7 @@ export function MusicStage({
                 type="button"
                 onClick={onClose}
                 aria-label="Leave the music"
-                className="grid size-9 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-chalk outline-none backdrop-blur-md transition-colors hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                className="grid size-11 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-chalk outline-none backdrop-blur-md sm:size-9 transition-colors hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
               >
                 <X aria-hidden className="size-4" />
               </button>
@@ -310,7 +310,7 @@ export function MusicStage({
                       onClick={() => snapshot && send('music:next', { seq: snapshot.seq })}
                       disabled={queue.length === 0}
                       aria-label="Next track"
-                      className="grid size-9 shrink-0 place-items-center rounded-full text-chalk outline-none transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-30"
+                      className="grid size-11 shrink-0 place-items-center rounded-full text-chalk outline-none transition-colors hover:bg-white/10 sm:size-9 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-30"
                     >
                       <SkipForward aria-hidden className="size-4" />
                     </button>
