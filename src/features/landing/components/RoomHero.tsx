@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
 
+import { HeroBallpit } from '@/features/landing/components/HeroBallpit'
 import { ScrubbedRoom } from '@/features/landing/components/ScrubbedRoom'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { SCENES } from '@/lib/scenes'
@@ -71,7 +72,17 @@ export function RoomHero() {
     <section
       ref={section}
       id="top"
-      className="relative isolate flex min-h-svh flex-col justify-end overflow-hidden bg-void px-5 pb-14 pt-28 sm:px-8 md:px-12 md:pb-20 lg:pl-28"
+      /*
+       * No background of its own any more.
+       *
+       * It used to paint solid `bg-void`, which is what drew the hard line
+       * across the page where the hero stopped and the stone started — two
+       * different blacks meeting at an edge read as a seam even when they are
+       * close. Letting the stone show through from behind means there is
+       * nothing to butt up against, and the washes below fade the hero's own
+       * picture out into it instead of stopping.
+       */
+      className="relative isolate flex min-h-svh flex-col justify-end overflow-hidden px-5 pb-14 pt-28 sm:px-8 md:px-12 md:pb-20 lg:pl-28"
     >
       {/*
         The room itself — a shot you scrub if the scene ships one, and the
@@ -97,13 +108,22 @@ export function RoomHero() {
       )}
 
       {/*
+        The pit, over the room and under the words.
+
+        Masked away toward the bottom rather than clipped: the spheres are the
+        loudest thing on the page, and a hard line where they stop would be a
+        second seam in the exact place the first one was just removed from.
+      */}
+      <HeroBallpit className="absolute inset-0 -z-10 size-full" />
+
+      {/*
         Two washes rather than one. A single flat scrim over a sunset kills the
         light that makes the picture worth showing; a bottom-weighted gradient
         plus a soft vignette keeps the sky and still gives the type a ground.
       */}
       <div
         aria-hidden
-        className="absolute inset-0 -z-10 bg-gradient-to-t from-void via-void/75 to-void/20"
+        className="absolute inset-0 -z-10 bg-gradient-to-t from-void via-void/70 to-transparent"
       />
       <div
         aria-hidden
