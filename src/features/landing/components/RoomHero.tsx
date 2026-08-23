@@ -4,38 +4,19 @@ import { motion, useScroll, useTransform } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
 
 import { HeroBallpit } from '@/features/landing/components/HeroBallpit'
-import { ScrubbedRoom } from '@/features/landing/components/ScrubbedRoom'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
-import { SCENES } from '@/lib/scenes'
 
 /**
- * The hero is the product.
+ * The hero is the product — or rather, the room is: no photograph standing in
+ * for it any more.
  *
- * The page this replaced opened on a floating iridescent orb — a shape that
- * means nothing, in front of a headline that had to do all the explaining, and
- * which cost a WebGL context and the whole of three.js to draw. Meanwhile the
- * actual app has the one image nobody else can show: a room, lit at golden
- * hour, with people standing in it.
- *
- * So that is the hero. The real backdrop, the real chrome the app puts on top
- * of it, and the headline sitting inside the scene rather than floating over a
- * decoration. Nothing here is 3D: the backdrop is the same still the hub uses,
- * and everything else is DOM, so the landing page no longer pulls a renderer
- * down the wire to say hello.
+ * This used to open on the hub's own backdrop, a room lit at golden hour. The
+ * pit of spheres behind the headline is the room now — the stone the rest of
+ * the page is printed on shows straight through the hero as well, so there is
+ * nothing behind the words but the surface and the motion, and the two washes
+ * below exist only to keep the type readable over spheres that pass behind it,
+ * not to tame a photograph.
  */
-
-/* The hub's own backdrop, whichever one is first in the folder. */
-const SCENE = SCENES[0]
-const BACKDROP = SCENE?.layers[0]?.url
-/*
- * A clip for the same scene, if one has been dropped in beside the stills.
- *
- * The scene loader already globs `src/assets/scenes/*.{mp4,webm,mov}` and hangs
- * the result off the scene, so this needs nothing registered: drop a file in
- * and the hero becomes a shot you scrub instead of a photograph. Without one,
- * the still below carries the section exactly as before.
- */
-const CLIP = SCENE?.video
 
 /** The people standing in the room, as the hub labels them. */
 const STANDING = [
@@ -53,20 +34,12 @@ export function RoomHero() {
     offset: ['start start', 'end start'],
   })
 
-  /*
-   * Three depths leaving at three speeds.
-   *
-   * The room hangs back and scales in a little, the way a wide shot does when
-   * a camera pushes; the copy leaves first and fades out before the section
-   * does. The gap between those rates is the whole effect — the picture reads
-   * as further away than the words sitting on it.
-   */
-  const roomY = useTransform(scrollYProgress, [0, 1], ['0%', '18%'])
-  const roomScale = useTransform(scrollYProgress, [0, 1], [1, 1.14])
+  /* The copy leaves early and fades out before the section does, so it reads
+     as sitting in front of the pit rather than pasted over it. */
   const copyY = useTransform(scrollYProgress, [0, 1], ['0%', '-38%'])
   const copyFade = useTransform(scrollYProgress, [0, 0.65], [1, 0])
 
-  const still = { y: undefined, scale: undefined, opacity: undefined }
+  const still = { y: undefined, opacity: undefined }
 
   return (
     <section
@@ -85,29 +58,6 @@ export function RoomHero() {
       className="relative isolate flex min-h-svh flex-col justify-end overflow-hidden px-5 pb-14 pt-28 sm:px-8 md:px-12 md:pb-20 lg:pl-28"
     >
       {/*
-        The room itself — a shot you scrub if the scene ships one, and the
-        still it was cut from otherwise. Reduced motion always takes the
-        still: a clip whose only motion is the one you cause is still motion.
-      */}
-      {CLIP && !reduced ? (
-        <ScrubbedRoom src={CLIP} poster={BACKDROP} progress={scrollYProgress} />
-      ) : (
-        BACKDROP && (
-          <motion.img
-            src={BACKDROP}
-            alt=""
-            aria-hidden
-            /* Eager and high priority: this is the largest paint on the page,
-               so deferring it only moves the moment the page looks finished. */
-            fetchPriority="high"
-            decoding="async"
-            className="absolute inset-0 -z-20 size-full origin-center object-cover will-change-transform"
-            style={reduced ? still : { y: roomY, scale: roomScale }}
-          />
-        )
-      )}
-
-      {/*
         The pit, over the room and under the words.
 
         Masked away toward the bottom rather than clipped: the spheres are the
@@ -117,9 +67,10 @@ export function RoomHero() {
       <HeroBallpit className="absolute inset-0 -z-10 size-full" />
 
       {/*
-        Two washes rather than one. A single flat scrim over a sunset kills the
-        light that makes the picture worth showing; a bottom-weighted gradient
-        plus a soft vignette keeps the sky and still gives the type a ground.
+        Two washes rather than one — a bottom-weighted gradient the headline
+        actually sits on, plus a soft vignette so a sphere passing behind the
+        edges of the section never reads as brighter than the copy in front
+        of it.
       */}
       <div
         aria-hidden
