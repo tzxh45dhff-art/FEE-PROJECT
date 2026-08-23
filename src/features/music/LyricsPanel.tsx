@@ -32,7 +32,7 @@ export function LyricsPanel({
   loading: boolean
   onSeek: (seconds: number) => void
 }) {
-  const { position } = useMusic()
+  const { handle, targetPosition } = useMusic()
   const reduced = usePrefersReducedMotion()
 
   const scroller = useRef<HTMLDivElement>(null)
@@ -44,8 +44,54 @@ export function LyricsPanel({
   const selfScrolling = useRef(false)
 
   const lines = lyrics?.kind === 'synced' ? lyrics.lines : null
-  const index = lines ? activeLineAt(lines, position) : -1
   const [, force] = useState(0)
+
+  /*
+   * The sung line is found from the player's own clock, read per frame.
+   *
+   * The context's own `position` is sampled on a 250ms timer, which is right
+   * for a progress bar — a scrubber that moved more often would not look any
+   * different. It is wrong for this: a line whose timestamp falls just after a
+   * tick cannot light until the next one, so the words trail the voice by up
+   * to a quarter of a second, and by an amount that changes from line to line.
+   *
+   * Reading the clock directly costs nothing, because the index is what gets
+   * stored and the index changes a few times a minute, not sixty times a
+   * second. The frame loop looks at every frame; React hears about almost
+   * none of them.
+   */
+  const [index, setIndex] = useState(-1)
+  const indexRef = useRef(-1)
+
+  /* Through refs, so the loop below never needs rebuilding as these change. */
+  const linesRef = useRef(lines)
+  linesRef.current = lines
+  const clock = useRef<() => number>(() => 0)
+  clock.current = () => handle?.getPosition() ?? targetPosition()
+
+  useEffect(() => {
+    if (!lines) {
+      indexRef.current = -1
+      setIndex(-1)
+      return
+    }
+
+    let frame = 0
+    const read = () => {
+      const current = linesRef.current
+      if (current) {
+        const next = activeLineAt(current, clock.current())
+        if (next !== indexRef.current) {
+          indexRef.current = next
+          setIndex(next)
+        }
+      }
+      frame = requestAnimationFrame(read)
+    }
+    frame = requestAnimationFrame(read)
+    return () => cancelAnimationFrame(frame)
+    /* Keyed on the lyric set, not on the clock — the clock is a ref. */
+  }, [lines])
 
   /* Keep the active line centred. Layout effect so it is never painted in the
      wrong place first, which reads as a stutter on every line change. */
