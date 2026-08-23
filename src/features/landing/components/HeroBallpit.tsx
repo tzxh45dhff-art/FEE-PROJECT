@@ -69,6 +69,20 @@ export function HeroBallpit({ className }: { className?: string }) {
     if (canRender3D()) setSupported(true)
   }, [])
 
+  /*
+   * Whether this device drives a cursor at all.
+   *
+   * A phone does not, so there is nothing for the pit to follow — and letting
+   * it try costs the page its scrolling, because following a finger means
+   * claiming the touch that would otherwise have scrolled. Read once and kept:
+   * a device does not grow a mouse mid-visit, and re-running this on every
+   * resize would tear the simulation down and rebuild it on an orientation
+   * change.
+   */
+  const [coarse] = useState(() =>
+    typeof window === 'undefined' ? false : window.matchMedia('(pointer: coarse)').matches,
+  )
+
   const [count, setCount] = useState(() =>
     typeof window === 'undefined' ? 110 : countFor(window.innerWidth),
   )
@@ -85,16 +99,16 @@ export function HeroBallpit({ className }: { className?: string }) {
   return (
     <div className={cn('pointer-events-none', className)} aria-hidden>
       <Suspense fallback={null}>
-        {/* Pointer events on the canvas itself, so the spheres answer the
-            cursor while the layer as a whole stays out of the way of the
-            links sitting on top of it. */}
-        <div className="pointer-events-auto size-full">
+        {/* Interactive only where there is a cursor. On touch the layer is
+            transparent to input, so a swipe scrolls the page underneath it
+            exactly as if the pit were not there. */}
+        <div className={cn('size-full', coarse ? 'pointer-events-none' : 'pointer-events-auto')}>
           <Ballpit
             count={count}
             gravity={0.6}
             friction={0.9975}
             wallBounce={0.92}
-            followCursor
+            followCursor={!coarse}
             /* The app's own red, falling away to the near-black the rest of
                the page is printed on — so the pit reads as this product's
                rather than as the component's default. */

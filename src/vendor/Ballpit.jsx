@@ -359,13 +359,25 @@ function L() {
 
 function TouchStart(e) {
   if (e.touches.length > 0) {
-    e.preventDefault();
+    /*
+     * DEVIATION FROM UPSTREAM — the default is only cancelled for a touch that
+     * actually lands on the canvas.
+     *
+     * These handlers are bound to document.body with `passive: false`, and
+     * upstream cancels the default on every touch anywhere on the page before
+     * testing whether the canvas was involved at all. On a phone that cancels
+     * the browser's own scrolling for the whole document and swallows the
+     * click synthesised from a tap — so a page carrying this as a background
+     * decoration could not be scrolled or tapped at all. Hit-testing first
+     * confines the effect to the element that asked for it.
+     */
     A.x = e.touches[0].clientX;
     A.y = e.touches[0].clientY;
 
     for (const [elem, t] of b) {
       const rect = elem.getBoundingClientRect();
       if (D(rect)) {
+        e.preventDefault();
         t.touching = true;
         P(t, rect);
         if (!t.hover) {
@@ -380,7 +392,7 @@ function TouchStart(e) {
 
 function TouchMove(e) {
   if (e.touches.length > 0) {
-    e.preventDefault();
+    /* Cancelled only for a touch on the canvas — see the note in TouchStart. */
     A.x = e.touches[0].clientX;
     A.y = e.touches[0].clientY;
 
@@ -389,6 +401,7 @@ function TouchMove(e) {
       P(t, rect);
 
       if (D(rect)) {
+        e.preventDefault();
         if (!t.hover) {
           t.hover = true;
           t.touching = true;
@@ -745,11 +758,23 @@ function createBallpit(e, t = {}) {
   const r = new a();
   let c = false;
 
-  e.style.touchAction = 'none';
   e.style.userSelect = 'none';
   e.style.webkitUserSelect = 'none';
 
-  const h = S({
+  /*
+   * DEVIATION FROM UPSTREAM — pointer interaction is opt-out, and `touchAction`
+   * is only taken away when it is on.
+   *
+   * `followCursor: false` genuinely means "do not touch the pointer" now, not
+   * merely "hide the cursor's own sphere". A device with no cursor has nothing
+   * for this to follow, and a decorative background that registers global touch
+   * handlers there can only ever cost the page scrolling it would otherwise
+   * have had for free.
+   */
+  const wantsPointer = t.followCursor !== false;
+  if (wantsPointer) e.style.touchAction = 'none';
+
+  const h = wantsPointer ? S({
     domElement: e,
     onMove() {
       n.setFromCamera(h.nPosition, i.camera);
@@ -761,7 +786,7 @@ function createBallpit(e, t = {}) {
     onLeave() {
       s.config.controlSphere0 = false;
     }
-  });
+  }) : null;
   function initialize(e) {
     if (s) {
       i.clear();
@@ -802,7 +827,7 @@ function createBallpit(e, t = {}) {
       c = !c;
     },
     dispose() {
-      h.dispose();
+      h?.dispose();
       i.dispose();
     }
   };
