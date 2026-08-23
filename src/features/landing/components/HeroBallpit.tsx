@@ -83,18 +83,7 @@ export function HeroBallpit({ className }: { className?: string }) {
   if (reduced || !supported) return null
 
   return (
-    <div
-      className={cn('pointer-events-none', className)}
-      aria-hidden
-      /* Faded out toward the bottom, so the pit dissolves into the page
-         instead of ending on a line. A mask rather than a gradient laid over
-         it: an overlay has to be painted some colour, and any colour that is
-         not exactly what sits behind it draws the very edge being removed. */
-      style={{
-        maskImage: 'linear-gradient(to bottom, #000 0%, #000 52%, transparent 92%)',
-        WebkitMaskImage: 'linear-gradient(to bottom, #000 0%, #000 52%, transparent 92%)',
-      }}
-    >
+    <div className={cn('pointer-events-none', className)} aria-hidden>
       <Suspense fallback={null}>
         {/* Pointer events on the canvas itself, so the spheres answer the
             cursor while the layer as a whole stays out of the way of the

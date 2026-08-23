@@ -13,9 +13,10 @@ import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
  * This used to open on the hub's own backdrop, a room lit at golden hour. The
  * pit of spheres behind the headline is the room now — the stone the rest of
  * the page is printed on shows straight through the hero as well, so there is
- * nothing behind the words but the surface and the motion, and the two washes
- * below exist only to keep the type readable over spheres that pass behind it,
- * not to tame a photograph.
+ * nothing behind the words but the surface and the motion. Nothing dims the
+ * pit to make room for the type either: the spheres run at full brightness,
+ * and the words get their contrast from a shadow the glyphs themselves cast,
+ * not from darkening the thing behind them.
  */
 
 /** The people standing in the room, as the hub labels them. */
@@ -46,43 +47,28 @@ export function RoomHero() {
       ref={section}
       id="top"
       /*
-       * No background of its own any more.
+       * No background of its own, and centred rather than pinned to a corner.
        *
        * It used to paint solid `bg-void`, which is what drew the hard line
        * across the page where the hero stopped and the stone started — two
        * different blacks meeting at an edge read as a seam even when they are
        * close. Letting the stone show through from behind means there is
-       * nothing to butt up against, and the washes below fade the hero's own
-       * picture out into it instead of stopping.
+       * nothing to butt up against. Centring the copy is what a page whose
+       * whole background is now motion actually wants: pinned to a corner it
+       * would read as sitting *beside* the pit; centred, it sits *in* it.
        */
-      className="relative isolate flex min-h-svh flex-col justify-end overflow-hidden px-5 pb-14 pt-28 sm:px-8 md:px-12 md:pb-20 lg:pl-28"
+      className="relative isolate flex min-h-svh flex-col items-center justify-center overflow-hidden px-5 py-28 text-center sm:px-8 md:px-12"
     >
       {/*
-        The pit, over the room and under the words.
-
-        Masked away toward the bottom rather than clipped: the spheres are the
-        loudest thing on the page, and a hard line where they stop would be a
-        second seam in the exact place the first one was just removed from.
+        The pit, full-bleed and at full strength — nothing sits over it to
+        dim it, on purpose. The words get their contrast from a shadow cast
+        by the glyphs themselves further down, not from darkening the thing
+        behind them.
       */}
       <HeroBallpit className="absolute inset-0 -z-10 size-full" />
 
-      {/*
-        Two washes rather than one — a bottom-weighted gradient the headline
-        actually sits on, plus a soft vignette so a sphere passing behind the
-        edges of the section never reads as brighter than the copy in front
-        of it.
-      */}
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10 bg-gradient-to-t from-void via-void/70 to-transparent"
-      />
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10 bg-[radial-gradient(85%_65%_at_50%_35%,transparent,rgb(0_0_0/0.5))]"
-      />
-
       <motion.div
-        className="relative w-full max-w-3xl"
+        className="relative mx-auto w-full max-w-3xl"
         style={reduced ? still : { y: copyY, opacity: copyFade }}
       >
         <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-3 py-1.5 backdrop-blur-md">
@@ -92,19 +78,27 @@ export function RoomHero() {
           </span>
         </span>
 
-        <h1 className="mt-5 font-display text-[clamp(2.4rem,8vw,4.75rem)] font-semibold leading-[0.98] tracking-[-0.03em] text-chalk">
+        {/*
+          The pit sits directly behind this copy now, at full brightness, so
+          the shadow below is load-bearing rather than decorative — it is
+          what keeps white text readable over a bright sphere passing behind
+          a letter, without dimming the sphere to get there.
+        */}
+        <h1
+          className="mt-5 font-display text-[clamp(2.4rem,8vw,4.75rem)] font-semibold leading-[0.98] tracking-[-0.03em] text-chalk [text-shadow:0_2px_28px_rgb(0_0_0/0.85),0_1px_3px_rgb(0_0_0/0.9)]"
+        >
           Everyone on the
           <br />
           same second.
         </h1>
 
-        <p className="mt-5 max-w-lg text-[0.95rem] leading-relaxed text-mist sm:text-[1.02rem]">
+        <p className="mx-auto mt-5 max-w-lg text-[0.95rem] leading-relaxed text-mist [text-shadow:0_1px_16px_rgb(0_0_0/0.9)] sm:text-[1.02rem]">
           A room that stays open. Put a film on and it plays in step for all of you —
           one of you hits pause, it stops on every screen. Then put the music on, without
           anybody having to leave and come back.
         </p>
 
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
           <Link
             to="/?signup"
             className="group inline-flex h-12 items-center justify-center gap-2 rounded-full bg-chalk px-6 text-[0.9rem] font-medium text-void outline-none transition-transform duration-300 hover:scale-[1.02] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
@@ -128,7 +122,7 @@ export function RoomHero() {
           bottom of the scene. This is the app's own vocabulary for "somebody
           is here", so the hero ends on the thing the product is actually for.
         */}
-        <ul className="mt-10 flex flex-wrap items-center gap-2 md:mt-14">
+        <ul className="mt-10 flex flex-wrap items-center justify-center gap-2 md:mt-14">
           {STANDING.map((person) => (
             <li
               key={person.name}
