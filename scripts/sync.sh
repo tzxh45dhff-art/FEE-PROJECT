@@ -121,6 +121,13 @@ free_stale_watchers() {
   [ -n "$pids" ] && kill -9 $pids 2>/dev/null
 }
 
+# One line, unconditionally, before any of the three checks below. Each of
+# them is silent when it finds nothing to do — which is the common case — but
+# when it *does* find a previous session still up, killing it and waiting for
+# the port or the tunnel to actually let go can run to several seconds with
+# nothing printed at all. That silence reads exactly like a hang, and is what
+# made a run that was genuinely working look like it wasn't.
+echo "Checking for anything already running..."
 free_stale_watchers
 free_port
 free_ngrok
