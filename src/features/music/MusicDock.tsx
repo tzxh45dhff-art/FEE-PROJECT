@@ -41,7 +41,15 @@ export function MusicDock({
     <AnimatePresence>
       {visible && track && (
         <motion.div
-          className="pointer-events-auto fixed bottom-4 z-[120] transition-[right] duration-500 ease-glass"
+          /*
+           * Held to the right edge and kept off the left one. The room chip
+           * lives against the opposite side, so the only way the two could
+           * ever meet is this growing far enough to cross the screen — the
+           * cap is what makes that impossible rather than merely unlikely,
+           * and on a narrow phone it is what keeps the dock from becoming the
+           * whole bottom of the window.
+           */
+          className="pointer-events-auto fixed bottom-4 z-[120] max-w-[min(22rem,calc(100vw-2rem))] transition-[right] duration-500 ease-glass"
           style={{ right: `calc(${insetRight}rem + 1rem)` }}
           initial={{ opacity: 0, y: 24, scale: 0.94 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -49,7 +57,7 @@ export function MusicDock({
           transition={{ duration: 0.45, ease: EASE }}
         >
           <div
-            className="flex items-center gap-3 rounded-full border border-white/12 py-2 pl-2 pr-3 shadow-[0_18px_50px_-18px_rgba(0,0,0,0.9)] backdrop-blur-2xl"
+            className="flex min-w-0 items-center gap-3 rounded-full border border-white/12 py-2 pl-2 pr-3 shadow-[0_18px_50px_-18px_rgba(0,0,0,0.9)] backdrop-blur-2xl"
             style={{
               /* Tinted by the cover, faintly. Enough to feel like the record on
                  the page, not enough to fight the screen behind it. */

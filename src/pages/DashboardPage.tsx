@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { AnimatePresence, motion } from 'framer-motion'
 import { DoorOpen, LogOut, MessagesSquare, Plus, Settings2, Users } from 'lucide-react'
 
@@ -217,7 +219,17 @@ export function DashboardPage() {
     if (!activeRoomId) setSideOpen(false)
   }, [activeRoomId])
 
-  const inset = sideOpen ? PANEL_WIDTH_REM : 0
+  /*
+   * Whether the panel can sit *beside* the room rather than over it.
+   *
+   * Below this the two do not both fit, and insetting anyway is worse than
+   * useless: the right-hand rail was being pushed a full panel-width inward
+   * on a screen barely wider than the panel, which put every button on it off
+   * the left edge of the phone and on top of the other rail. Over a certain
+   * narrowness the only honest layout is an overlay.
+   */
+  const sideBySide = useMediaQuery('(min-width: 60rem)')
+  const inset = sideOpen && sideBySide ? PANEL_WIDTH_REM : 0
 
   /*
    * Presence follows the room you are *standing in*, not every room you belong
@@ -461,38 +473,66 @@ export function DashboardPage() {
           <HubRail side="left" items={leftItems} />
           <HubRail side="right" items={rightItems} insetRight={inset} />
 
+          {/*
+            Everything along the bottom of the room, in one column against the
+            left edge.
+            
+            It used to centre itself across the whole width while the music dock
+            pinned itself to the right, and the two had no idea about each
+            other — so the moment a track was on, the dock grew leftward into
+            the middle and sat on top of the room code. Anchored to opposite
+            edges they cannot reach each other at any width, which is a
+            property of the layout rather than a number that has to be kept
+            in step. The notice stacks above rather than beside, so it cannot
+            collide with the chip either.
+          */}
           <div
-            className="pointer-events-none absolute bottom-6 left-0 z-20 flex flex-wrap items-center justify-center gap-3 px-6 transition-[right] duration-500 ease-glass"
-            style={{ right: `${inset}rem` }}
+            className="pointer-events-none absolute bottom-6 left-0 z-20 flex flex-col items-start gap-2.5 px-6 transition-[right] duration-500 ease-glass"
+            /*
+             * Stops short of both the panel and the dock's corner.
+             * 
+             * Capping its own width was not enough on its own: as the window
+             * narrows, the space between the two edges shrinks faster than any
+             * fixed cap, so the two zones still met somewhere around a
+             * thousand pixels. Ending the box where the dock's territory
+             * begins means the gap is held open by the layout at every width,
+             * and the chip inside truncates instead of running underneath.
+             */
+            style={{ right: `calc(${inset}rem + min(23rem, 34%))` }}
           >
+            {(error || needsAssets) && (
+              <div className="hidden max-w-xs md:block">
+                {error ? (
+                  <p
+                    role="alert"
+                    className="glass-pill-ink rounded-card px-4 py-3 text-[0.78rem] leading-relaxed text-signal-bright"
+                  >
+                    {error}
+                  </p>
+                ) : (
+                  <p className="glass-pill-ink rounded-card px-4 py-3 text-[0.78rem] leading-relaxed text-mist">
+                    {!hasScenes && !hasRoster
+                      ? 'No backdrops or characters yet — Settings shows where to drop them.'
+                      : !hasScenes
+                        ? 'No backdrops yet — Settings shows where to drop them.'
+                        : 'No characters yet — Settings shows where to drop them.'}
+                  </p>
+                )}
+              </div>
+            )}
+
             {activeRoom && (
-              <>
+              /* One line, never two. Wrapping made this cluster tall enough
+                 to reach up into the band the nameplates sit in, and two
+                 things that are each correctly placed still collide if they
+                 are allowed to grow into each other. The chip truncates
+                 instead, which is the one of the two that can afford to. */
+              <div className="flex min-w-0 max-w-full flex-nowrap items-center gap-2.5">
                 <RoomChip room={activeRoom} />
                 <VoiceButton roomId={activeRoomId} />
-              </>
+              </div>
             )}
           </div>
-
-          {(error || needsAssets) && (
-            <div className="pointer-events-none absolute bottom-6 left-6 z-20 hidden max-w-xs md:block">
-              {error ? (
-                <p
-                  role="alert"
-                  className="glass-pill-ink rounded-card px-4 py-3 text-[0.78rem] leading-relaxed text-signal-bright"
-                >
-                  {error}
-                </p>
-              ) : (
-                <p className="glass-pill-ink rounded-card px-4 py-3 text-[0.78rem] leading-relaxed text-mist">
-                  {!hasScenes && !hasRoster
-                    ? 'No backdrops or characters yet — Settings shows where to drop them.'
-                    : !hasScenes
-                      ? 'No backdrops yet — Settings shows where to drop them.'
-                      : 'No characters yet — Settings shows where to drop them.'}
-                </p>
-              )}
-            </div>
-          )}
         </>
       )}
 
