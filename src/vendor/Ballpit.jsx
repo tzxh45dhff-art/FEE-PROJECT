@@ -196,7 +196,17 @@ class x {
     const animate = () => {
       this.#l = requestAnimationFrame(animate);
       this.#c.update();
-      this.#h.delta = this.#c.getDelta();
+      /*
+       * DEVIATION FROM UPSTREAM — the frame delta is clamped.
+       *
+       * Gravity is integrated as `delta * gravity`, so a single long frame —
+       * a tab returning to the foreground, a GC pause, a slow first paint —
+       * injects one enormous velocity step. The balls tunnel straight through
+       * the walls the collision pass is meant to hold them inside, and the pit
+       * visibly explodes and then re-settles. Capping the step means a hitch
+       * costs one slow frame instead of the simulation's state.
+       */
+      this.#h.delta = Math.min(this.#c.getDelta(), 1 / 30);
       this.#h.elapsed += this.#h.delta;
       this.onBeforeRender(this.#h);
       this.render();
@@ -458,6 +468,28 @@ class W {
   }
   update(e) {
     const { config: t, center: i, positionData: s, sizeData: n, velocityData: o } = this;
+    /*
+     * DEVIATION FROM UPSTREAM — friction is applied per second, not per frame.
+     *
+     * Upstream multiplies velocity by `friction` once per frame, so a 120Hz
+     * display damps twice as often as a 60Hz one and the same pit feels
+     * noticeably more sluggish on the better screen. Raising it to the power
+     * of the elapsed time makes the damping identical per unit of time
+     * whatever the refresh rate, which is what stops the motion changing
+     * character when the page moves between monitors.
+     */
+    /*
+     * The frame's length, in units of a 60Hz frame.
+     *
+     * Velocity below is carried in units-per-frame rather than per-second, and
+     * upstream advances position by it directly — so the pit falls twice as
+     * fast on a 120Hz display as on a 60Hz one, which is the difference
+     * between a slow drift and a downpour depending on the monitor. Scaling by
+     * this makes a second of motion identical everywhere, and leaves 60Hz —
+     * where the constants were tuned — behaving exactly as before.
+     */
+    const step = e.delta * 60;
+    const damping = Math.pow(t.friction, step);
     let r = 0;
     if (t.controlSphere0) {
       r = 1;
@@ -470,9 +502,9 @@ class W {
       I.fromArray(s, base);
       B.fromArray(o, base);
       B.y -= e.delta * t.gravity * n[idx];
-      B.multiplyScalar(t.friction);
+      B.multiplyScalar(damping);
       B.clampLength(0, t.maxVelocity);
-      I.add(B);
+      I.addScaledVector(B, step);
       I.toArray(s, base);
       B.toArray(o, base);
     }
@@ -692,6 +724,17 @@ function createBallpit(e, t = {}) {
   });
   let s;
   i.renderer.toneMapping = v;
+  /*
+   * DEVIATION FROM UPSTREAM — the pixel ratio is capped.
+   *
+   * Left uncapped this renders at the display's own ratio, which on a retina
+   * screen is four times the fragment work of 1x — paid on every one of a few
+   * hundred instanced spheres, each with a clearcoat lobe and an environment
+   * map. That is the difference between a decoration that holds its frame rate
+   * and one that makes the whole page feel heavy. Spheres are soft-edged and
+   * lit smoothly, so the resolution is the cheapest thing here to give up.
+   */
+  i.maxPixelRatio = 1.5;
   i.camera.position.set(0, 0, 20);
   i.camera.lookAt(0, 0, 0);
   i.cameraMaxAspect = 1.5;
