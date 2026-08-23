@@ -72,6 +72,7 @@ const CONTENT_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
   '.ts': 'video/mp2t',
   '.vtt': 'text/vtt',
+  '.jpg': 'image/jpeg',
 }
 
 function contentTypeFor(file: string) {

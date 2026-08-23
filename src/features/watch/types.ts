@@ -64,6 +64,8 @@ export type LibraryEntry = {
    */
   fastStart: boolean
   modifiedAt: number
+  /** A frame from the film itself, once it's been published. Null until then. */
+  thumbnail: string | null
   /**
    * Master playlist on the CDN, once this file has been published.
    *

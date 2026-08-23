@@ -150,6 +150,7 @@ export async function library(req: Request, res: Response) {
         hls: live?.url ?? null,
         duration: live?.durationSeconds ?? null,
         audio: live?.audio ?? null,
+        thumbnail: live?.thumbnail ?? null,
       }
     }),
   })

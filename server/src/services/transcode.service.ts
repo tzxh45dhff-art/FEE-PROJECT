@@ -520,3 +520,41 @@ export async function toHls(
 
   return { masterPlaylist: path.join(outDir, 'master.m3u8'), probed }
 }
+
+/**
+ * A poster frame, pulled from the film itself.
+ *
+ * Grabbed at 10% into the runtime rather than at 0: the first frame of a
+ * feature is routinely a distributor logo or a few seconds of black, and
+ * either makes a library of otherwise-recognisable posters look broken. 10%
+ * in is reliably past that without landing in end-credits territory on
+ * anything short. Clamped to a floor of 5s so a very short clip still skips
+ * its opening beat, and floored below the last second so a probe that slightly
+ * overstates duration can't seek past end-of-file.
+ *
+ * A failure here — a source ffmpeg can decode but can't seek cleanly, most
+ * often — costs the library a poster, not the publish. Callers treat a
+ * thrown error as "no thumbnail" rather than letting it take the film down.
+ */
+export async function extractPoster(
+  input: string,
+  outPath: string,
+  durationSeconds: number,
+): Promise<void> {
+  const at = Math.min(Math.max(durationSeconds * 0.1, 5), Math.max(durationSeconds - 1, 0))
+
+  await run('ffmpeg', [
+    '-hide_banner',
+    '-nostdin',
+    '-y',
+    '-ss',
+    String(at),
+    '-i',
+    input,
+    '-frames:v',
+    '1',
+    '-q:v',
+    '3',
+    outPath,
+  ])
+}

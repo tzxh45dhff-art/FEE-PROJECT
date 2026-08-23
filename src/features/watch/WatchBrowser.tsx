@@ -390,7 +390,7 @@ export function WatchBrowser({
                                 subtitle: entry.hls
                                   ? `${formatBytes(entry.bytes)} · streaming`
                                   : formatBytes(entry.bytes),
-                                thumbnail: null,
+                                thumbnail: entry.thumbnail,
                                 duration: entry.duration,
                                 playable: entry.playable,
                                 reason: !entry.playable
@@ -408,7 +408,7 @@ export function WatchBrowser({
                                     ref: entry.hls ?? entry.ref,
                                     title: entry.title,
                                     duration: entry.duration,
-                                    thumbnail: null,
+                                    thumbnail: entry.thumbnail,
                                   },
                                   true,
                                 )
@@ -420,7 +420,7 @@ export function WatchBrowser({
                                     ref: entry.hls ?? entry.ref,
                                     title: entry.title,
                                     duration: entry.duration,
-                                    thumbnail: null,
+                                    thumbnail: entry.thumbnail,
                                   },
                                   false,
                                 )

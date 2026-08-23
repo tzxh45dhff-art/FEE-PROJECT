@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { deletePrefix, publicUrl, r2Enabled, uploadDirectory } from './r2.service.js'
-import { extractSubtitles, probe, toHls } from './transcode.service.js'
+import { extractPoster, extractSubtitles, probe, toHls } from './transcode.service.js'
 import { UPLOAD_DIR } from './upload.service.js'
 
 /**
@@ -37,6 +37,8 @@ export type PublishedEntry = {
   audio: { language: string; label: string }[]
   /** WebVTT tracks pulled out of the source, if it carried any text ones. */
   subtitles: { language: string; label: string; url: string }[]
+  /** A frame from the film itself, or null if it couldn't be grabbed. */
+  thumbnail: string | null
   segmentCount: number
   publishedAt: number
 }
@@ -205,6 +207,13 @@ export async function publish(
        and into the same directory, so one upload carries both. */
     const written = await extractSubtitles(source, work, probed.subtitles)
 
+    /* Same reasoning, same directory: a poster is worth having but not worth
+       failing the publish over. */
+    const posterFile = 'poster.jpg'
+    const hasPoster = await extractPoster(source, path.join(work, posterFile), probed.durationSeconds)
+      .then(() => true)
+      .catch(() => false)
+
     const keyPrefix = keyPrefixFor(file, info.size)
     onProgress?.({ stage: 'uploading', fraction: 0 })
     const segmentCount = await uploadDirectory(work, keyPrefix, (done, total) =>
@@ -224,6 +233,7 @@ export async function publish(
         label: track.label,
         url: publicUrl(`${keyPrefix}/${track.file}`),
       })),
+      thumbnail: hasPoster ? publicUrl(`${keyPrefix}/${posterFile}`) : null,
       segmentCount,
       publishedAt: Date.now(),
     }
