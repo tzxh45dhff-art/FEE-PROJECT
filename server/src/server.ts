@@ -23,5 +23,5 @@ attachVoiceGateway(io)
 attachGameGateway(io)
 
 httpServer.listen(env.port, () => {
-  console.log(`  SyncRoom API on http://localhost:${env.port}`)
+  console.log(`  Huddle API on http://localhost:${env.port}`)
 })

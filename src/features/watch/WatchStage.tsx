@@ -466,7 +466,12 @@ export function WatchStage({
        * say invisible.
        */
       ref={stageRef}
-      className="fixed left-0 top-0 z-[135] flex flex-col overflow-hidden bg-void transition-[padding] duration-500 ease-glass"
+      className={cn(
+        'fixed left-0 top-0 z-[135] flex flex-col overflow-hidden transition-[padding] duration-500 ease-glass',
+        /* Solid the moment there is a picture to protect; see-through while
+           the shelf is up, so the room stays visible underneath it. */
+        item ? 'bg-void' : 'bg-transparent',
+      )}
       style={{
         width: '100vw',
         height: '100dvh',
@@ -483,7 +488,7 @@ export function WatchStage({
     >
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1">
-          <div className="absolute inset-0 bg-black">
+          <div className={cn('absolute inset-0', item ? 'bg-black' : 'bg-transparent')}>
             {/*
               One persistent player for the room's whole life, kept mounted
               past the video that introduced it. A fresh instance per video
@@ -541,7 +546,7 @@ export function WatchStage({
                 still frame identifies a video faster than its title does.
               */
               <div className="absolute inset-0 flex flex-col">
-                <CoverAmbience palette={null} />
+                <CoverAmbience palette={null} translucent />
                 <div className="relative flex min-h-0 flex-1 flex-col pt-16">
                   {first && (
                     <div className="shrink-0 px-4 pb-1 md:px-6">

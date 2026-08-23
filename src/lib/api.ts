@@ -1,7 +1,7 @@
 import { API_BASE, API_HEADERS, getToken } from '@/lib/config'
 
 /**
- * Thin wrapper over fetch for the SyncRoom API.
+ * Thin wrapper over fetch for the Huddle API.
  *
  * Same-origin, the session is an httpOnly cookie and there is nothing to attach
  * by hand — Vite proxies `/api` to the server, so no CORS and no base URL.

@@ -156,7 +156,9 @@ export function MusicStage({
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3, ease: EASE }}
     >
-      <CoverAmbience palette={palette} />
+      {/* Translucent while browsing; the record view above draws its own solid
+          one, so opening a track closes the room off behind it. */}
+      <CoverAmbience palette={palette} translucent={!expanded} />
 
       <div className="relative flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">

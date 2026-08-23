@@ -75,7 +75,7 @@ function Character({
       copy.scale.multiplyScalar(TARGET_SKELETON_HEIGHT / size.y)
     } else {
       console.warn(
-        `[SyncRoom] ${member.url.split('/').pop()} has no measurable height — left at its export scale.`,
+        `[Huddle] ${member.url.split('/').pop()} has no measurable height — left at its export scale.`,
       )
     }
 

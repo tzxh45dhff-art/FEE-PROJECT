@@ -16,7 +16,7 @@
 const ENDPOINT = 'https://lrclib.net/api/get'
 const SEARCH = 'https://lrclib.net/api/search'
 /* Their guidance: say who you are and where to complain. */
-const AGENT = 'SyncRoom (https://github.com/tzxh45dhff-art/FEE-PROJECT)'
+const AGENT = 'Huddle (https://github.com/tzxh45dhff-art/FEE-PROJECT)'
 
 export type LyricLine = { at: number; text: string }
 export type LyricsResult =

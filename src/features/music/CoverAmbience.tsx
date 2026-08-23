@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils'
 import type { CoverPalette } from '@/features/music/useCoverPalette'
 
 /**
@@ -12,23 +13,50 @@ import type { CoverPalette } from '@/features/music/useCoverPalette'
  * artwork's host would not let us read its pixels. The page is never left
  * flat, and it never invents a colour it did not actually sample.
  */
-export function CoverAmbience({ palette }: { palette: CoverPalette | null }) {
+export function CoverAmbience({
+  palette,
+  translucent = false,
+}: {
+  palette: CoverPalette | null
+  /**
+   * Let the room behind show through, blurred.
+   *
+   * Used while somebody is choosing what to put on, not while it is playing.
+   * Browsing is a step on the way somewhere, and keeping the room dimly
+   * visible underneath says the stage is sitting *over* it rather than having
+   * replaced it — so closing this returns you somewhere you can still see.
+   * Once something is actually playing the backdrop goes solid, because then
+   * the picture is the point and anything behind it is a distraction.
+   */
+  translucent?: boolean
+}) {
   /* The app's signal red, in the same shape as a sampled palette, so both
      paths render through identical markup. */
   const base = palette?.base ?? 'color-mix(in oklab, var(--color-signal) 26%, black)'
   const accent = palette?.accent ?? 'color-mix(in oklab, var(--color-glow-cool) 20%, black)'
 
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden bg-void">
+    <div
+      aria-hidden
+      className={cn(
+        'pointer-events-none absolute inset-0 overflow-hidden',
+        translucent
+          ? /* Dark enough to hold white text against whatever backdrop the
+               room happens to be wearing, blurred enough that none of it
+               competes for attention. */
+            'bg-void/72 backdrop-blur-2xl backdrop-saturate-125'
+          : 'bg-void',
+      )}
+    >
       <div
-        className="absolute -inset-[30%] opacity-90 blur-[80px]"
+        className={cn('absolute -inset-[30%] blur-[80px]', translucent ? 'opacity-45' : 'opacity-90')}
         style={{
           background: `radial-gradient(38% 42% at 32% 34%, ${base}, transparent 70%)`,
           animation: 'music-drift 26s ease-in-out infinite',
         }}
       />
       <div
-        className="absolute -inset-[30%] opacity-80 blur-[90px]"
+        className={cn('absolute -inset-[30%] blur-[90px]', translucent ? 'opacity-40' : 'opacity-80')}
         style={{
           background: `radial-gradient(42% 38% at 68% 66%, ${accent}, transparent 72%)`,
           /* Offset and reversed so the two never travel as one shape. */
