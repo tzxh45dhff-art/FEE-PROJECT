@@ -46,6 +46,8 @@ export function WatchToasts({
 }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const lastSeq = useRef(-1)
+  /* One timer per toast, tracked outside React state entirely — see below. */
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
 
   useEffect(() => {
     if (!snapshot || snapshot.seq === lastSeq.current) return
@@ -63,12 +65,39 @@ export function WatchToasts({
     const toast = { id: snapshot.seq, text }
     setToasts((current) => [...current.slice(-2), toast])
 
-    const timer = setTimeout(
-      () => setToasts((current) => current.filter((entry) => entry.id !== toast.id)),
-      3200,
-    )
-    return () => clearTimeout(timer)
+    /*
+     * Scheduled here, once, rather than through the effect's own cleanup.
+     *
+     * The stage's snapshot gets a new object identity for reasons that have
+     * nothing to do with a toast worth showing — someone else merely closing
+     * the stage re-broadcasts the current state to everyone still watching,
+     * with the same `seq`. That re-runs this effect, and cleanup fires on
+     * every re-run whose dependencies changed, timer included — so a toast's
+     * countdown was being cancelled by an unrelated viewer leaving, and
+     * nothing here ever rescheduled it, because the early return above never
+     * reaches a fresh `setTimeout`. The toast then sat until the next real
+     * action happened to push it out by volume.
+     *
+     * A timer keyed to the toast's own id, outside this effect's lifecycle,
+     * cannot be touched by any of that — it fires exactly 3.2s after the toast
+     * it belongs to was created, whatever else the snapshot does meanwhile.
+     */
+    const timer = setTimeout(() => {
+      timers.current.delete(toast.id)
+      setToasts((current) => current.filter((entry) => entry.id !== toast.id))
+    }, 3200)
+    timers.current.set(toast.id, timer)
   }, [snapshot, selfId])
+
+  /* Every pending timer is this component's, not the effect's — cleared once,
+     on unmount, rather than reset on every snapshot. */
+  useEffect(() => {
+    const live = timers.current
+    return () => {
+      for (const timer of live.values()) clearTimeout(timer)
+      live.clear()
+    }
+  }, [])
 
   return (
     <div className="pointer-events-none absolute bottom-28 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-2">
