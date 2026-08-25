@@ -33,7 +33,7 @@ export function MusicProvider({
   enabled: boolean
   children: React.ReactNode
 }) {
-  const { snapshot, queue, setQueue, connected, targetPosition, send } = useMusicSession(
+  const { snapshot, queue, setQueue, connected, clockReady, targetPosition, send } = useMusicSession(
     roomId,
     Boolean(roomId) && enabled,
   )
@@ -104,6 +104,16 @@ export function MusicProvider({
       return
     }
 
+    /*
+     * Nothing is placed until the clock has been measured — see the matching
+     * note in WatchStage. Before the first pong the offset is zero, which is
+     * "not asked yet" rather than "no skew", and starting a track from it puts
+     * every device at a different point in the song. The lyrics read their
+     * position from this same clock, so a track started on an unmeasured one
+     * highlights the wrong line for as long as it takes to converge.
+     */
+    if (!clockReady) return
+
     handle.seek(targetPosition())
     handle.play()
 
@@ -117,7 +127,7 @@ export function MusicProvider({
     /* Keyed on `seq` — a listener walking in rebuilds the snapshot without
        changing playback, and re-running this would re-seek under everyone. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handle, snapshot?.seq, snapshot?.playing])
+  }, [handle, clockReady, snapshot?.seq, snapshot?.playing])
 
   /*
    * Drift correction, by seeking only.

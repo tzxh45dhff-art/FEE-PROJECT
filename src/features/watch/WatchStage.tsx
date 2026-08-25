@@ -56,7 +56,7 @@ export function WatchStage({
   /** The control this opened from, so the reveal starts there. */
   origin?: DOMRect | null
 }) {
-  const { snapshot, queue, setQueue, connected, targetPosition, send } = useWatchSession(
+  const { snapshot, queue, setQueue, connected, clockReady, targetPosition, send } = useWatchSession(
     roomId,
     true,
   )
@@ -249,6 +249,22 @@ export function WatchStage({
       return
     }
 
+    /*
+     * Nothing is placed until the clock has been measured.
+     *
+     * `targetPosition` is only as good as the offset behind it, and before the
+     * first pong that offset is zero — not "no skew" but "not asked yet". A
+     * snapshot arrives in milliseconds and the first pong does not, so this
+     * used to seek to wherever this device's own clock happened to think the
+     * room was, which is a different wrong place on every machine. It settled
+     * eventually, through the drift correction, which is why it looked like a
+     * few seconds of disagreement at the start and fine thereafter.
+     *
+     * Pausing is exempt: stopping needs no clock, and the room having stopped
+     * is not something worth delaying.
+     */
+    if (!clockReady) return
+
     handle.seek(targetPosition())
     handle.setRate(snapshot.rate)
     handle.play()
@@ -264,7 +280,7 @@ export function WatchStage({
        snapshot without changing playback, and re-running this would re-seek and
        re-play the video every time somebody walked in. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handle, embeddable, snapshot?.seq, snapshot?.playing, snapshot?.rate])
+  }, [handle, embeddable, clockReady, snapshot?.seq, snapshot?.playing, snapshot?.rate])
 
   useDriftCorrection({
     handle,

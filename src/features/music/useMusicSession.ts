@@ -40,6 +40,17 @@ export function useMusicSession(roomId: string | null, open: boolean) {
   /* Refs, not state: read inside animation-rate loops, and re-rendering the
      page on every tick would fight the visualiser for frames. */
   const offset = useRef(0)
+  /*
+   * Whether the clock has been measured even once.
+   *
+   * Until it has, `offset` is zero — which does not mean "no skew", it means
+   * "unknown". Seeking on that assumes this device's clock agrees with the
+   * server's, and browser clocks are routinely seconds out; that is the whole
+   * reason any of this exists. The first snapshot arrives in milliseconds and
+   * the first pong does not, so without this the opening seek was computed
+   * from a number nobody had checked yet, differently wrong on every device.
+   */
+  const [clockReady, setClockReady] = useState(false)
   const appliedSeq = useRef(-1)
   const epoch = useRef<number | null>(null)
 
@@ -62,10 +73,16 @@ export function useMusicSession(roomId: string | null, open: boolean) {
       const rtt = now - sent
       samples.push({ offset: serverTime + rtt / 2 - now, rtt })
 
-      if (samples.length < PING_SAMPLES) {
-        setTimeout(measure, 90)
-        return
-      }
+      /*
+       * Adopt the best reading so far straight away, then keep refining.
+       *
+       * Waiting for the full set means most of a second with no usable clock,
+       * which is exactly the window somebody joining a room in progress spends
+       * looking at the wrong frame. One exchange already puts this within
+       * half a round trip of the truth — worlds better than the zero it would
+       * otherwise be using — and each further sample can only improve it,
+       * since a slower one never displaces a faster one below.
+       */
 
       /*
        * The fastest exchange wins, not the middle one.
@@ -89,6 +106,9 @@ export function useMusicSession(roomId: string | null, open: boolean) {
        */
       const best = samples.reduce((a, b) => (b.rtt < a.rtt ? b : a))
       offset.current = best.offset
+      if (!disposed) setClockReady(true)
+
+      if (samples.length < PING_SAMPLES) setTimeout(measure, 90)
     }
 
     const onState = (incoming: MusicSnapshot) => {
@@ -140,6 +160,20 @@ export function useMusicSession(roomId: string | null, open: boolean) {
     socket.emit('music:open', { roomId })
     measure()
 
+    /*
+     * Give up waiting for the clock after a moment and start anyway.
+     *
+     * Everything that places playback now waits for a measurement, which is
+     * right — but it means a pong that never arrives would hold the room on a
+     * still frame indefinitely, and a lost packet is not a reason to refuse to
+     * play. Out of sync by a clock's skew is a real fault; not playing at all
+     * is a worse one. The measurement carries on regardless, so this corrects
+     * itself the moment any reply lands.
+     */
+    const clockFallback = setTimeout(() => {
+      if (!disposed) setClockReady(true)
+    }, 2500)
+
     /* Insurance against a lost first snapshot — keeps asking until something
        arrives, then stops. */
     const resync = setInterval(() => {
@@ -155,6 +189,7 @@ export function useMusicSession(roomId: string | null, open: boolean) {
       disposed = true
       clearInterval(retry)
       clearInterval(resync)
+      clearTimeout(clockFallback)
       socket.emit('music:close', { roomId })
       socket.off('music:pong', onPong)
       socket.off('music:state', onState)
@@ -189,5 +224,5 @@ export function useMusicSession(roomId: string | null, open: boolean) {
     [roomId],
   )
 
-  return { snapshot, queue, setQueue, connected, offset, targetPosition, send }
+  return { snapshot, queue, setQueue, connected, offset, clockReady, targetPosition, send }
 }
