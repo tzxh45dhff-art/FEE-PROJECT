@@ -270,12 +270,36 @@ export function WatchStage({
     handle.play()
 
     const before = handle.getPosition()
+
+    /*
+     * Checked twice, early and late.
+     *
+     * A phone refuses to start a video with sound until the person has touched
+     * something — that is browser policy, not something this app can talk its
+     * way out of. The refusal is silent: YouTube's API returns nothing to
+     * catch, so the only way to know is that the position has not moved and
+     * the player is not merely loading.
+     *
+     * Waiting the full second and a half to find that out is most of why
+     * opening Watch on a phone showed a still frame with a YouTube logo on it
+     * and no explanation — the invitation to tap arrived long after the person
+     * had already started wondering what was broken. The early look catches a
+     * refusal, which is instant; the later one is still needed for a slow
+     * connection, where six hundred milliseconds of no progress means the
+     * network rather than a policy.
+     */
+    const stalled = () => handle.getPosition() <= before + 0.05 && !handle.isBuffering()
+    const early = setTimeout(() => {
+      if (stalled()) setNeedsGesture(true)
+    }, 600)
     const check = setTimeout(() => {
-      /* Still parked a second later means the play was blocked, not slow. */
-      if (handle.getPosition() <= before + 0.05 && !handle.isBuffering()) setNeedsGesture(true)
+      if (stalled()) setNeedsGesture(true)
     }, 1400)
 
-    return () => clearTimeout(check)
+    return () => {
+      clearTimeout(early)
+      clearTimeout(check)
+    }
     /* Keyed on `seq`, not on the snapshot object. A viewer joining rebuilds the
        snapshot without changing playback, and re-running this would re-seek and
        re-play the video every time somebody walked in. */
