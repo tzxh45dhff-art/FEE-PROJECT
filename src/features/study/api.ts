@@ -283,3 +283,38 @@ export const deleteProblem = (roomId: string, problemId: string) =>
 
 export const progress = (roomId: string, subjectId: string) =>
   api.get<{ progress: Progress }>(`${base(roomId)}/progress?subjectId=${subjectId}`)
+
+export type AssistantMode = 'explain' | 'hint' | 'coding' | 'ask'
+
+/**
+ * The thing being asked about, sent verbatim rather than by id.
+ *
+ * The server could look most of these up, but not all of them — a selected
+ * paragraph is not a row anywhere — and sending the text keeps one shape for
+ * all four cases.
+ */
+export type Focus = { kind: 'note' | 'question' | 'problem'; title: string; body: string }
+
+export type AssistantMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  grounded: boolean
+  sources: string[]
+  createdAt: string
+}
+
+export const assistantHistory = (roomId: string, subjectId: string) =>
+  api.get<{ messages: AssistantMessage[] }>(`${base(roomId)}/assistant?subjectId=${subjectId}`)
+
+export const assistantAsk = (
+  roomId: string,
+  input: { subjectId: string; mode: AssistantMode; message: string; focus?: Focus | null },
+) =>
+  api.post<{ reply: { content: string; grounded: boolean; sources: string[] } }>(
+    `${base(roomId)}/assistant`,
+    input,
+  )
+
+export const assistantClear = (roomId: string, subjectId: string) =>
+  api.del<{ ok: true }>(`${base(roomId)}/assistant?subjectId=${subjectId}`)

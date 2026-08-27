@@ -109,5 +109,9 @@ roomRoutes.post(
 roomRoutes.delete('/:id/study/coding/:problemId', asyncHandler(studyController.deleteProblem))
 
 roomRoutes.get('/:id/study/progress', asyncHandler(studyController.progress))
+
+roomRoutes.get('/:id/study/assistant', asyncHandler(studyController.assistantHistory))
+roomRoutes.post('/:id/study/assistant', asyncHandler(studyController.assistantAsk))
+roomRoutes.delete('/:id/study/assistant', asyncHandler(studyController.assistantClear))
 roomRoutes.post('/:id/music/liked', asyncHandler(musicController.toggleLiked))
 roomRoutes.get('/:id/music/suggestions', asyncHandler(musicController.suggestions))

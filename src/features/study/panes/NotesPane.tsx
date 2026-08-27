@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowLeft, Sparkles, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { Mermaid } from '@/features/study/Mermaid'
 import * as studyApi from '@/features/study/api'
+import { useTutor } from '@/features/study/tutorContext'
 import {
   Blank,
   GroundedBadge,
@@ -21,6 +22,10 @@ export default function NotesPane({ roomId, subject, caps, announce }: PaneProps
   const [open, setOpen] = useState<studyApi.Note | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selected, setSelected] = useState('')
+
+  const tutor = useTutor()
+  const articleRef = useRef<HTMLElement | null>(null)
 
   const subjectId = subject?.id ?? null
 
@@ -41,6 +46,10 @@ export default function NotesPane({ roomId, subject, caps, announce }: PaneProps
     void load()
   }, [load])
 
+  /* A highlight belongs to the note it was made in — carrying it into the next
+     one would offer to explain a passage that is no longer on screen. */
+  useEffect(() => setSelected(''), [open?.id])
+
   const generate = async (topic: string, depth: string) => {
     if (!subjectId) return
     setBusy(true)
@@ -57,12 +66,43 @@ export default function NotesPane({ roomId, subject, caps, announce }: PaneProps
     }
   }
 
+  /* Whatever is highlighted inside the article, if anything — read on release
+     rather than watched continuously, because a selection mid-drag is not yet
+     a thing anybody meant to select. */
+  const readSelection = () => {
+    const range = window.getSelection()
+    const text = range?.toString().trim() ?? ''
+    const inside =
+      range && range.rangeCount > 0 && articleRef.current
+        ? articleRef.current.contains(range.getRangeAt(0).commonAncestorContainer)
+        : false
+    setSelected(inside ? text : '')
+  }
+
+  const explain = () => {
+    if (!open || !tutor) return
+    const passage = selected.trim()
+    tutor.ask({
+      mode: 'explain',
+      focus: {
+        kind: 'note',
+        title: passage ? `${open.title} — selected passage` : open.title,
+        /* A selected line usually means nothing on its own, so the notes it
+           came out of go along with it — the model needs to see what the
+           "this" refers back to. */
+        body: passage
+          ? `${passage}\n\n---\n\nThe notes this passage came from:\n\n${open.content.slice(0, 10_000)}`
+          : open.content.slice(0, 16_000),
+      },
+    })
+  }
+
   if (!subject) return <Blank title="No subject" body="Pick or add a subject first." />
 
   if (open) {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <div className="flex shrink-0 items-center justify-between gap-3 pb-4">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 pb-4">
           <button
             type="button"
             onClick={() => setOpen(null)}
@@ -71,10 +111,32 @@ export default function NotesPane({ roomId, subject, caps, announce }: PaneProps
             <ArrowLeft aria-hidden className="size-4" />
             All notes
           </button>
-          <GroundedBadge grounded={open.grounded} sources={open.sources} />
+
+          <span className="flex items-center gap-2">
+            {tutor && (
+              <button
+                type="button"
+                onClick={explain}
+                disabled={!tutor.available}
+                title={tutor.available ? undefined : 'No AI key on this server'}
+                className="flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 text-[0.76rem] text-chalk outline-none transition-colors hover:bg-white/[0.1] disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+              >
+                <Sparkles aria-hidden className="size-3.5" />
+                {selected ? 'Explain selection' : 'Explain'}
+              </button>
+            )}
+            <GroundedBadge grounded={open.grounded} sources={open.sources} />
+          </span>
         </div>
 
-        <article data-lenis-prevent className="min-h-0 flex-1 overflow-y-auto pb-6 pr-1">
+        <article
+          ref={articleRef}
+          onMouseUp={readSelection}
+          onKeyUp={readSelection}
+          onTouchEnd={readSelection}
+          data-lenis-prevent
+          className="min-h-0 flex-1 overflow-y-auto pb-6 pr-1"
+        >
           <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.02em] text-chalk">
             {open.title}
           </h3>

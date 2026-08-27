@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { env } from '../config/env.js'
 import { prisma } from '../models/prisma.js'
+import * as assistant from '../services/assistant.service.js'
 import * as azure from '../services/azure.service.js'
 import * as embeddings from '../services/embeddings.service.js'
 import * as generate from '../services/generate.service.js'
@@ -800,4 +801,52 @@ export async function progress(req: Request, res: Response) {
       suggestions: await generate.suggestions(subject.id),
     },
   })
+}
+
+// ─── Assistant ────────────────────────────────────────────────────────────────
+
+const askInput = z.object({
+  subjectId: z.string(),
+  message: z.string().trim().min(1, 'Ask something').max(4000),
+  mode: z.enum(['explain', 'hint', 'coding', 'ask']).default('ask'),
+  /* The thing on screen, sent verbatim rather than by id — see the note on
+     `Focus` in the service for why the text itself is what gets passed. */
+  focus: z
+    .object({
+      kind: z.enum(['note', 'question', 'problem']),
+      title: z.string().max(300),
+      body: z.string().max(20_000),
+    })
+    .nullable()
+    .default(null),
+})
+
+export async function assistantHistory(req: Request, res: Response) {
+  const roomId = await gate(req)
+  const subject = await subjectIn(roomId, req.query.subjectId)
+  res.json({ messages: await assistant.history(roomId, req.userId!, subject.id) })
+}
+
+export async function assistantAsk(req: Request, res: Response) {
+  const roomId = await gate(req)
+  const input = askInput.parse(req.body)
+  const subject = await subjectIn(roomId, input.subjectId)
+
+  const reply = await assistant.ask({
+    roomId,
+    userId: req.userId!,
+    subjectId: subject.id,
+    mode: input.mode,
+    message: input.message,
+    focus: input.focus,
+  })
+
+  res.json({ reply })
+}
+
+export async function assistantClear(req: Request, res: Response) {
+  const roomId = await gate(req)
+  const subject = await subjectIn(roomId, req.query.subjectId)
+  await assistant.clear(roomId, req.userId!, subject.id)
+  res.json({ ok: true })
 }

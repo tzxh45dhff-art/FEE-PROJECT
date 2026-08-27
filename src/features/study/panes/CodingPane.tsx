@@ -1,9 +1,19 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, CheckCircle2, Loader2, Lock, Play, Trash2, XCircle } from 'lucide-react'
+import {
+  ArrowLeft,
+  CheckCircle2,
+  LifeBuoy,
+  Loader2,
+  Lock,
+  Play,
+  Trash2,
+  XCircle,
+} from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import * as studyApi from '@/features/study/api'
+import { useTutor } from '@/features/study/tutorContext'
 import {
   Blank,
   PaneShell,
@@ -203,6 +213,7 @@ function Workspace({
   const [verdict, setVerdict] = useState<studyApi.Verdict | null>(null)
   const [running, setRunning] = useState<'samples' | 'submit' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const tutor = useTutor()
 
   /* Switching language swaps the starter, but only when nothing has been
      written — silently discarding somebody's half-finished solution because
@@ -244,6 +255,36 @@ function Workspace({
         </button>
 
         <span className="flex items-center gap-2">
+          {/* Sends what has been typed so far along with the statement. Help
+              with a half-written attempt is help with *that* attempt — where
+              it went wrong, not a fresh lecture on the topic. The server's
+              coding mode is written to refuse to finish it. */}
+          {tutor && (
+            <button
+              type="button"
+              onClick={() =>
+                tutor.ask({
+                  mode: 'coding',
+                  focus: {
+                    kind: 'problem',
+                    title: problem.title,
+                    body: `${problem.description}\n\n---\n\nWhat I have written so far (${language}):\n\n\`\`\`${monacoLanguage(language)}\n${code.slice(0, 8_000)}\n\`\`\`${
+                      verdict && verdict.status !== 'passed'
+                        ? `\n\n---\n\nThe judge said: ${verdict.passedCount} of ${verdict.totalCount} cases passed.${verdict.detail ? `\n${verdict.detail.slice(0, 1_500)}` : ''}`
+                        : ''
+                    }`,
+                  },
+                })
+              }
+              disabled={!tutor.available}
+              title={tutor.available ? undefined : 'No AI key on this server'}
+              className="flex h-9 items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 text-[0.78rem] text-chalk outline-none transition-colors hover:bg-white/[0.1] disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            >
+              <LifeBuoy aria-hidden className="size-3.5" />
+              Help
+            </button>
+          )}
+
           <select
             value={language}
             aria-label="Language"

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, Check, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Check, Lightbulb, Trash2, X } from 'lucide-react'
 
 import * as studyApi from '@/features/study/api'
+import { useTutor } from '@/features/study/tutorContext'
 import {
   Blank,
   GroundedBadge,
@@ -201,6 +202,7 @@ function Attempt({
   const { set, answers, review, score } = taking
   const marked = review !== null
   const answered = Object.keys(answers).length
+  const tutor = useTutor()
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -283,6 +285,37 @@ function Attempt({
                   )
                 })}
               </div>
+
+              {/* Only while it is still unanswered. Afterwards the marked
+                  explanation is right there, and a hint about a question you
+                  already know the answer to is just noise.
+
+                  The correct index is deliberately not sent — the client does
+                  not have it before marking, and the server's hint mode is
+                  written to withhold it even where it could work it out. */}
+              {!marked && tutor && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    tutor.ask({
+                      mode: 'hint',
+                      focus: {
+                        kind: 'question',
+                        title: question.prompt.slice(0, 120),
+                        body: `${question.prompt}\n\n${question.options
+                          .map((option, i) => `${'abcd'[i] ?? i + 1}) ${option}`)
+                          .join('\n')}`,
+                      },
+                    })
+                  }
+                  disabled={!tutor.available}
+                  title={tutor.available ? undefined : 'No AI key on this server'}
+                  className="mt-3 flex items-center gap-1.5 text-[0.76rem] text-dusk outline-none transition-colors hover:text-chalk disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                >
+                  <Lightbulb aria-hidden className="size-3.5" />
+                  Hint
+                </button>
+              )}
 
               {reviewed?.explanation && (
                 <p className="mt-3 border-t border-white/[0.06] pt-3 text-[0.8rem] leading-relaxed text-mist">

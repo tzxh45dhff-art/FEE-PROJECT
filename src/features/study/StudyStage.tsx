@@ -8,6 +8,7 @@ import {
   Loader2,
   MessagesSquare,
   NotebookPen,
+  Sparkles,
   Terminal,
   Timer,
   TrendingUp,
@@ -19,6 +20,7 @@ import { CoverAmbience } from '@/features/music/CoverAmbience'
 import * as studyApi from '@/features/study/api'
 import { SubjectBar } from '@/features/study/SubjectBar'
 import { FocusTimer } from '@/features/study/FocusTimer'
+import { TutorContext, type Tutor as TutorHandle, type TutorAsk } from '@/features/study/tutorContext'
 import { useStudySync, useStudyTimer } from '@/features/study/useStudyTimer'
 import { cn } from '@/lib/utils'
 
@@ -31,6 +33,7 @@ const McqPane = lazy(() => import('@/features/study/panes/McqPane'))
 const NotesPane = lazy(() => import('@/features/study/panes/NotesPane'))
 const CodingPane = lazy(() => import('@/features/study/panes/CodingPane'))
 const ProgressPane = lazy(() => import('@/features/study/panes/ProgressPane'))
+const Tutor = lazy(() => import('@/features/study/Tutor'))
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -123,7 +126,29 @@ export function StudyStage({
 
   const paneProps = { roomId, subject, caps, announce, selfId }
 
+  /* The tutor lives up here rather than in any one pane, because the thing it
+     is asked about comes from whichever pane happens to be open — a hint about
+     a question, then the notes behind it, is one conversation. */
+  const [tutorOpen, setTutorOpen] = useState(false)
+  const [handover, setHandover] = useState<TutorAsk | null>(null)
+
+  const tutor = useMemo<TutorHandle>(
+    () => ({
+      available: Boolean(caps?.ai),
+      ask: (request) => {
+        setTutorOpen(true)
+        setHandover(request)
+      },
+      open: (focus = null) => {
+        setTutorOpen(true)
+        setHandover({ mode: 'ask', focus, message: '' })
+      },
+    }),
+    [caps?.ai],
+  )
+
   return createPortal(
+    <TutorContext.Provider value={tutor}>
     <motion.div
       className="fixed left-0 top-0 z-[135] flex flex-col overflow-hidden bg-void transition-[padding] duration-500 ease-glass"
       style={{
@@ -173,6 +198,27 @@ export function StudyStage({
         </span>
 
         <span className="flex shrink-0 items-center gap-2">
+          {/* The one control that is always reachable, whichever pane is open —
+              the per-item Explain/Hint/Help buttons are shortcuts into the
+              same panel, not the only way in. */}
+          <button
+            type="button"
+            onClick={() => (tutorOpen ? setTutorOpen(false) : tutor.open())}
+            disabled={!caps?.ai || !subject}
+            aria-label="Tutor"
+            aria-pressed={tutorOpen}
+            title={caps?.ai ? 'Ask about this subject' : 'No AI key on this server'}
+            className={cn(
+              'flex h-11 items-center gap-2 rounded-full border px-3.5 outline-none backdrop-blur-md sm:h-9 transition-colors duration-300 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
+              tutorOpen
+                ? 'border-signal/50 bg-signal/15 text-chalk'
+                : 'border-white/10 bg-white/[0.04] text-chalk hover:bg-white/[0.1]',
+            )}
+          >
+            <Sparkles aria-hidden className="size-4" />
+            <span className="hidden text-[0.76rem] sm:inline">Tutor</span>
+          </button>
+
           {onTogglePanel && (
             <button
               type="button"
@@ -285,8 +331,39 @@ export function StudyStage({
             </AnimatePresence>
           )}
         </div>
+
+        {/* A column on a wide screen, a sheet over the work on a narrow one.
+            Beside rather than over wherever there is room, because every
+            question it answers is about something still on screen. */}
+        <AnimatePresence>
+          {tutorOpen && subject && (
+            <motion.aside
+              key="study-tutor"
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 24 }}
+              transition={{ duration: 0.26, ease: EASE }}
+              className={cn(
+                'absolute inset-0 z-20 border-white/[0.07] bg-void/95 backdrop-blur-xl',
+                'lg:relative lg:inset-auto lg:z-auto lg:w-[23rem] lg:shrink-0 lg:border-l lg:bg-transparent lg:backdrop-blur-none',
+              )}
+            >
+              <Suspense fallback={<Waiting />}>
+                <Tutor
+                  roomId={roomId}
+                  subjectId={subject.id}
+                  subjectName={subject.name}
+                  request={handover}
+                  onConsumed={() => setHandover(null)}
+                  onClose={() => setTutorOpen(false)}
+                />
+              </Suspense>
+            </motion.aside>
+          )}
+        </AnimatePresence>
       </div>
-    </motion.div>,
+    </motion.div>
+    </TutorContext.Provider>,
     document.body,
   )
 }

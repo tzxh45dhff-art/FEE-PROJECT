@@ -49,7 +49,16 @@ export function MusicDock({
            * and on a narrow phone it is what keeps the dock from becoming the
            * whole bottom of the window.
            */
-          className="pointer-events-auto fixed bottom-4 z-[120] max-w-[min(22rem,calc(100vw-2rem))] transition-[right] duration-500 ease-glass"
+          /*
+           * Above the activity stages, not behind them.
+           *
+           * The stages sit at 135 and cover the whole screen, so anything
+           * below that is invisible for as long as one is open — which is
+           * precisely when a dock for the music playing underneath is most
+           * worth having. It stays below the room panel and the floating
+           * call, both of which are things somebody deliberately opened.
+           */
+          className="pointer-events-auto fixed bottom-4 z-[137] max-w-[min(22rem,calc(100vw-2rem))] transition-[right] duration-500 ease-glass"
           style={{ right: `calc(${insetRight}rem + 1rem)` }}
           initial={{ opacity: 0, y: 24, scale: 0.94 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
