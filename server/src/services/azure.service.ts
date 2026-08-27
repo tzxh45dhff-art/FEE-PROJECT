@@ -45,27 +45,59 @@ function url(deployment: string, path: string) {
   return `${env.azure.endpoint}/openai/deployments/${deployment}/${path}?api-version=${env.azure.apiVersion}`
 }
 
-async function post(target: string, body: unknown, timeoutMs: number): Promise<unknown> {
-  let response: Response
-  try {
-    response = await fetch(target, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'api-key': env.azure.apiKey },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
-    })
-  } catch (cause) {
-    /* A timeout and a dead network arrive the same way here, and neither is
-       something the caller can do anything about beyond telling the person. */
-    throw HttpError.unavailable(
-      cause instanceof Error && cause.name === 'TimeoutError'
-        ? 'The model took too long to answer. Try a smaller request.'
-        : 'Could not reach the model.',
-    )
-  }
+/**
+ * How many times to try a request that failed for a reason worth retrying.
+ *
+ * A dropped connection is not the same kind of failure as a refused request.
+ * The model can answer in two seconds and still have the reply never arrive —
+ * measured here against a live deployment, where Azure reported its own
+ * `total_duration_ms` at 2276 while the socket took 77 seconds to finish, and
+ * sometimes died outright. On that kind of link, a generator that gives up on
+ * the first dropped connection fails perhaps half the time for reasons that
+ * have nothing to do with the request.
+ *
+ * Only transient failures are retried. A 400 means the prompt is wrong and
+ * will be exactly as wrong the second time.
+ */
+const MAX_ATTEMPTS = 3
 
-  if (!response.ok) {
+/** Backoff between attempts. Short — the caller is a person waiting. */
+const RETRY_DELAY_MS = 1200
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function post(target: string, body: unknown, timeoutMs: number): Promise<unknown> {
+  let lastError: unknown = null
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    let response: Response
+    try {
+      response = await fetch(target, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'api-key': env.azure.apiKey },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+    } catch (cause) {
+      /* A dropped connection and a genuine timeout arrive the same way. Both
+         are worth another go; the timeout is generous enough that hitting it
+         twice means something is actually wrong. */
+      lastError = cause
+      if (attempt < MAX_ATTEMPTS) {
+        await wait(RETRY_DELAY_MS * attempt)
+        continue
+      }
+      throw HttpError.unavailable(
+        cause instanceof Error && cause.name === 'TimeoutError'
+          ? 'The model took too long to answer. Try a smaller request.'
+          : 'Could not reach the model — the connection kept dropping.',
+      )
+    }
+
+    if (response.ok) return response.json()
+
     const text = await response.text().catch(() => '')
+
     /*
      * 429 is the one worth naming.
      *
@@ -73,13 +105,29 @@ async function post(target: string, body: unknown, timeoutMs: number): Promise<u
      * at once against one deployment's quota — and "rate limited, wait a
      * moment" is something a person can act on, where "request failed" is not.
      */
-    if (response.status === 429) {
-      throw HttpError.unavailable('The model is rate limited right now. Try again in a moment.')
+    if (response.status === 429 || response.status >= 500) {
+      lastError = new Error(`${response.status} ${text.slice(0, 120)}`)
+      if (attempt < MAX_ATTEMPTS) {
+        await wait(RETRY_DELAY_MS * attempt)
+        continue
+      }
+      if (response.status === 429) {
+        throw HttpError.unavailable('The model is rate limited right now. Try again in a moment.')
+      }
     }
-    throw HttpError.badGateway(`The model refused the request (${response.status}). ${text.slice(0, 200)}`)
+
+    /* Anything else is the request's own fault and will fail identically on a
+       second attempt — a bad prompt, a wrong deployment name, a dead key. */
+    throw HttpError.badGateway(
+      `The model refused the request (${response.status}). ${text.slice(0, 200)}`,
+    )
   }
 
-  return response.json()
+  throw HttpError.unavailable(
+    `Could not reach the model after ${MAX_ATTEMPTS} attempts. ${
+      lastError instanceof Error ? lastError.message.slice(0, 120) : ''
+    }`.trim(),
+  )
 }
 
 export type ChatMessage =

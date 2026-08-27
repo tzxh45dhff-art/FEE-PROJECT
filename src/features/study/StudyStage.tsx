@@ -104,7 +104,7 @@ export function StudyStage({
     void studyApi
       .capabilities(roomId)
       .then(setCaps)
-      .catch(() => setCaps({ ai: false, judge: false, judgeLanguages: [], chatModel: null }))
+      .catch(() => setCaps({ ai: false, search: false, judge: false, judgeLanguages: [], chatModel: null }))
   }, [roomId, loadSubjects])
 
   /* Somebody else added a subject; the list is the one thing every pane shares
@@ -155,10 +155,19 @@ export function StudyStage({
             </span>
           )}
 
-          {/* Said once, at the top, rather than on every disabled button. */}
+          {/* Said once, at the top, rather than on every disabled button —
+              and said honestly: the two capabilities are independent, so a
+              server can write questions with no way to search documents, or
+              search documents through a different provider than the one
+              writing them. */}
           {caps && !caps.ai && (
             <span className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-dusk sm:flex">
               <span className="text-[0.72rem]">No AI key on this server — generating is off</span>
+            </span>
+          )}
+          {caps && caps.ai && !caps.search && (
+            <span className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-dusk sm:flex">
+              <span className="text-[0.72rem]">No embedding provider — documents won't be searchable</span>
             </span>
           )}
         </span>

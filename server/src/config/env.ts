@@ -123,6 +123,22 @@ export const env = {
   },
 
   /**
+   * Gemini, as the free rung on the embedding ladder.
+   *
+   * Chat and embeddings are asked of different providers by design, not by
+   * accident — an Azure resource commonly carries a chat deployment with no
+   * embedding deployment beside it, since the two are provisioned and billed
+   * separately. Rather than block the whole feature on that second
+   * deployment existing, embeddings alone fall back here, and further to a
+   * model run in-process if even this is absent. Chat never falls back:
+   * splitting that too would mean every generator's tone changing depending
+   * on which key happened to be configured that day.
+   */
+  gemini: {
+    apiKey: process.env.GEMINI_API_KEY ?? '',
+  },
+
+  /**
    * The code judge.
    *
    * Deliberately somebody else's machine. Running a stranger's code is the one

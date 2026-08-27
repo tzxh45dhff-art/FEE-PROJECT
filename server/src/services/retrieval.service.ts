@@ -1,5 +1,6 @@
 import { prisma } from '../models/prisma.js'
-import * as azure from './azure.service.js'
+import * as embeddings from './embeddings.service.js'
+import type { EmbeddingProvider } from './embeddings.service.js'
 
 /**
  * Finding the passages worth showing a model.
@@ -54,13 +55,28 @@ function cosine(a: number[], b: number[]) {
 /**
  * Below this, a passage is not about the question.
  *
- * Cosine over these embeddings does not go to zero for unrelated text — two
- * random English paragraphs still sit around 0.7 — so "the best few" is not
- * the same as "any that are relevant". Without a floor, a question about
- * something the shelf says nothing about still returns the three least
- * irrelevant pages, and the model dutifully grounds an answer in them.
+ * Cosine over these embeddings does not fall to zero for unrelated text, so
+ * "the best few" is not the same as "any that are relevant". Without a floor,
+ * a question about something the shelf says nothing about still returns the
+ * three least irrelevant pages, and the model dutifully grounds an answer in
+ * them — wrong, and cited.
+ *
+ * The number is per provider because the scales genuinely differ, and a floor
+ * borrowed from the wrong one fails silently in whichever direction it is
+ * wrong: too high and nothing is ever grounded, too low and everything is.
+ * Both were measured against a real course handout rather than assumed —
+ * relevant queries against irrelevant ones, looking for a gap between them.
+ *
+ *   Gemini  relevant 0.585-0.665, irrelevant 0.476-0.500 -> floor 0.54
+ *   Azure   the OpenAI scale, where unrelated prose sits far higher
+ *
+ * If a third provider is ever added, measure it the same way rather than
+ * guessing; the cost of guessing is a feature that looks like it works.
  */
-const FLOOR = 0.78
+const FLOOR: Record<NonNullable<EmbeddingProvider>, number> = {
+  gemini: 0.54,
+  azure: 0.78,
+}
 
 export type SearchOptions = {
   /** How many passages to return at most. */
@@ -82,7 +98,8 @@ export async function search(
   options: SearchOptions = {},
 ): Promise<Hit[]> {
   const limit = options.limit ?? 6
-  const floor = options.floor ?? FLOOR
+  const provider = await embeddings.provider()
+  const floor = options.floor ?? (provider ? FLOOR[provider] : 1)
 
   const rows = await prisma.resourceChunk.findMany({
     where: { subjectId, resource: { status: 'ready' } },
@@ -97,7 +114,7 @@ export async function search(
   })
   if (rows.length === 0) return []
 
-  const wanted = await azure.embedOne(query)
+  const wanted = await embeddings.embedOne(query)
 
   const scored: Hit[] = []
   for (const row of rows) {

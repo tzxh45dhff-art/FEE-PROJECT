@@ -12,6 +12,8 @@ import { API_BASE, API_HEADERS, getToken } from '@/lib/config'
 export type Capabilities = {
   /** False when the server has no model key — the UI disables rather than fails. */
   ai: boolean
+  /** Independent of `ai` — a chat deployment implies nothing about an embedding one. */
+  search: boolean
   judge: boolean
   judgeLanguages: string[]
   chatModel: string | null

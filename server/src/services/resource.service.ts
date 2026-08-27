@@ -3,7 +3,7 @@ import { rm } from 'node:fs/promises'
 
 import { prisma } from '../models/prisma.js'
 import { UPLOAD_DIR } from './upload.service.js'
-import * as azure from './azure.service.js'
+import * as embeddings from './embeddings.service.js'
 import { chunk, extract } from './extract.service.js'
 
 /**
@@ -70,7 +70,7 @@ export async function ingest(resourceId: string): Promise<void> {
       return
     }
 
-    const vectors = await azure.embed(pieces.map((piece) => piece.text))
+    const vectors = await embeddings.embed(pieces.map((piece) => piece.text))
     if (vectors.length !== pieces.length) {
       await fail(resourceId, 'The embedding model returned a different number of vectors.')
       return

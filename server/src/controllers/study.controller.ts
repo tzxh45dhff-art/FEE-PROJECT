@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { env } from '../config/env.js'
 import { prisma } from '../models/prisma.js'
 import * as azure from '../services/azure.service.js'
+import * as embeddings from '../services/embeddings.service.js'
 import * as generate from '../services/generate.service.js'
 import * as judge from '../services/judge.service.js'
 import * as resources from '../services/resource.service.js'
@@ -49,6 +50,11 @@ export async function capabilities(req: Request, res: Response) {
   await gate(req)
   res.json({
     ai: azure.configured(),
+    /* Independent of `ai`. Chat and embeddings are separate deployments on a
+       resource, or separate providers entirely — Azure can write questions
+       with no embedding deployment behind it, and a room can search its
+       shelf through Gemini with no Azure key at all. */
+    search: await embeddings.available(),
     judge: judge.configured(),
     judgeLanguages: judge.configured() ? judge.JUDGE_LANGUAGES : [],
     chatModel: azure.configured() ? env.azure.chatDeployment : null,
@@ -169,6 +175,7 @@ export async function uploadResource(req: Request, res: Response) {
 
   const stored = await finishUpload(req, file)
   const title = (req.body?.title as string | undefined)?.trim() || file.originalname || stored
+  const canEmbed = await embeddings.available()
 
   const resource = await prisma.resource.create({
     data: {
@@ -179,16 +186,17 @@ export async function uploadResource(req: Request, res: Response) {
       file: stored,
       mimeType: file.mimetype,
       bytes: file.size,
-      status: azure.configured() ? 'pending' : 'failed',
-      /* Without a key there is nothing to embed with, and a document stuck at
-         "pending" forever would look like a bug rather than a missing key. */
-      error: azure.configured()
+      status: canEmbed ? 'pending' : 'failed',
+      /* Without a provider there is nothing to embed with, and a document
+         stuck at "pending" forever would look like a bug rather than a
+         missing key. */
+      error: canEmbed
         ? null
-        : 'This server has no AI key configured, so documents cannot be made searchable.',
+        : 'No embedding provider is configured on this server, so documents cannot be made searchable.',
     },
   })
 
-  if (azure.configured()) resources.ingestInBackground(resource.id)
+  if (canEmbed) resources.ingestInBackground(resource.id)
 
   res.status(201).json({ resource })
 }
@@ -211,7 +219,9 @@ export async function retryResource(req: Request, res: Response) {
     where: { id: req.params.resourceId!, roomId },
   })
   if (!resource) throw HttpError.notFound('That document is not here.')
-  if (!azure.configured()) throw HttpError.unavailable('This server has no AI key configured.')
+  if (!(await embeddings.available())) {
+    throw HttpError.unavailable('No embedding provider is configured on this server.')
+  }
 
   await prisma.resource.update({
     where: { id: resource.id },
