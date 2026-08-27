@@ -31,6 +31,7 @@ import { useMeshCall } from '@/features/room-panel/useMeshCall'
 import { useWatchPulse } from '@/features/watch/useWatchPulse'
 import { WatchInvite } from '@/features/watch/WatchInvite'
 import { GamesStage } from '@/features/games/GamesStage'
+import { StudyStage } from '@/features/study/StudyStage'
 import { WatchStage } from '@/features/watch/WatchStage'
 import { CreateRoomForm } from '@/features/dashboard/components/CreateRoomForm'
 import { usePresence, type Present } from '@/features/rooms/usePresence'
@@ -86,6 +87,7 @@ export function DashboardPage() {
   const [watchOrigin, setWatchOrigin] = useState<DOMRect | null>(null)
   /** Same, for the games page. */
   const [gamesOrigin, setGamesOrigin] = useState<DOMRect | null>(null)
+  const [studyOrigin, setStudyOrigin] = useState<DOMRect | null>(null)
 
   const activeRoomId = params.get('room')
   /* Validated rather than cast — `?activity=` is user-editable, and an
@@ -368,6 +370,7 @@ export function DashboardPage() {
           if (entry.id === 'music') setMusicOrigin(from ?? null)
           if (entry.id === 'watch') setWatchOrigin(from ?? null)
           if (entry.id === 'games') setGamesOrigin(from ?? null)
+        if (entry.id === 'study') setStudyOrigin(from ?? null)
           setActivity(entry.id)
         },
       }))
@@ -646,8 +649,37 @@ export function DashboardPage() {
           </ErrorBoundary>
         )}
 
-        {/* Code is still a stub, and says so rather than miming. */}
-        {activity && activity !== 'watch' && activity !== 'music' && activity !== 'games' && (
+        {activity === 'study' && activeRoom && (
+          <ErrorBoundary
+            key="study"
+            resetKey={activeRoom.id}
+            fallback={(_error, reset) => (
+              <StageFailed
+                title="The study page hit a problem"
+                onRetry={reset}
+                onClose={() => setActivity(null)}
+              />
+            )}
+          >
+            <StudyStage
+              roomId={activeRoom.id}
+              selfId={user?.id}
+              origin={studyOrigin}
+              onClose={() => setActivity(null)}
+              insetRight={inset}
+              panelOpen={sideOpen}
+              unread={chat.unread}
+              onTogglePanel={() => setSideOpen((open) => !open)}
+            />
+          </ErrorBoundary>
+        )}
+
+        {/* Anything not yet built says so rather than miming. */}
+        {activity &&
+          activity !== 'watch' &&
+          activity !== 'music' &&
+          activity !== 'games' &&
+          activity !== 'study' && (
           <ActivityStage id={activity} onClose={() => setActivity(null)} />
         )}
       </AnimatePresence>

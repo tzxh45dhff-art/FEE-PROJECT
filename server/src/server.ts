@@ -7,6 +7,7 @@ import { attachChatGateway } from './sockets/chat.gateway.js'
 import { attachGameGateway } from './sockets/game.gateway.js'
 import { attachMusicGateway } from './sockets/music.gateway.js'
 import { attachPresenceGateway } from './sockets/presence.gateway.js'
+import { attachStudyGateway } from './sockets/study.gateway.js'
 import { attachVoiceGateway } from './sockets/voice.gateway.js'
 import { attachWatchGateway } from './sockets/watch.gateway.js'
 
@@ -21,6 +22,7 @@ attachChatGateway(io)
 attachCallGateway(io)
 attachVoiceGateway(io)
 attachGameGateway(io)
+attachStudyGateway(io)
 
 httpServer.listen(env.port, () => {
   console.log(`  Huddle API on http://localhost:${env.port}`)

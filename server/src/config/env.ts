@@ -94,6 +94,53 @@ export const env = {
     meteredApiKey: process.env.METERED_API_KEY ?? '',
     meteredDomain: process.env.METERED_DOMAIN ?? '',
   },
+
+  /**
+   * Azure OpenAI, for everything the Study page generates.
+   *
+   * Optional, and the whole feature says so rather than half-working: with no
+   * key, Study still keeps subjects, resources and a timer, and every button
+   * that would have called a model is disabled with the reason on it. A
+   * generator that silently returns nothing is worse than one that is plainly
+   * switched off.
+   *
+   * Two deployments on one resource — a chat model and an embedding model.
+   * They are separate names on the same endpoint and key, which is why this is
+   * one config group rather than two.
+   */
+  azure: {
+    endpoint: (process.env.AZURE_OPENAI_ENDPOINT ?? '').replace(/\/$/, ''),
+    apiKey: process.env.AZURE_OPENAI_API_KEY ?? '',
+    /** Deployment name of the chat model — a GPT-4o deployment. */
+    chatDeployment: process.env.AZURE_OPENAI_CHAT_DEPLOYMENT ?? 'gpt-4o',
+    /** Deployment name of the embedding model. */
+    embeddingDeployment:
+      process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT ?? 'text-embedding-3-small',
+    /* Pinned rather than floating: Azure's API surface changes between
+       versions, and a deployment that starts answering differently because a
+       default moved underneath it is a bad afternoon. */
+    apiVersion: process.env.AZURE_OPENAI_API_VERSION ?? '2024-10-21',
+  },
+
+  /**
+   * The code judge.
+   *
+   * Deliberately somebody else's machine. Running a stranger's code is the one
+   * thing in this project worth refusing to do in-process: a judge service has
+   * already solved the toolchains, the CPU and memory ceilings, and the
+   * sandbox escapes, and doing it here would mean solving them again, less
+   * well, for a feature that is not what the app is for.
+   *
+   * Optional. Without it, coding questions still generate and read — only the
+   * run button is off.
+   */
+  judge: {
+    /** Base URL of a Judge0-compatible API. */
+    url: (process.env.JUDGE_URL ?? '').replace(/\/$/, ''),
+    apiKey: process.env.JUDGE_API_KEY ?? '',
+    /** RapidAPI-style host header, when the provider wants one. */
+    apiHost: process.env.JUDGE_API_HOST ?? '',
+  },
 }
 
 /** Name of the httpOnly cookie carrying the session token. */

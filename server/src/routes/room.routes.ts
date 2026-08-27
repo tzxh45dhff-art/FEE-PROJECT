@@ -1,11 +1,12 @@
 import { Router } from 'express'
 
 import * as musicController from '../controllers/music.controller.js'
+import * as studyController from '../controllers/study.controller.js'
 import * as roomController from '../controllers/room.controller.js'
 import * as watchController from '../controllers/watch.controller.js'
 import { asyncHandler } from '../middleware/asyncHandler.js'
 import { requireAuth } from '../middleware/requireAuth.js'
-import { receiveAudio, receiveVideo } from '../services/upload.service.js'
+import { receiveDocument, receiveAudio, receiveVideo } from '../services/upload.service.js'
 
 export const roomRoutes = Router()
 
@@ -57,5 +58,56 @@ roomRoutes.delete(
   asyncHandler(musicController.removeFromPlaylist),
 )
 roomRoutes.get('/:id/music/liked', asyncHandler(musicController.liked))
+
+/*
+ * Study.
+ *
+ * Everything here is scoped to a subject rather than to the room, and the
+ * subject is checked against the room on every call — membership of a room is
+ * not membership of whatever subject id somebody puts in a query string.
+ */
+roomRoutes.get('/:id/study', asyncHandler(studyController.capabilities))
+
+roomRoutes.get('/:id/study/subjects', asyncHandler(studyController.subjects))
+roomRoutes.post('/:id/study/subjects', asyncHandler(studyController.createSubject))
+roomRoutes.delete('/:id/study/subjects/:subjectId', asyncHandler(studyController.deleteSubject))
+
+roomRoutes.get('/:id/study/resources', asyncHandler(studyController.listResources))
+roomRoutes.post(
+  '/:id/study/resources',
+  receiveDocument,
+  asyncHandler(studyController.uploadResource),
+)
+roomRoutes.post(
+  '/:id/study/resources/:resourceId/retry',
+  asyncHandler(studyController.retryResource),
+)
+roomRoutes.delete('/:id/study/resources/:resourceId', asyncHandler(studyController.deleteResource))
+
+roomRoutes.get('/:id/study/syllabus', asyncHandler(studyController.getSyllabus))
+roomRoutes.post('/:id/study/syllabus', asyncHandler(studyController.readSyllabus))
+roomRoutes.get('/:id/study/next', asyncHandler(studyController.nextUp))
+
+roomRoutes.get('/:id/study/mcq', asyncHandler(studyController.listMcq))
+roomRoutes.post('/:id/study/mcq', asyncHandler(studyController.createMcq))
+roomRoutes.get('/:id/study/mcq/:setId', asyncHandler(studyController.getMcq))
+roomRoutes.post('/:id/study/mcq/:setId/attempts', asyncHandler(studyController.submitMcq))
+roomRoutes.delete('/:id/study/mcq/:setId', asyncHandler(studyController.deleteMcq))
+
+roomRoutes.get('/:id/study/notes', asyncHandler(studyController.listNotes))
+roomRoutes.post('/:id/study/notes', asyncHandler(studyController.createNote))
+roomRoutes.get('/:id/study/notes/:noteId', asyncHandler(studyController.getNote))
+roomRoutes.delete('/:id/study/notes/:noteId', asyncHandler(studyController.deleteNote))
+
+roomRoutes.get('/:id/study/coding', asyncHandler(studyController.listProblems))
+roomRoutes.post('/:id/study/coding', asyncHandler(studyController.createProblem))
+roomRoutes.get('/:id/study/coding/:problemId', asyncHandler(studyController.getProblem))
+roomRoutes.post(
+  '/:id/study/coding/:problemId/submissions',
+  asyncHandler(studyController.submitProblem),
+)
+roomRoutes.delete('/:id/study/coding/:problemId', asyncHandler(studyController.deleteProblem))
+
+roomRoutes.get('/:id/study/progress', asyncHandler(studyController.progress))
 roomRoutes.post('/:id/music/liked', asyncHandler(musicController.toggleLiked))
 roomRoutes.get('/:id/music/suggestions', asyncHandler(musicController.suggestions))

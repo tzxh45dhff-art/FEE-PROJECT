@@ -1,6 +1,6 @@
-import { Clapperboard, Code2, Gamepad2, Music4, type LucideIcon } from 'lucide-react'
+import { Clapperboard, Gamepad2, GraduationCap, Music4, type LucideIcon } from 'lucide-react'
 
-export type ActivityId = 'watch' | 'music' | 'games' | 'code'
+export type ActivityId = 'watch' | 'music' | 'games' | 'study'
 
 export type Activity = {
   id: ActivityId
@@ -42,12 +42,12 @@ export const ACTIVITIES: Activity[] = [
       'Short games anyone can drop into — tic tac toe, a typing race, memory — with results feeding the room leaderboard.',
   },
   {
-    id: 'code',
-    label: 'Code',
-    hint: 'Shared editor',
-    icon: Code2,
+    id: 'study',
+    label: 'Study',
+    hint: 'Focus together',
+    icon: GraduationCap,
     blurb:
-      'A shared editor with syntax highlighting and a challenge timer, for study sessions and coding races alike.',
+      'Subjects, a shelf of documents, and a focus timer the whole room sits to — with questions, notes and coding problems written from the syllabus you upload.',
   },
 ]
 

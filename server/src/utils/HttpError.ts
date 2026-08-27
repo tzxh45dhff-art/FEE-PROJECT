@@ -26,4 +26,16 @@ export class HttpError extends Error {
   static conflict(message: string) {
     return new HttpError(409, message)
   }
+  static tooMany(message: string) {
+    return new HttpError(429, message)
+  }
+  /** An upstream service answered, but not usefully. */
+  static badGateway(message: string) {
+    return new HttpError(502, message)
+  }
+  /** A dependency this server needs is missing or unreachable — not a bug
+      here, so it must not read as one to whoever hits it. */
+  static unavailable(message: string) {
+    return new HttpError(503, message)
+  }
 }

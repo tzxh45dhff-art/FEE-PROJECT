@@ -57,6 +57,21 @@ const PLAYABLE_AUDIO = new Set([
   'audio/x-flac',
 ])
 
+/**
+ * What the study shelf will take.
+ *
+ * Narrow on purpose. Everything here is something the extractor can get text
+ * out of, because a document that cannot be read is a document the whole
+ * feature can do nothing with — it would upload, sit there, and quietly fail
+ * to answer any question asked of it.
+ */
+const STUDY_DOCS = new Set([
+  'application/pdf',
+  'text/plain',
+  'text/markdown',
+  'text/x-markdown',
+])
+
 const MAX_BYTES = 2 * 1024 * 1024 * 1024
 
 /**
@@ -85,13 +100,16 @@ const storage = multer.diskStorage({
      */
     const ext = path.extname(file.originalname).toLowerCase()
     const audio = file.mimetype.startsWith('audio/')
-    const allowed = audio
-      ? /^\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|weba)$/
-      : /^\.(mp4|webm|ogv|ogg|mov|m4v)$/
+    const doc = STUDY_DOCS.has(file.mimetype)
+    const allowed = doc
+      ? /^\.(pdf|txt|md|markdown)$/
+      : audio
+        ? /^\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|weba)$/
+        : /^\.(mp4|webm|ogv|ogg|mov|m4v)$/
     /* Falling back to the family's most universal container rather than
        refusing: the mimetype has already been checked by `fileFilter`, so an
        odd extension is a naming quirk, not a rejection. */
-    const safeExt = allowed.test(ext) ? ext : audio ? '.mp3' : '.mp4'
+    const safeExt = allowed.test(ext) ? ext : doc ? '.pdf' : audio ? '.mp3' : '.mp4'
     const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 
     const name = inProgressName(`${unique}${safeExt}`)
@@ -155,6 +173,34 @@ export function receiveVideo(req: Request, res: Response, next: NextFunction) {
 export function receiveAudio(req: Request, res: Response, next: NextFunction) {
   discardPartialOnAbort(req, res)
   audioUpload.single('audio')(req, res, next)
+}
+
+/*
+ * A syllabus is not a film, and neither is a textbook.
+ *
+ * Well under the audio ceiling, let alone video's: every one of these has to
+ * be read, split and embedded, and a 200MB PDF is thousands of paid embedding
+ * calls and several minutes of waiting for something nobody meant to upload.
+ */
+const MAX_DOC_BYTES = 40 * 1024 * 1024
+
+const docUpload = multer({
+  storage,
+  limits: { fileSize: MAX_DOC_BYTES, files: 1 },
+  fileFilter: (_req, file, done) => {
+    if (STUDY_DOCS.has(file.mimetype)) return done(null, true)
+    done(
+      HttpError.badRequest(
+        "That file can't be read for studying. Use a PDF, a text file, or Markdown.",
+      ),
+    )
+  },
+})
+
+/** The same contract again, for something to study from — see `receiveVideo`. */
+export function receiveDocument(req: Request, res: Response, next: NextFunction) {
+  discardPartialOnAbort(req, res)
+  docUpload.single('document')(req, res, next)
 }
 
 function discardPartialOnAbort(req: Request, res: Response) {
