@@ -187,7 +187,13 @@ export async function uploadResource(
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const response = await fetch(`${API_BASE}${base(roomId)}/resources`, {
+  /* `/api` by hand, because this is the one call that does not go through
+     `api.ts` — that helper adds the prefix along with the JSON content type,
+     and a multipart body must be left alone for the browser to set its own
+     boundary. Without it this posts to a path the SPA answers with its own
+     HTML, and the failure reads as "that upload did not work" with nothing
+     in the server log, because the server never saw it. */
+  const response = await fetch(`${API_BASE}/api${base(roomId)}/resources`, {
     method: 'POST',
     headers,
     credentials: 'include',
