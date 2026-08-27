@@ -34,7 +34,12 @@ export function PaneShell({
         </div>
         {aside}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      {/* Lenis owns the wheel for the whole document, so a nested scroller
+          has to opt out explicitly or it simply never scrolls. Every other
+          scrolling panel in the app carries this for the same reason. */}
+      <div data-lenis-prevent className="min-h-0 flex-1 overflow-y-auto">
+        {children}
+      </div>
     </div>
   )
 }

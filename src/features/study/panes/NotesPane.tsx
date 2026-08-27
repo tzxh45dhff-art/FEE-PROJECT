@@ -74,7 +74,7 @@ export default function NotesPane({ roomId, subject, caps, announce }: PaneProps
           <GroundedBadge grounded={open.grounded} sources={open.sources} />
         </div>
 
-        <article className="min-h-0 flex-1 overflow-y-auto pb-6 pr-1">
+        <article data-lenis-prevent className="min-h-0 flex-1 overflow-y-auto pb-6 pr-1">
           <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.02em] text-chalk">
             {open.title}
           </h3>

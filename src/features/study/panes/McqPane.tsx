@@ -222,7 +222,7 @@ function Attempt({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-4">
+      <div data-lenis-prevent className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-4">
         <div>
           <h3 className="font-display text-[1.05rem] font-semibold text-chalk">{set.title}</h3>
           <div className="mt-2">

@@ -219,7 +219,10 @@ export function StudyStage({
       <div className="relative z-10 flex min-h-0 flex-1 flex-col md:flex-row">
         {/* A rail on a wide screen, a scrolling strip on a narrow one — the
             same shape the Listen browser uses for its own sections. */}
-        <nav className="flex shrink-0 gap-1 overflow-x-auto px-4 pb-2 pt-1 md:w-48 md:flex-col md:overflow-visible md:px-4 md:pb-6 md:pt-2">
+        <nav
+          data-lenis-prevent
+          className="flex shrink-0 gap-1 overflow-x-auto px-4 pb-2 pt-1 md:w-48 md:flex-col md:overflow-visible md:px-4 md:pb-6 md:pt-2"
+        >
           {TABS.map((entry) => {
             const active = tab === entry.id
             return (

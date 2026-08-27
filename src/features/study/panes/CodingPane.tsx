@@ -285,7 +285,7 @@ function Workspace({
       </div>
 
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
-        <div className="min-h-0 overflow-y-auto pr-1">
+        <div data-lenis-prevent className="min-h-0 overflow-y-auto pr-1">
           <h3 className="font-display text-[1.15rem] font-semibold tracking-[-0.02em] text-chalk">
             {problem.title}
           </h3>

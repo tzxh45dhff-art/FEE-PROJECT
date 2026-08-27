@@ -98,7 +98,7 @@ export function SubjectBar({
           )}
         </form>
       ) : (
-        <div className="flex items-center gap-2 overflow-x-auto">
+        <div data-lenis-prevent className="flex items-center gap-2 overflow-x-auto">
           {subjects === null ? (
             <span className="text-[0.78rem] text-dusk">Loading…</span>
           ) : (

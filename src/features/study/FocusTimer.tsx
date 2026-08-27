@@ -65,7 +65,7 @@ export function FocusTimer({ timer }: { timer: ReturnType<typeof useStudyTimer> 
   const resting = snapshot.phase !== 'focus'
 
   return (
-    <div className="grid h-full place-items-center overflow-y-auto px-4 py-6">
+    <div data-lenis-prevent className="grid h-full place-items-center overflow-y-auto px-4 py-6">
       <div className="w-full max-w-md text-center">
         <span
           className={cn(
