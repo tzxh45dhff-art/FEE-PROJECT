@@ -1,5 +1,6 @@
 import { env } from '../config/env.js'
 import { HttpError } from '../utils/HttpError.js'
+import { unreachable, unreachableMessage } from '../utils/reachability.js'
 
 /**
  * Gemini's embedding model, as the rung below Azure's.
@@ -56,6 +57,10 @@ async function post<T>(path: string, body: unknown): Promise<T> {
         signal: AbortSignal.timeout(TIMEOUT_MS),
       })
     } catch (cause) {
+      /* Same reasoning as the Azure client: a missing route is not a hiccup,
+         and retrying past it hides what is actually wrong. */
+      if (unreachable(cause)) throw HttpError.unavailable(unreachableMessage('Gemini', BASE))
+
       if (attempt < MAX_ATTEMPTS) {
         await wait(RETRY_DELAY_MS * attempt)
         continue

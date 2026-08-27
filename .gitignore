@@ -35,3 +35,7 @@ server/uploads/
 # and gives anyone who clones a private copy that never syncs with yours.
 server/prisma/dev.db
 server/prisma/*.db-journal
+
+
+
+
