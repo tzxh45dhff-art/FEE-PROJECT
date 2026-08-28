@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronLeft, ChevronRight, Loader2, Pause, Play, RotateCcw } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Pause,
+  Play,
+  RotateCcw,
+  Sparkles,
+} from 'lucide-react'
 
 import { Mermaid } from '@/features/study/Mermaid'
+import { useTutor } from '@/features/study/tutorContext'
 import type * as studyApi from '@/features/study/api'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { apiUrl } from '@/lib/config'
@@ -25,22 +34,30 @@ import { cn } from '@/lib/utils'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
+/** Written once so no build step has to survive escaping it. */
+const NEWLINE = String.fromCharCode(10)
+
 export function ExplainerPlayer({
   beats,
+  title,
   onExit,
 }: {
   beats: studyApi.Beat[]
+  /** Named so a question about a beat carries which lesson it came from. */
+  title: string
   onExit?: () => void
 }) {
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [ready, setReady] = useState(false)
+  const [rate, setRate] = useState(1)
   /* Seconds elapsed inside the current beat, for the progress bar only. */
   const [elapsed, setElapsed] = useState(0)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const preloadRef = useRef<HTMLAudioElement | null>(null)
   const reduced = usePrefersReducedMotion()
+  const tutor = useTutor()
 
   const beat = beats[index]
   const total = beats.length
@@ -75,6 +92,7 @@ export function ExplainerPlayer({
     if (!audio || !beat?.audio) return
 
     audio.src = apiUrl(beat.audio)
+    audio.playbackRate = rate
     audio.load()
 
     const onReady = () => {
@@ -113,6 +131,12 @@ export function ExplainerPlayer({
       audio.removeEventListener('ended', onEnd)
     }
   }, [index, total, go])
+
+  /* Applied to the element rather than kept only in state, so a rate chosen
+     mid-sentence takes effect on that sentence. */
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = rate
+  }, [rate, index])
 
   const toggle = useCallback(() => {
     const audio = audioRef.current
@@ -176,9 +200,9 @@ export function ExplainerPlayer({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: reduced ? 0 : -8 }}
             transition={{ duration: reduced ? 0.12 : 0.35, ease: EASE }}
-            className="absolute inset-0 grid place-items-center p-8 md:p-12"
+            className="absolute inset-0 grid place-items-center px-6 pb-28 pt-8 md:px-12 md:pb-32 md:pt-10"
           >
-            <Stage visual={beat.show} />
+            <Stage visual={beat.show} seconds={beat.seconds ?? 0} beatKey={index} />
           </motion.div>
         </AnimatePresence>
 
@@ -269,6 +293,52 @@ export function ExplainerPlayer({
             <RotateCcw aria-hidden className="size-4" />
           </button>
 
+          {/* Asks about the beat on screen, not the lesson in general — the
+              question somebody actually has is about the thing confusing them
+              right now, and pausing to retype it is how they lose the thread. */}
+          {tutor && (
+            <button
+              type="button"
+              onClick={() => {
+                audioRef.current?.pause()
+                setPlaying(false)
+                tutor.ask({
+                  mode: 'explain',
+                  focus: {
+                    kind: 'note',
+                    title: `${title} — ${clock(before)}`,
+                    body: describe(beat, index, total, title),
+                  },
+                })
+              }}
+              disabled={!tutor.available}
+              title={tutor.available ? undefined : 'No AI key on this server'}
+              className="study-btn h-9"
+            >
+              <Sparkles aria-hidden className="size-3.5" />
+              <span className="hidden sm:inline">Ask about this</span>
+            </button>
+          )}
+
+          {/* Half speed is for a dense derivation; one and a half is for
+              revisiting something already understood. Both get used. */}
+          <select
+            value={rate}
+            onChange={(event) => setRate(Number(event.target.value))}
+            aria-label="Playback speed"
+            className="study-field h-9 shrink-0 px-2 text-[0.76rem]"
+          >
+            {[0.75, 0.9, 1, 1.15, 1.35, 1.6, 2].map((option) => (
+              <option
+                key={option}
+                value={option}
+                style={{ background: 'var(--study-bg)', color: 'var(--study-text)' }}
+              >
+                {option}×
+              </option>
+            ))}
+          </select>
+
           <span className="ml-auto shrink-0 font-mono text-[0.74rem] tabular-nums text-[var(--study-faint)]">
             {clock(played)} / {clock(runtime)}
             <span className="ml-2.5">
@@ -281,13 +351,48 @@ export function ExplainerPlayer({
   )
 }
 
+/**
+ * The beat, written out for the tutor.
+ *
+ * Both halves go over: what was said and what was on screen. A question about
+ * "this" usually means the picture, and a transcript alone would leave the
+ * tutor answering about the wrong half of the beat.
+ */
+function describe(beat: studyApi.Beat, index: number, total: number, title: string) {
+  const v = beat.show
+  const shown =
+    v.kind === 'title'
+      ? `Title card: ${v.text}${v.subtitle ? ` — ${v.subtitle}` : ''}`
+      : v.kind === 'bullets'
+        ? `Points on screen:\n${v.items.slice(0, v.reveal ?? v.items.length).map((i) => `- ${i}`).join('\n')}`
+        : v.kind === 'steps'
+          ? `A walkthrough, currently on step ${(v.active ?? 0) + 1}:\n${v.items.map((item, at) => `${at + 1}. ${item}${at === (v.active ?? 0) ? '   <- on screen now' : ''}`).join('\n')}`
+          : v.kind === 'diagram'
+            ? `A diagram, as Mermaid:\n${v.mermaid}`
+            : v.kind === 'code'
+              ? `Code on screen (${v.language})${v.highlight?.length ? `, with line${v.highlight.length > 1 ? 's' : ''} ${v.highlight.join(', ')} highlighted` : ''}:\n\n${v.code}`
+              : v.kind === 'compare'
+                ? `A comparison — ${v.left.title}: ${v.left.points.join('; ')} / ${v.right.title}: ${v.right.points.join('; ')}`
+                : `A callout: ${v.text}`
+
+  return `From the lesson "${title}", part ${index + 1} of ${total}.\n\nThe narration said:\n"${beat.say}"\n\n${shown}`
+}
+
 function clock(seconds: number) {
   const whole = Math.max(0, Math.floor(seconds))
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`
 }
 
 /** One visual. Every branch renders data — none of it is generated imagery. */
-function Stage({ visual }: { visual: studyApi.Visual }) {
+function Stage({
+  visual,
+  seconds,
+  beatKey,
+}: {
+  visual: studyApi.Visual
+  seconds: number
+  beatKey: number
+}) {
   switch (visual.kind) {
     case 'title':
       return (
@@ -375,34 +480,7 @@ function Stage({ visual }: { visual: studyApi.Visual }) {
       )
 
     case 'code':
-      return (
-        <div className="w-full max-w-3xl">
-          <pre className="overflow-x-auto rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-5 font-mono text-[0.9rem] leading-[1.75]">
-            {visual.code.split('\n').map((line, at) => {
-              const lit = visual.highlight?.includes(at + 1)
-              return (
-                <div
-                  key={at}
-                  className={cn(
-                    '-mx-5 border-l-2 px-5 transition-colors duration-300',
-                    lit
-                      ? 'border-[var(--study-accent)] bg-[var(--study-accent-soft)]'
-                      : 'border-transparent opacity-60',
-                  )}
-                >
-                  <span className="mr-4 select-none text-[var(--study-faint)]">
-                    {String(at + 1).padStart(2, ' ')}
-                  </span>
-                  {line || ' '}
-                </div>
-              )
-            })}
-          </pre>
-          {visual.caption && (
-            <p className="mt-3 text-[0.86rem] text-[var(--study-faint)]">{visual.caption}</p>
-          )}
-        </div>
-      )
+      return <CodeStage visual={visual} seconds={seconds} beatKey={beatKey} />
 
     case 'compare':
       return (
@@ -458,6 +536,92 @@ function Stage({ visual }: { visual: studyApi.Visual }) {
     default:
       return null
   }
+}
+
+
+/**
+ * Code, typed in rather than pasted.
+ *
+ * Watching a line arrive is the difference between reading a listing and
+ * being shown how it is built, and it is the one place a lesson can be
+ * genuinely animated without inventing anything: the characters are the code,
+ * arriving in the order somebody would write them.
+ *
+ * Paced to finish a little before the narration does, so the block is whole
+ * and readable while the voice is still talking about it — rather than still
+ * crawling out after the beat has moved on.
+ */
+function CodeStage({
+  visual,
+  seconds,
+  beatKey,
+}: {
+  visual: Extract<studyApi.Visual, { kind: 'code' }>
+  seconds: number
+  beatKey: number
+}) {
+  const reduced = usePrefersReducedMotion()
+  const lines = useMemo(() => visual.code.split(NEWLINE), [visual.code])
+  const [typed, setTyped] = useState(0)
+
+  useEffect(() => {
+    if (reduced) {
+      setTyped(lines.length)
+      return
+    }
+    setTyped(0)
+    /* Two thirds of the beat, floored so a very short beat still animates and
+       capped so a very long one is not still typing a minute later. */
+    const span = Math.max(900, Math.min(seconds * 1000 * 0.66, 6000))
+    const step = Math.max(30, span / Math.max(1, lines.length))
+
+    let at = 0
+    const timer = window.setInterval(() => {
+      at += 1
+      setTyped(at)
+      if (at >= lines.length) window.clearInterval(timer)
+    }, step)
+    return () => window.clearInterval(timer)
+    /* Keyed on the code itself, not the beat: a group that holds the same
+       block and only moves the highlight must not retype it. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visual.code, reduced])
+
+  return (
+    <div className="w-full max-w-4xl">
+      {visual.caption && (
+        <p className="mb-3 text-[0.78rem] uppercase tracking-[0.07em] text-[var(--study-faint)]">
+          {visual.caption}
+        </p>
+      )}
+      <pre className="max-h-[54vh] overflow-auto rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-5 font-mono text-[0.95rem] leading-[1.8]">
+        {lines.map((line, at) => {
+          const lit = visual.highlight?.includes(at + 1)
+          const shown = at < typed
+          const cursor = shown && at === typed - 1 && typed < lines.length
+          return (
+            <div
+              key={`${beatKey}-${at}`}
+              className={cn(
+                '-mx-5 border-l-2 px-5 transition-all duration-300',
+                !shown && 'opacity-0',
+                shown && lit && 'border-[var(--study-accent)] bg-[var(--study-accent-soft)]',
+                shown && !lit && 'border-transparent opacity-70',
+              )}
+            >
+              <span className="mr-4 select-none text-[var(--study-faint)]">
+                {String(at + 1).padStart(2, ' ')}
+              </span>
+              {line || ' '}
+              {cursor && (
+                <span className="ml-0.5 inline-block h-[1.05em] w-[0.5ch] translate-y-[0.18em] animate-pulse bg-[var(--study-accent)]" />
+              )}
+            </div>
+          )
+        })}
+      </pre>
+    </div>
+  )
 }
 
 function Heading({ children }: { children: React.ReactNode }) {

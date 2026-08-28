@@ -70,6 +70,23 @@ export async function ingest(resourceId: string): Promise<void> {
       return
     }
 
+    /*
+     * Read, but mostly pictures.
+     *
+     * A worksheet whose questions are one big screenshot extracts a few
+     * hundred words of surrounding prose and reports success — and the shelf
+     * then says "searchable" about a document whose actual content nothing
+     * can read. Every lesson and every question written from that subject is
+     * quietly ungrounded, and nobody is told why.
+     *
+     * The threshold is deliberately loose. A document with a logo and a
+     * diagram is normal; one where the pictures outweigh the text by this
+     * much is a document whose meaning is in the pictures.
+     */
+    const imageBytes = extracted.imageBytes ?? 0
+    const textBytes = Buffer.byteLength(extracted.text, 'utf8')
+    const mostlyPictures = imageBytes > 120_000 && imageBytes > textBytes * 20
+
     const vectors = await embeddings.embed(pieces.map((piece) => piece.text))
     if (vectors.length !== pieces.length) {
       await fail(resourceId, 'The embedding model returned a different number of vectors.')
@@ -99,7 +116,16 @@ export async function ingest(resourceId: string): Promise<void> {
       }),
       prisma.resource.update({
         where: { id: resourceId },
-        data: { status: 'ready', error: null, chunkCount: pieces.length },
+        data: {
+          status: 'ready',
+          /* Ready, but said so with a caveat. `error` is what the library
+             surfaces, and this is worth surfacing: it is the difference
+             between a document that is indexed and one that only looks it. */
+          error: mostlyPictures
+            ? `Only ${Math.round(textBytes / 1024)} KB of text was readable — most of this file is images, and the words inside a picture cannot be searched or quoted. Anything written from this subject will not be drawing on them.`
+            : null,
+          chunkCount: pieces.length,
+        },
       }),
     ])
   } catch (cause) {

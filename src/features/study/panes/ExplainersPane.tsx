@@ -133,7 +133,11 @@ export default function ExplainersPane({ roomId, subject, caps, announce, seed }
           </span>
         </div>
         <div className="min-h-0 flex-1">
-          <ExplainerPlayer beats={open.beats} onExit={() => setOpen(null)} />
+          <ExplainerPlayer
+            beats={open.beats}
+            title={open.title}
+            onExit={() => setOpen(null)}
+          />
         </div>
       </div>
     )

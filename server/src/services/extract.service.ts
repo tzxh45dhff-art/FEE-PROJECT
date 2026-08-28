@@ -20,6 +20,16 @@ export type Extracted = {
   pages: number
   /** Page breaks as offsets into `text`, so a chunk can name where it came from. */
   pageOffsets: number[]
+  /**
+   * Bytes of embedded pictures the reader could not read a word of.
+   *
+   * A worksheet whose questions are a screenshot extracts almost nothing and
+   * reports success, which is the worst combination: the shelf says
+   * "searchable", the student believes the course material is indexed, and
+   * every lesson written from it is quietly ungrounded. Measuring the images
+   * is what lets the library say so.
+   */
+  imageBytes?: number
 }
 
 /**
@@ -175,6 +185,26 @@ async function extractPdf(buffer: Buffer): Promise<Extracted> {
  */
 const MAX_UNZIPPED_BYTES = 300 * 1024 * 1024
 
+/** How many bytes of pictures an office archive is carrying. */
+function imageBytesIn(buffer: Buffer): number {
+  try {
+    let total = 0
+    unzipSync(new Uint8Array(buffer), {
+      filter: (entry) => {
+        if (/\/(media|images)\/[^/]+\.(png|jpe?g|gif|bmp|tiff?|webp|emf|wmf)$/i.test(entry.name)) {
+          total += entry.originalSize
+        }
+        /* Nothing is actually inflated — the filter is only being used to walk
+           the archive's own directory. */
+        return false
+      },
+    })
+    return total
+  } catch {
+    return 0
+  }
+}
+
 /** Read the named entries out of a ZIP, as UTF-8 text. */
 function openZip(buffer: Buffer, wanted: (name: string) => boolean): Map<string, string> {
   let budget = MAX_UNZIPPED_BYTES
@@ -258,7 +288,7 @@ function byNumber(a: string, b: string) {
  * and they become the "pages" a retrieved passage is cited by, which is why
  * they are kept rather than concatenated blindly.
  */
-function fromSections(sections: string[]): Extracted {
+function fromSections(sections: string[], imageBytes = 0): Extracted {
   const kept: string[] = []
   const pageOffsets: number[] = []
   let offset = 0
@@ -272,10 +302,11 @@ function fromSections(sections: string[]): Extracted {
     }
   }
 
-  return { text: kept.join('\n\n'), pages: sections.length || 1, pageOffsets }
+  return { text: kept.join('\n\n'), pages: sections.length || 1, pageOffsets, imageBytes }
 }
 
 function extractDocx(buffer: Buffer): Extracted {
+  const imageBytes = imageBytesIn(buffer)
   const parts = openZip(buffer, (name) =>
     /^word\/(document|footnotes|endnotes)\d*\.xml$/.test(name),
   )
@@ -292,10 +323,11 @@ function extractDocx(buffer: Buffer): Extracted {
     )
     .join('\n\n')
 
-  return fromSections([text])
+  return fromSections([text], imageBytes)
 }
 
 function extractPptx(buffer: Buffer): Extracted {
+  const imageBytes = imageBytesIn(buffer)
   const parts = openZip(buffer, (name) =>
     /^ppt\/(slides\/slide|notesSlides\/notesSlide)\d+\.xml$/.test(name),
   )
@@ -314,11 +346,13 @@ function extractPptx(buffer: Buffer): Extracted {
 
       return spoken.trim() ? `${body}\n\n${spoken}` : body
     }),
+    imageBytes,
   )
 }
 
 /** OpenDocument text and presentations — LibreOffice, Google Docs exports. */
 function extractOpenDocument(buffer: Buffer): Extracted {
+  const imageBytes = imageBytesIn(buffer)
   const parts = openZip(buffer, (name) => name === 'content.xml')
   const content = parts.get('content.xml')
   if (!content) return { text: '', pages: 1, pageOffsets: [0] }
@@ -329,12 +363,13 @@ function extractOpenDocument(buffer: Buffer): Extracted {
   /* A presentation divides into slides the same way a deck does; a document
      has no page structure in the XML at all and stays one section. */
   const slides = content.match(/<draw:page\b[\s\S]*?<\/draw:page>/g)
-  if (slides?.length) return fromSections(slides.map((slide) => untag(slide, breaks, hard)))
+  if (slides?.length) return fromSections(slides.map((slide) => untag(slide, breaks, hard)), imageBytes)
 
-  return fromSections([untag(content, breaks, hard)])
+  return fromSections([untag(content, breaks, hard)], imageBytes)
 }
 
 function extractEpub(buffer: Buffer): Extracted {
+  const imageBytes = imageBytesIn(buffer)
   const parts = openZip(buffer, (name) => /\.(opf|x?html?|xml)$/i.test(name))
 
   /*
@@ -367,10 +402,11 @@ function extractEpub(buffer: Buffer): Extracted {
     ? spine
     : [...parts.keys()].filter((name) => /\.x?html?$/i.test(name)).sort(byNumber)
 
-  return fromSections(chapters.map((name) => htmlToText(parts.get(name) ?? '')))
+  return fromSections(chapters.map((name) => htmlToText(parts.get(name) ?? '')), imageBytes)
 }
 
 function extractXlsx(buffer: Buffer): Extracted {
+  const imageBytes = imageBytesIn(buffer)
   const parts = openZip(buffer, (name) =>
     /^xl\/(sharedStrings\.xml|workbook\.xml|worksheets\/sheet\d+\.xml)$/.test(name),
   )
@@ -407,6 +443,7 @@ function extractXlsx(buffer: Buffer): Extracted {
       const heading = names[at] ? `${names[at]}\n\n` : ''
       return heading + rows.filter(Boolean).join('\n')
     }),
+    imageBytes,
   )
 }
 

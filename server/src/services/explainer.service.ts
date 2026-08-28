@@ -76,6 +76,29 @@ person: no "imagine you're at a pizza shop", no "let's dive in", no
 exclamation marks, no reassurance, no "in this lesson we will". Analogy is
 allowed once, and only when it carries real structure.
 
+DENSITY — THE MOST COMMON FAILURE
+The first version of this prompt produced eighteen beats of which seven were
+single-sentence callouts, and a callout is one line of text in the middle of a
+very large screen. The lesson was mostly empty space. Do not do that.
+
+Every beat must put something substantial on screen. Concretely:
+  - At most THREE "callout" beats in the whole lesson. They are for the two or
+    three things worth stopping on, not a default.
+  - At least TWO "diagram" beats. Almost anything worth teaching has a shape:
+    what contains what, what happens in which order, what inherits from what,
+    how data moves. Draw it.
+  - At least THREE "code" beats where the subject involves code. Each is a
+    COMPLETE program somebody could paste into a file and run — imports, the
+    class, main, and print statements that show the result. Ten to twenty
+    lines. Three lines of fragment in the middle of a large screen is the
+    emptiness this whole section exists to prevent, and a fragment cannot be
+    run, so it cannot be checked.
+    The narration over a code beat walks it: what it does line by line where
+    that matters, what it prints, and why that is the answer rather than the
+    one the student expected. State the printed output out loud.
+  - At least one "steps" or "bullets" group of three or more beats, so
+    something is visibly built rather than stated.
+
 THE BAR
 State the mechanism, not the label. "The box model defines how elements are
 sized" is a glossary entry and is worthless to somebody revising. "Width sets
@@ -88,6 +111,27 @@ layout" is a lesson. Every beat should carry one of:
     people who memorised
   - a worked case with real numbers carried through to a real result
 If a beat could be replaced by its own heading without loss, cut it.
+
+WHERE THE CONTENT COMES FROM
+If passages from the student's own course material are given to you below,
+they are the primary source and they outrank your own knowledge. Teach the
+topic as those passages teach it: their definitions, their notation, their
+worked examples, their emphasis, their order. Where they use a term your
+general knowledge would call something else, use theirs — that is the word
+the exam will use. Cite them by their bracketed number as you go.
+
+Follow their emphasis, not just their facts. If a passage says something is
+the most common mistake, or the thing students always get wrong, or worth
+memorising — that is the passage telling you what the lesson is for. It gets
+a beat of its own, with the worked case. Skipping the one point the material
+went out of its way to stress, while covering the ones it mentioned in
+passing, produces a lesson that is technically grounded and practically
+useless.
+
+Your own knowledge fills the gaps around that: the mechanism the notes assume
+but never state, the boundary case they skip, the example they leave as an
+exercise. Say nothing that contradicts them. If they are silent on the topic
+entirely, teach it from your own knowledge and do not imply otherwise.
 
 EXAM RELEVANCE
 The course syllabus is given to you. Where it names this topic, let it set the
@@ -155,8 +199,22 @@ Four beats minimum on a named weakness. Everything else in the topic can be
 covered more briskly to make room; they asked for help with one thing.
 
 LENGTH AND SHAPE
-- 16 to 20 beats, and "say" runs three to five sentences. Two-sentence beats
-  make a lesson that is over before it has taught anything. Fewer than 14 is too thin to have taught anything.
+- 16 to 22 beats. "say" runs FOUR TO SIX sentences on any beat that is not a
+  title card. Two sentences is a caption, not teaching, and a lesson of
+  captions is the thing students describe as "I watched it and I still don't
+  get it" — every beat asserts something and none of them explain it.
+  This is the difference between a lesson somebody can follow and a list of
+  assertions read aloud: say the thing, then say why it is so, then give the
+  case where it matters. A student listening without watching should be able
+  to follow the whole argument.
+- Carry at least one worked example the whole way through, with real values
+  and real output, using a group. Not "for example, consider a class Animal"
+  and then moving on — actually write it, actually run it in words, actually
+  say what it prints and why.
+- Where something has an exception or a boundary, give the case on each side
+  of it. "This is true, except here, and here is why the exception exists."
+- If the subject involves code, the code beats are the spine of the lesson,
+  not decoration between callouts. Fewer than 14 is too thin to have taught anything.
 - Open on a "title" beat whose narration states what the listener will be able
   to do by the end. "By the end of this you will be able to work out the
   rendered width of any element and say which rule decided it." Never a
@@ -265,7 +323,18 @@ export async function script(input: {
   style: string
   resourceIds?: string[]
 }) {
-  const grounding = await generate.gather(input.subjectId, input.topic, { only: input.resourceIds })
+  /*
+   * A lesson takes more context than anything else here.
+   *
+   * A quiz question needs the one passage that settles it; a six-minute
+   * lesson is drawing on everything the course said about the topic, so the
+   * search runs wider. `gather` still decides what is relevant — this only
+   * raises the ceiling on how much of it comes back.
+   */
+  const grounding = await generate.gather(input.subjectId, input.topic, {
+    only: input.resourceIds,
+    limit: 14,
+  })
 
   /* The student's own words about how they want to be taught, passed through
      rather than paraphrased. "I have the exam on Friday and I keep losing

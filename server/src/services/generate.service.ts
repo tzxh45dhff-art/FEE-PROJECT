@@ -58,7 +58,7 @@ export type Grounding = {
 export async function gather(
   subjectId: string,
   topic: string,
-  options: { only?: string[] } = {},
+  options: { only?: string[]; limit?: number } = {},
 ): Promise<Grounding> {
   const [outline, syllabusResourceId] = await Promise.all([
     syllabus.asPromptContext(subjectId).catch(() => null),
@@ -71,7 +71,7 @@ export async function gather(
   const exclude = !picked && syllabusResourceId ? [syllabusResourceId] : []
 
   let hits = await retrieval
-    .search(subjectId, topic, { limit: 8, only: picked ?? undefined, exclude })
+    .search(subjectId, topic, { limit: options.limit ?? 8, only: picked ?? undefined, exclude })
     .catch(() => [] as retrieval.Hit[])
 
   /*
@@ -88,7 +88,7 @@ export async function gather(
       where: { subjectId, status: 'ready', id: { notIn: exclude } },
     })
     if (others === 0) {
-      hits = await retrieval.search(subjectId, topic, { limit: 8 }).catch(() => [])
+        hits = await retrieval.search(subjectId, topic, { limit: options.limit ?? 8 }).catch(() => [])
     }
   }
 
