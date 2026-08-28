@@ -9,6 +9,8 @@ import { API_BASE, API_HEADERS, getToken } from '@/lib/config'
  * forever. Only the shared timer rides the socket.
  */
 
+export type Voice = { id: string; label: string }
+
 export type Capabilities = {
   /** False when the server has no model key — the UI disables rather than fails. */
   ai: boolean
@@ -16,6 +18,9 @@ export type Capabilities = {
   search: boolean
   judge: boolean
   judgeLanguages: string[]
+  /** Narration rides the same key as chat but a different host — asked separately. */
+  narration: boolean
+  voices: Voice[]
   chatModel: string | null
 }
 
@@ -372,3 +377,71 @@ export const assistantAsk = (
 
 export const assistantClear = (roomId: string, subjectId: string) =>
   api.del<{ ok: true }>(`${base(roomId)}/assistant?subjectId=${subjectId}`)
+
+// ─── Explainers ───────────────────────────────────────────────────────────────
+
+/**
+ * What one beat puts on screen.
+ *
+ * A closed vocabulary, mirrored exactly from the server. Closed is the point:
+ * every visual here is drawn by code from data, so it is as correct as the
+ * data — which is why the lessons can be trusted in a way a generated video
+ * could not be.
+ */
+export type Visual =
+  | { kind: 'title'; text: string; subtitle?: string }
+  | { kind: 'bullets'; heading?: string; items: string[]; reveal?: number }
+  | { kind: 'steps'; heading?: string; items: string[]; active?: number }
+  | { kind: 'diagram'; mermaid: string; caption?: string }
+  | { kind: 'code'; language: string; code: string; highlight?: number[]; caption?: string }
+  | {
+      kind: 'compare'
+      heading?: string
+      left: { title: string; points: string[] }
+      right: { title: string; points: string[] }
+    }
+  | { kind: 'callout'; tone: 'exam' | 'pitfall' | 'insight'; text: string }
+
+export type Beat = {
+  say: string
+  show: Visual
+  /** Beats sharing this keep one visual mounted and only advance it. */
+  group?: string
+  audio?: string
+  seconds?: number
+}
+
+export type ExplainerStatus = 'pending' | 'scripting' | 'narrating' | 'ready' | 'failed'
+
+export type ExplainerSummary = {
+  id: string
+  title: string
+  topic: string
+  style: string
+  voice: string
+  duration: number
+  grounded: boolean
+  sources: string[]
+  status: ExplainerStatus
+  error: string | null
+  createdAt: string
+  createdBy?: { id: string; name: string }
+}
+
+export type Explainer = ExplainerSummary & { beats: Beat[] }
+
+export const explainers = (roomId: string, subjectId: string) =>
+  api.get<{ explainers: ExplainerSummary[] }>(
+    `${base(roomId)}/explainers?subjectId=${subjectId}`,
+  )
+
+export const explainer = (roomId: string, explainerId: string) =>
+  api.get<{ explainer: Explainer }>(`${base(roomId)}/explainers/${explainerId}`)
+
+export const createExplainer = (
+  roomId: string,
+  input: { subjectId: string; topic: string; style: string; voice?: string },
+) => api.post<{ explainer: ExplainerSummary }>(`${base(roomId)}/explainers`, input)
+
+export const deleteExplainer = (roomId: string, explainerId: string) =>
+  api.del<{ ok: true }>(`${base(roomId)}/explainers/${explainerId}`)

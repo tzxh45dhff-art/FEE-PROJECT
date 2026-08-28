@@ -64,7 +64,7 @@ function loadMermaid(dark: boolean) {
 
 let counter = 0
 
-export function Mermaid({ chart }: { chart: string }) {
+export function Mermaid({ chart, draw = false }: { chart: string; draw?: boolean }) {
   const [svg, setSvg] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
   const host = useRef<HTMLDivElement>(null)
@@ -99,6 +99,45 @@ export function Mermaid({ chart }: { chart: string }) {
       cancelled = true
     }
   }, [chart, dark])
+
+  /*
+   * Trace the diagram in rather than cutting to it.
+   *
+   * Every stroke in the rendered SVG is given a dash pattern as long as
+   * itself and offset out of view, then animated back to zero — the standard
+   * line-drawing trick, applied to whatever Mermaid happened to produce. Text
+   * cannot be drawn that way, so labels fade in behind the strokes instead.
+   *
+   * Done to the live SVG rather than in the markup because Mermaid hands back
+   * a finished string, and rewriting that string would mean parsing it.
+   */
+  useEffect(() => {
+    if (!draw || !svg || !host.current) return
+    const root = host.current.querySelector('svg')
+    if (!root) return
+
+    const strokes = root.querySelectorAll<SVGGeometryElement>('path, line, polyline, rect, circle, ellipse, polygon')
+    const labels = root.querySelectorAll<SVGElement>('text, foreignObject, .label')
+
+    strokes.forEach((node, at) => {
+      let length = 0
+      try {
+        length = node.getTotalLength()
+      } catch {
+        /* Some shapes cannot report a length. They simply appear. */
+        return
+      }
+      if (!length) return
+      node.style.strokeDasharray = `${length}`
+      node.style.strokeDashoffset = `${length}`
+      node.style.animation = `study-trace 0.75s ease-out ${at * 0.055}s forwards`
+    })
+
+    labels.forEach((node, at) => {
+      node.style.opacity = '0'
+      node.style.animation = `study-fade-in 0.4s ease-out ${0.25 + at * 0.045}s forwards`
+    })
+  }, [svg, draw])
 
   if (failed) {
     return (

@@ -1,0 +1,469 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ChevronLeft, ChevronRight, Loader2, Pause, Play, RotateCcw } from 'lucide-react'
+
+import { Mermaid } from '@/features/study/Mermaid'
+import type * as studyApi from '@/features/study/api'
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
+import { apiUrl } from '@/lib/config'
+import { cn } from '@/lib/utils'
+
+/**
+ * The lesson, playing.
+ *
+ * There is no video file here and never was one. Each beat carries its own
+ * narration clip and its own visual, and this plays the clip while rendering
+ * the visual — so a diagram is drawn by the same code that draws the notes,
+ * and is exactly as correct as the data behind it. A generated video would
+ * have to be watched all the way through to find the wrong label; this cannot
+ * produce one.
+ *
+ * Timing needs nothing clever for the same reason. A beat is one idea with one
+ * visual state, so the clip's own length is how long that state is on screen —
+ * no word-level alignment, no drift to correct.
+ */
+
+const EASE = [0.16, 1, 0.3, 1] as const
+
+export function ExplainerPlayer({
+  beats,
+  onExit,
+}: {
+  beats: studyApi.Beat[]
+  onExit?: () => void
+}) {
+  const [index, setIndex] = useState(0)
+  const [playing, setPlaying] = useState(false)
+  const [ready, setReady] = useState(false)
+  /* Seconds elapsed inside the current beat, for the progress bar only. */
+  const [elapsed, setElapsed] = useState(0)
+
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const preloadRef = useRef<HTMLAudioElement | null>(null)
+  const reduced = usePrefersReducedMotion()
+
+  const beat = beats[index]
+  const total = beats.length
+
+  /** Whole-lesson length, for the readout. */
+  const runtime = useMemo(
+    () => beats.reduce((sum, entry) => sum + (entry.seconds ?? 0), 0),
+    [beats],
+  )
+
+  /** How far through the whole lesson we are, counting completed beats. */
+  const before = useMemo(
+    () => beats.slice(0, index).reduce((sum, entry) => sum + (entry.seconds ?? 0), 0),
+    [beats, index],
+  )
+
+  const go = useCallback(
+    (next: number) => {
+      const clamped = Math.max(0, Math.min(total - 1, next))
+      setIndex(clamped)
+      setElapsed(0)
+      setReady(false)
+    },
+    [total],
+  )
+
+  /* Load the beat's clip, and start it if we were already playing. Switching
+     src mid-play is what makes the lesson continuous rather than a set of
+     clips somebody has to click through. */
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || !beat?.audio) return
+
+    audio.src = apiUrl(beat.audio)
+    audio.load()
+
+    const onReady = () => {
+      setReady(true)
+      if (playing) void audio.play().catch(() => setPlaying(false))
+    }
+    audio.addEventListener('canplay', onReady, { once: true })
+    return () => audio.removeEventListener('canplay', onReady)
+    // `playing` deliberately omitted: this effect is about which beat is
+    // loaded, and re-running it on pause would restart the clip.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [beat?.audio])
+
+  /* The next clip, fetched while this one plays, so the join is silent. */
+  useEffect(() => {
+    const next = beats[index + 1]
+    if (!next?.audio || !preloadRef.current) return
+    preloadRef.current.src = apiUrl(next.audio)
+    preloadRef.current.load()
+  }, [beats, index])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    const onTime = () => setElapsed(audio.currentTime)
+    const onEnd = () => {
+      if (index < total - 1) go(index + 1)
+      else setPlaying(false)
+    }
+
+    audio.addEventListener('timeupdate', onTime)
+    audio.addEventListener('ended', onEnd)
+    return () => {
+      audio.removeEventListener('timeupdate', onTime)
+      audio.removeEventListener('ended', onEnd)
+    }
+  }, [index, total, go])
+
+  const toggle = useCallback(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    if (playing) {
+      audio.pause()
+      setPlaying(false)
+    } else {
+      void audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+    }
+  }, [playing])
+
+  /* Space to play, arrows to move. The shortcuts every player has, and the
+     ones somebody revising will reach for without being told. */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      if (event.key === ' ') {
+        event.preventDefault()
+        toggle()
+      } else if (event.key === 'ArrowRight') go(index + 1)
+      else if (event.key === 'ArrowLeft') go(index - 1)
+      else if (event.key === 'Escape' && onExit) onExit()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggle, go, index, onExit])
+
+  if (!beat) return null
+
+  const beatLength = beat.seconds ?? 0
+  const played = before + Math.min(elapsed, beatLength)
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <audio ref={audioRef} preload="auto" className="hidden" />
+      <audio ref={preloadRef} preload="auto" className="hidden" />
+
+      {/* The stage. Wide, quiet, and the only thing on screen while it runs. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-[1rem] border border-[var(--study-line)] bg-[var(--study-bg-soft)]">
+        {/*
+          * Cross-faded, not wait-for-exit.
+          *
+          * `mode="wait"` holds the incoming beat until the outgoing one has
+          * finished animating away, which makes the *content* depend on an
+          * *animation* completing. Browsers throttle requestAnimationFrame to
+          * nothing in a background tab, so a lesson left playing in another
+          * window would freeze on whichever slide it was leaving and never
+          * show the next one, while the narration carried on without it.
+          * Overlapping the two costs nothing — both are absolutely
+          * positioned — and the beat always arrives.
+          */}
+        <AnimatePresence initial={false}>
+          <motion.div
+            /* Keyed by the group where there is one, so a building visual is
+               not torn down and rebuilt between beats — that is the whole
+               difference between a diagram being drawn and a slideshow. */
+            key={beat.group ?? `beat-${index}`}
+            initial={{ opacity: 0, y: reduced ? 0 : 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: reduced ? 0 : -8 }}
+            transition={{ duration: reduced ? 0.12 : 0.35, ease: EASE }}
+            className="absolute inset-0 grid place-items-center p-8 md:p-12"
+          >
+            <Stage visual={beat.show} />
+          </motion.div>
+        </AnimatePresence>
+
+        {/* The line being spoken. Present for anybody who cannot hear it, and
+            for the far more common case of somebody skimming with the sound
+            off in a library. */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[var(--study-bg)] via-[var(--study-bg)]/85 to-transparent px-6 pb-5 pt-14">
+          <p className="mx-auto max-w-3xl text-center text-[0.9rem] leading-relaxed text-[var(--study-soft)]">
+            {beat.say}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 shrink-0">
+        {/* One segment per beat: where you are, how much is left, and a way
+            into any of it. A single bar would hide the structure the lesson
+            actually has. */}
+        <div className="flex gap-1">
+          {beats.map((entry, at) => (
+            <button
+              key={at}
+              type="button"
+              onClick={() => go(at)}
+              aria-label={`Beat ${at + 1}`}
+              style={{ flexGrow: Math.max(0.4, entry.seconds ?? 1) }}
+              className="group/seg relative h-1.5 rounded-full bg-[var(--study-card-strong)] outline-none"
+            >
+              <span
+                className={cn(
+                  'absolute inset-y-0 left-0 rounded-full bg-[var(--study-accent)] transition-[width] duration-200',
+                  at < index ? 'w-full' : at > index ? 'w-0' : '',
+                )}
+                style={
+                  at === index
+                    ? { width: `${beatLength ? Math.min(100, (elapsed / beatLength) * 100) : 0}%` }
+                    : undefined
+                }
+              />
+              <span className="absolute -inset-y-2 inset-x-0" />
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-2.5 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={playing ? 'Pause' : 'Play'}
+            className="grid size-11 shrink-0 place-items-center rounded-full bg-[var(--study-accent)] text-[var(--study-on-accent)] outline-none transition-opacity hover:opacity-90"
+          >
+            {!ready && playing ? (
+              <Loader2 aria-hidden className="size-5 animate-spin" />
+            ) : playing ? (
+              <Pause aria-hidden className="size-5" />
+            ) : (
+              <Play aria-hidden className="size-5 translate-x-[1px]" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => go(index - 1)}
+            disabled={index === 0}
+            aria-label="Previous"
+            className="study-btn size-9 px-0"
+          >
+            <ChevronLeft aria-hidden className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => go(index + 1)}
+            disabled={index >= total - 1}
+            aria-label="Next"
+            className="study-btn size-9 px-0"
+          >
+            <ChevronRight aria-hidden className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              go(0)
+              setPlaying(false)
+              audioRef.current?.pause()
+            }}
+            aria-label="Start again"
+            className="study-btn size-9 px-0"
+          >
+            <RotateCcw aria-hidden className="size-4" />
+          </button>
+
+          <span className="ml-auto shrink-0 font-mono text-[0.74rem] tabular-nums text-[var(--study-faint)]">
+            {clock(played)} / {clock(runtime)}
+            <span className="ml-2.5">
+              {index + 1}/{total}
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function clock(seconds: number) {
+  const whole = Math.max(0, Math.floor(seconds))
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`
+}
+
+/** One visual. Every branch renders data — none of it is generated imagery. */
+function Stage({ visual }: { visual: studyApi.Visual }) {
+  switch (visual.kind) {
+    case 'title':
+      return (
+        <div className="text-center">
+          <h2 className="font-display text-[2rem] font-semibold leading-tight tracking-[-0.03em] md:text-[2.6rem]">
+            {visual.text}
+          </h2>
+          {visual.subtitle && (
+            <p className="mt-3 text-[1rem] text-[var(--study-soft)]">{visual.subtitle}</p>
+          )}
+        </div>
+      )
+
+    case 'bullets': {
+      const shown = visual.reveal ?? visual.items.length
+      return (
+        <div className="w-full max-w-2xl">
+          {visual.heading && <Heading>{visual.heading}</Heading>}
+          <ul className="space-y-3">
+            {visual.items.map((item, at) => (
+              <motion.li
+                key={item}
+                initial={false}
+                animate={{
+                  opacity: at < shown ? 1 : 0.18,
+                  x: at < shown ? 0 : -6,
+                }}
+                transition={{ duration: 0.4, ease: EASE }}
+                className="flex items-start gap-3 text-[1.05rem] leading-relaxed"
+              >
+                <span className="mt-[0.6em] size-1.5 shrink-0 rounded-full bg-[var(--study-accent)]" />
+                <span>{item}</span>
+              </motion.li>
+            ))}
+          </ul>
+        </div>
+      )
+    }
+
+    case 'steps': {
+      const active = visual.active ?? 0
+      return (
+        <div className="w-full max-w-2xl">
+          {visual.heading && <Heading>{visual.heading}</Heading>}
+          <ol className="space-y-2">
+            {visual.items.map((item, at) => (
+              <motion.li
+                key={item}
+                initial={false}
+                animate={{ opacity: at === active ? 1 : at < active ? 0.5 : 0.22 }}
+                transition={{ duration: 0.35, ease: EASE }}
+                className={cn(
+                  'flex items-start gap-3 rounded-[0.7rem] px-3 py-2.5 text-[1.02rem] leading-relaxed transition-colors',
+                  at === active && 'bg-[var(--study-accent-soft)]',
+                )}
+              >
+                <span
+                  className={cn(
+                    'grid size-6 shrink-0 place-items-center rounded-full text-[0.72rem] font-semibold',
+                    at === active
+                      ? 'bg-[var(--study-accent)] text-[var(--study-on-accent)]'
+                      : 'bg-[var(--study-card-strong)] text-[var(--study-soft)]',
+                  )}
+                >
+                  {at + 1}
+                </span>
+                <span>{item}</span>
+              </motion.li>
+            ))}
+          </ol>
+        </div>
+      )
+    }
+
+    case 'diagram':
+      return (
+        <div className="w-full max-w-3xl text-center">
+          {/* `draw` traces the strokes in rather than cutting to the finished
+              picture — the thing that reads as being taught rather than shown. */}
+          <Mermaid chart={visual.mermaid} draw />
+          {visual.caption && (
+            <p className="mt-4 text-[0.86rem] text-[var(--study-faint)]">{visual.caption}</p>
+          )}
+        </div>
+      )
+
+    case 'code':
+      return (
+        <div className="w-full max-w-3xl">
+          <pre className="overflow-x-auto rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-5 font-mono text-[0.9rem] leading-[1.75]">
+            {visual.code.split('\n').map((line, at) => {
+              const lit = visual.highlight?.includes(at + 1)
+              return (
+                <div
+                  key={at}
+                  className={cn(
+                    '-mx-5 border-l-2 px-5 transition-colors duration-300',
+                    lit
+                      ? 'border-[var(--study-accent)] bg-[var(--study-accent-soft)]'
+                      : 'border-transparent opacity-60',
+                  )}
+                >
+                  <span className="mr-4 select-none text-[var(--study-faint)]">
+                    {String(at + 1).padStart(2, ' ')}
+                  </span>
+                  {line || ' '}
+                </div>
+              )
+            })}
+          </pre>
+          {visual.caption && (
+            <p className="mt-3 text-[0.86rem] text-[var(--study-faint)]">{visual.caption}</p>
+          )}
+        </div>
+      )
+
+    case 'compare':
+      return (
+        <div className="w-full max-w-3xl">
+          {visual.heading && <Heading>{visual.heading}</Heading>}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {[visual.left, visual.right].map((side, at) => (
+              <div key={at} className="study-card p-5">
+                <p className="text-[0.95rem] font-medium">{side.title}</p>
+                <ul className="mt-3 space-y-2">
+                  {side.points.map((point) => (
+                    <li
+                      key={point}
+                      className="flex items-start gap-2.5 text-[0.9rem] leading-relaxed text-[var(--study-soft)]"
+                    >
+                      <span className="mt-[0.55em] size-1 shrink-0 rounded-full bg-[var(--study-faint)]" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+
+    case 'callout': {
+      const label =
+        visual.tone === 'exam'
+          ? 'Likely to be assessed'
+          : visual.tone === 'pitfall'
+            ? 'Where marks are lost'
+            : 'Worth noticing'
+      return (
+        <div className="w-full max-w-2xl">
+          <div
+            className={cn(
+              'rounded-[1rem] border-l-[3px] p-6',
+              visual.tone === 'exam' && 'border-[var(--study-accent)] bg-[var(--study-accent-soft)]',
+              visual.tone === 'pitfall' && 'border-[var(--study-bad)] bg-[var(--study-bad-soft)]',
+              visual.tone === 'insight' && 'border-[var(--study-good)] bg-[var(--study-good-soft)]',
+            )}
+          >
+            <p className="text-[0.7rem] uppercase tracking-[0.09em] text-[var(--study-faint)]">
+              {label}
+            </p>
+            <p className="mt-2.5 text-[1.1rem] leading-relaxed">{visual.text}</p>
+          </div>
+        </div>
+      )
+    }
+
+    default:
+      return null
+  }
+}
+
+function Heading({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-5 text-[0.72rem] uppercase tracking-[0.09em] text-[var(--study-faint)]">
+      {children}
+    </p>
+  )
+}

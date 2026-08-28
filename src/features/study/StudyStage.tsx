@@ -8,6 +8,7 @@ import {
   Loader2,
   MessagesSquare,
   NotebookPen,
+  PlayCircle,
   Settings2,
   Sparkles,
   Terminal,
@@ -35,6 +36,7 @@ const ResourcesPane = lazy(() => import('@/features/study/panes/ResourcesPane'))
 const McqPane = lazy(() => import('@/features/study/panes/McqPane'))
 const NotesPane = lazy(() => import('@/features/study/panes/NotesPane'))
 const CodingPane = lazy(() => import('@/features/study/panes/CodingPane'))
+const ExplainersPane = lazy(() => import('@/features/study/panes/ExplainersPane'))
 const ProgressPane = lazy(() => import('@/features/study/panes/ProgressPane'))
 const Tutor = lazy(() => import('@/features/study/Tutor'))
 
@@ -42,6 +44,7 @@ const EASE = [0.16, 1, 0.3, 1] as const
 
 export type StudyTab =
   | 'home'
+  | 'explainers'
   | 'timer'
   | 'resources'
   | 'mcq'
@@ -51,6 +54,7 @@ export type StudyTab =
 
 const TABS: { id: StudyTab; label: string; icon: typeof Timer }[] = [
   { id: 'home', label: 'Home', icon: Home },
+  { id: 'explainers', label: 'Lessons', icon: PlayCircle },
   { id: 'notes', label: 'Notes', icon: NotebookPen },
   { id: 'mcq', label: 'Questions', icon: FileQuestion },
   { id: 'coding', label: 'Problems', icon: Terminal },
@@ -129,7 +133,15 @@ export function StudyStage({
       .capabilities(roomId)
       .then(setCaps)
       .catch(() =>
-        setCaps({ ai: false, search: false, judge: false, judgeLanguages: [], chatModel: null }),
+        setCaps({
+          ai: false,
+          search: false,
+          judge: false,
+          judgeLanguages: [],
+          narration: false,
+          voices: [],
+          chatModel: null,
+        }),
       )
   }, [roomId, loadSubjects])
 
@@ -349,6 +361,7 @@ export function StudyStage({
                 >
                   <Suspense fallback={<Waiting />}>
                     {tab === 'home' && <HomePane {...paneProps} />}
+                    {tab === 'explainers' && <ExplainersPane {...paneProps} />}
                     {tab === 'timer' && <FocusTimer timer={timer} />}
                     {tab === 'resources' && <ResourcesPane {...paneProps} />}
                     {tab === 'mcq' && <McqPane {...paneProps} />}

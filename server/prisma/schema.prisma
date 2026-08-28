@@ -8,12 +8,12 @@ datasource db {
 }
 
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
+  id           String   @id @default(cuid())
+  email        String   @unique
   name         String
   /// bcrypt hash — never the plaintext, and never returned by the API
   passwordHash String
-  createdAt    DateTime     @default(now())
+  createdAt    DateTime @default(now())
 
   ownedRooms   Room[]       @relation("RoomOwner")
   memberships  Membership[]
@@ -23,23 +23,24 @@ model User {
   likes        LikedTrack[]
   messages     Message[]
 
-  subjects     Subject[]
-  resources    Resource[]
-  mcqSets      McqSet[]
-  mcqAttempts  McqAttempt[]
-  notes        Note[]
-  problems     CodingProblem[]
-  submissions  CodingSubmission[]
-  assistant    AssistantMessage[]
+  subjects    Subject[]
+  resources   Resource[]
+  mcqSets     McqSet[]
+  mcqAttempts McqAttempt[]
+  notes       Note[]
+  explainers  Explainer[]
+  problems    CodingProblem[]
+  submissions CodingSubmission[]
+  assistant   AssistantMessage[]
 }
 
 model Room {
-  id        String       @id @default(cuid())
+  id         String   @id @default(cuid())
   /// Short, URL-safe handle used in room links
-  slug      String       @unique
-  name      String
+  slug       String   @unique
+  name       String
   /// friends | couple | study | family | team — see ROOM_TYPES on the client
-  type      String
+  type       String
   /// open | private.
   ///
   /// `open` is listed on Discover and anyone signed in may walk in. `private`
@@ -50,8 +51,8 @@ model Room {
   /// safe direction for a default is the closed one: a room that should have
   /// been listed and is not is a moment's confusion, where a room that should
   /// have been shut and was listed to everybody is the actual harm.
-  visibility String       @default("private")
-  createdAt DateTime     @default(now())
+  visibility String   @default("private")
+  createdAt  DateTime @default(now())
 
   ownerId   String
   owner     User         @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
@@ -62,13 +63,14 @@ model Room {
   likes     LikedTrack[]
   messages  Message[]
 
-  subjects  Subject[]
-  resources Resource[]
-  chunks    ResourceChunk[]
-  mcqSets   McqSet[]
-  notes     Note[]
-  problems  CodingProblem[]
-  assistant AssistantMessage[]
+  subjects   Subject[]
+  resources  Resource[]
+  chunks     ResourceChunk[]
+  mcqSets    McqSet[]
+  notes      Note[]
+  explainers Explainer[]
+  problems   CodingProblem[]
+  assistant  AssistantMessage[]
 
   @@index([ownerId])
 }
@@ -81,15 +83,15 @@ model Room {
 /// recorded because the answer to "who made this" is part of what makes a
 /// shared library feel like a place rather than a folder.
 model Playlist {
-  id        String         @id @default(cuid())
+  id        String   @id @default(cuid())
   name      String
-  createdAt DateTime       @default(now())
+  createdAt DateTime @default(now())
 
-  roomId    String
+  roomId      String
   createdById String
-  room      Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  createdBy User           @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  tracks    PlaylistTrack[]
+  room        Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdBy   User            @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  tracks      PlaylistTrack[]
 
   @@index([roomId, createdAt])
 }
@@ -100,16 +102,16 @@ model Playlist {
 /// collected are not rows in this database — they are YouTube ids and uploaded
 /// files. A reference table would need somewhere to point.
 model PlaylistTrack {
-  id         String   @id @default(cuid())
-  source     String
-  ref        String
-  title      String
-  artist     String?
-  album      String?
-  artwork    String?
-  duration   Int?
-  position   Int
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  source    String
+  ref       String
+  title     String
+  artist    String?
+  album     String?
+  artwork   String?
+  duration  Int?
+  position  Int
+  createdAt DateTime @default(now())
 
   playlistId String
   playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
@@ -133,10 +135,10 @@ model LikedTrack {
   duration  Int?
   createdAt DateTime @default(now())
 
-  roomId    String
-  userId    String
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roomId String
+  userId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   /// One like per song per person — the toggle depends on it.
   @@unique([userId, roomId, source, ref])
@@ -168,8 +170,8 @@ model TrackItem {
 
   roomId    String
   addedById String
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  addedBy   User     @relation(fields: [addedById], references: [id], onDelete: Cascade)
+  room      Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  addedBy   User   @relation(fields: [addedById], references: [id], onDelete: Cascade)
 
   @@index([roomId, position])
 }
@@ -181,10 +183,10 @@ model Message {
   body      String
   createdAt DateTime @default(now())
 
-  roomId    String
-  authorId  String
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  roomId   String
+  authorId String
+  room     Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([roomId, createdAt])
 }
@@ -208,8 +210,8 @@ model QueueItem {
 
   roomId    String
   addedById String
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  addedBy   User     @relation(fields: [addedById], references: [id], onDelete: Cascade)
+  room      Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  addedBy   User   @relation(fields: [addedById], references: [id], onDelete: Cascade)
 
   @@index([roomId, position])
 }
@@ -222,10 +224,10 @@ model Membership {
   /// sort by "last active" without a separate events table.
   lastSeen DateTime @default(now())
 
-  userId   String
-  roomId   String
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  room     Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId String
+  roomId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roomId])
   @@index([roomId])
@@ -257,11 +259,12 @@ model Subject {
   room        Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
   createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
-  syllabus  Syllabus?
-  resources Resource[]
-  mcqSets   McqSet[]
-  notes     Note[]
-  problems  CodingProblem[]
+  syllabus   Syllabus?
+  resources  Resource[]
+  mcqSets    McqSet[]
+  notes      Note[]
+  explainers Explainer[]
+  problems   CodingProblem[]
 
   @@index([roomId, createdAt])
 }
@@ -289,9 +292,9 @@ model Syllabus {
   source    String
   createdAt DateTime @default(now())
 
-  subjectId  String   @unique
+  subjectId  String  @unique
   resourceId String?
-  subject    Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subject    Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
 }
 
 /// A document the room has uploaded to study from.
@@ -301,33 +304,33 @@ model Syllabus {
 /// every unrelated query drag it around. This row is the pointer, plus the
 /// state of turning it into something searchable.
 model Resource {
-  id        String   @id @default(cuid())
-  title     String
+  id         String   @id @default(cuid())
+  title      String
   /// Filename on disk, relative to the study upload directory.
-  file      String
-  mimeType  String
-  bytes     Int
+  file       String
+  mimeType   String
+  bytes      Int
   /// pending | processing | ready | failed — see RESOURCE_STATUS.
   ///
   /// Chunking and embedding happen after the upload has already responded: a
   /// syllabus is small but a textbook is not, and an Azure round trip per
   /// batch inside the request is a request that times out.
-  status    String   @default("pending")
+  status     String   @default("pending")
   /// Why it failed, so the room can be told the reason rather than just the
   /// fact. A scanned PDF with no text layer is a different problem from a
   /// corrupt file, and only one of them is worth retrying.
-  error     String?
+  error      String?
   /// How many chunks came out of it. Zero on a ready resource means the file
   /// parsed but said nothing — a scan, almost always.
-  chunkCount Int     @default(0)
-  createdAt DateTime @default(now())
+  chunkCount Int      @default(0)
+  createdAt  DateTime @default(now())
 
   roomId    String
   subjectId String
   addedById String
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  addedBy   User     @relation(fields: [addedById], references: [id], onDelete: Cascade)
+  room      Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  subject   Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  addedBy   User            @relation(fields: [addedById], references: [id], onDelete: Cascade)
   chunks    ResourceChunk[]
 
   @@index([subjectId, createdAt])
@@ -348,14 +351,14 @@ model Resource {
 /// and loading a native SQLite extension to beat that would be a new thing
 /// to install on every machine in exchange for nothing anyone could feel.
 model ResourceChunk {
-  id         String   @id @default(cuid())
+  id        String   @id @default(cuid())
   /// Position within the document, for ordering and for citing a location.
-  index      Int
+  index     Int
   /// Page number when the extractor knew it — a citation people recognise.
-  page       Int?
-  text       String
-  embedding  String
-  createdAt  DateTime @default(now())
+  page      Int?
+  text      String
+  embedding String
+  createdAt DateTime @default(now())
 
   roomId     String
   subjectId  String
@@ -375,20 +378,20 @@ model ResourceChunk {
 /// and retry. Ten unrelated rows would have no notion of the batch anyone
 /// actually asked for.
 model McqSet {
-  id        String   @id @default(cuid())
-  title     String
-  topic     String
+  id         String   @id @default(cuid())
+  title      String
+  topic      String
   /// easy | medium | hard | mixed.
-  difficulty String  @default("mixed")
+  difficulty String   @default("mixed")
   /// True when resource text was fed to the generator. Shown in the UI, so a
   /// set written from the model's own knowledge never silently passes as one
   /// drawn from the room's documents.
-  grounded  Boolean  @default(false)
+  grounded   Boolean  @default(false)
   /// Which resources it drew on, as a JSON array of titles. Cheaper than a
   /// join table for something only ever read back whole, as one line of
   /// provenance under the set's name.
-  sources   String   @default("[]")
-  createdAt DateTime @default(now())
+  sources    String   @default("[]")
+  createdAt  DateTime @default(now())
 
   roomId      String
   subjectId   String
@@ -488,6 +491,55 @@ model Note {
   @@index([roomId])
 }
 
+/// A narrated, animated lesson on one topic.
+///
+/// The beats are the whole thing: a JSON array of `{ say, show, audio }`,
+/// where `say` is what is spoken, `show` is a visual drawn from a fixed
+/// vocabulary the player knows how to render, and `audio` is the narration
+/// clip generated for that beat. Stored as JSON rather than as rows because
+/// nothing ever queries one beat — every read wants the whole lesson in
+/// order, which is exactly how it is played.
+///
+/// No video file is produced. The "video" is the player animating these
+/// beats against their audio, which is what keeps the diagrams correct: they
+/// are drawn from data by the same renderers the notes use, not generated as
+/// pixels by a model that cannot spell.
+model Explainer {
+  id       String  @id @default(cuid())
+  title    String
+  topic    String
+  /// How the student asked to be taught, in their words. Kept so the request
+  /// is visible on the lesson it produced, and so a regeneration can honour
+  /// the same one.
+  style    String  @default("")
+  /// The Azure neural voice the narration was generated with. Recorded
+  /// because the audio is baked — changing this later means re-narrating.
+  voice    String
+  /// JSON array of beats, including each one's audio path and duration.
+  beats    String  @default("[]")
+  /// Whole-lesson runtime in seconds, summed from the narration clips.
+  duration Float   @default(0)
+  /// True when the room's own documents fed the script — same honesty rule
+  /// the notes and question generators follow.
+  grounded Boolean @default(false)
+  sources  String  @default("[]")
+
+  /// pending | scripting | narrating | ready | failed
+  status    String   @default("pending")
+  error     String?
+  createdAt DateTime @default(now())
+
+  roomId      String
+  subjectId   String
+  createdById String
+  room        Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  subject     Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdBy   User    @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([subjectId, createdAt])
+  @@index([roomId])
+}
+
 /// A generated coding question.
 model CodingProblem {
   id          String   @id @default(cuid())
@@ -564,14 +616,14 @@ model CodingSubmission {
 /// looking at their own screen, and two people at the same desk can be asking
 /// about completely different things at the same moment.
 model AssistantMessage {
-  id      String @id @default(cuid())
+  id        String   @id @default(cuid())
   /// user | assistant.
-  role    String
-  content String
+  role      String
+  content   String
   /// JSON array of the tools this turn called, or null. Inline for the same
   /// reason a question keeps its options inline: nothing reads a tool call
   /// except as part of the turn it belongs to.
-  tools   String?
+  tools     String?
   /// Whether resource text was actually retrieved for this turn. The badge in
   /// the UI reports this rather than guessing — it is the one part of
   /// "grounded" the server can observe rather than infer.
@@ -581,8 +633,8 @@ model AssistantMessage {
   roomId    String
   userId    String
   subjectId String?
-  room      Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  room      Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([roomId, userId, createdAt])
 }

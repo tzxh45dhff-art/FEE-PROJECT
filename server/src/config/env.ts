@@ -123,6 +123,29 @@ export const env = {
   },
 
   /**
+   * Speech, for narrating explainers.
+   *
+   * Same subscription key as the chat deployment above, because a
+   * Cognitive Services multi-service resource carries both — verified
+   * against this project's own key rather than assumed. It is a separate
+   * config group only because it is reached at a different host, keyed by
+   * region rather than by resource name.
+   *
+   * Region is derived from the OpenAI endpoint when it is not set
+   * explicitly, since the two live on the same resource: an endpoint of
+   * `https://name-eastus2.cognitiveservices.azure.com` is a resource in
+   * eastus2, and asking somebody to write that out twice is asking them to
+   * get it wrong once.
+   */
+  speech: {
+    key: process.env.AZURE_SPEECH_KEY || (process.env.AZURE_OPENAI_API_KEY ?? ''),
+    region:
+      process.env.AZURE_SPEECH_REGION ||
+      (process.env.AZURE_OPENAI_ENDPOINT ?? '').match(/-([a-z]+[0-9]*)\.cognitiveservices/)?.[1] ||
+      '',
+  },
+
+  /**
    * Gemini, as the free rung on the embedding ladder.
    *
    * Chat and embeddings are asked of different providers by design, not by

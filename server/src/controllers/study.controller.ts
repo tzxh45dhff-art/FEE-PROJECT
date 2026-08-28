@@ -6,9 +6,11 @@ import { prisma } from '../models/prisma.js'
 import * as assistant from '../services/assistant.service.js'
 import * as azure from '../services/azure.service.js'
 import * as embeddings from '../services/embeddings.service.js'
+import * as explainer from '../services/explainer.service.js'
 import * as generate from '../services/generate.service.js'
 import * as judge from '../services/judge.service.js'
 import * as resources from '../services/resource.service.js'
+import * as speech from '../services/speech.service.js'
 import { assertMembership } from '../services/room.service.js'
 import * as syllabus from '../services/syllabus.service.js'
 import { discardUpload, finishUpload } from '../services/upload.service.js'
@@ -57,6 +59,11 @@ export async function capabilities(req: Request, res: Response) {
        shelf through Gemini with no Azure key at all. */
     search: await embeddings.available(),
     judge: judge.configured(),
+    /* Narration rides the same Cognitive Services key as chat, but on a
+       different host — so it can be reachable when chat is not, and the UI
+       has to be told about them separately. */
+    narration: speech.configured(),
+    voices: speech.configured() ? [...speech.VOICES] : [],
     judgeLanguages: judge.configured() ? judge.JUDGE_LANGUAGES : [],
     chatModel: azure.configured() ? env.azure.chatDeployment : null,
   })
@@ -946,6 +953,132 @@ export async function deleteProblem(req: Request, res: Response) {
   })
   if (!problem) throw HttpError.notFound('That problem is not here.')
   await prisma.codingProblem.delete({ where: { id: problem.id } })
+  res.json({ ok: true })
+}
+
+// ─── Explainers ───────────────────────────────────────────────────────────────
+
+const explainerInput = z.object({
+  subjectId: z.string(),
+  topic: z.string().trim().min(1, 'What should the lesson cover?').max(300),
+  /* The student's own description of how they want to be taught. Free text on
+     purpose: a menu of "beginner / intermediate / advanced" cannot express "I
+     keep losing marks on the derivation, go slowly there". */
+  style: z.string().trim().max(1000).default(''),
+  voice: z.string().trim().max(80).optional(),
+})
+
+function shapeExplainer(row: {
+  id: string
+  title: string
+  topic: string
+  style: string
+  voice: string
+  beats: string
+  duration: number
+  grounded: boolean
+  sources: string
+  status: string
+  error: string | null
+  createdAt: Date
+  createdBy?: { id: string; name: string }
+}, withBeats: boolean) {
+  return {
+    id: row.id,
+    title: row.title,
+    topic: row.topic,
+    style: row.style,
+    voice: row.voice,
+    duration: row.duration,
+    grounded: row.grounded,
+    sources: JSON.parse(row.sources) as string[],
+    status: row.status,
+    error: row.error,
+    createdAt: row.createdAt,
+    ...(row.createdBy ? { createdBy: row.createdBy } : {}),
+    /* The list does not carry beats. A dozen lessons of eighteen beats each
+       is a large response nobody on that screen reads. */
+    ...(withBeats ? { beats: JSON.parse(row.beats) as unknown[] } : {}),
+  }
+}
+
+export async function listExplainers(req: Request, res: Response) {
+  const roomId = await gate(req)
+  const subject = await subjectIn(roomId, req.query.subjectId)
+
+  const rows = await prisma.explainer.findMany({
+    where: { subjectId: subject.id },
+    orderBy: { createdAt: 'desc' },
+    include: { createdBy: { select: { id: true, name: true } } },
+  })
+
+  res.json({ explainers: rows.map((row) => shapeExplainer(row, false)) })
+}
+
+export async function getExplainer(req: Request, res: Response) {
+  const roomId = await gate(req)
+  const row = await prisma.explainer.findFirst({
+    where: { id: req.params.explainerId!, roomId },
+    include: { createdBy: { select: { id: true, name: true } } },
+  })
+  if (!row) throw HttpError.notFound('That lesson is not here.')
+  res.json({ explainer: shapeExplainer(row, true) })
+}
+
+/**
+ * Start building a lesson.
+ *
+ * Returns as soon as the row exists. Writing the script is one large
+ * completion and narrating it is a few dozen more round trips — minutes, in
+ * total, which is not a request anybody should be holding open. The row
+ * carries its own status and the client watches it, exactly as an uploaded
+ * document does.
+ */
+export async function createExplainer(req: Request, res: Response) {
+  const roomId = await gate(req)
+  const input = explainerInput.parse(req.body)
+  const subject = await subjectIn(roomId, input.subjectId)
+
+  if (!azure.configured()) {
+    throw HttpError.unavailable('No AI key is configured on this server, so lessons cannot be written.')
+  }
+  if (!speech.configured()) {
+    throw HttpError.unavailable('Narration is not configured on this server, so lessons cannot be voiced.')
+  }
+
+  const voice = input.voice && speech.isVoice(input.voice) ? input.voice : speech.DEFAULT_VOICE
+
+  const row = await prisma.explainer.create({
+    data: {
+      roomId,
+      subjectId: subject.id,
+      createdById: req.userId!,
+      /* A placeholder until the script names it. Shown in the list while it
+         builds, so the row is not a blank line for two minutes. */
+      title: input.topic,
+      topic: input.topic,
+      style: input.style,
+      voice,
+      status: 'pending',
+    },
+    include: { createdBy: { select: { id: true, name: true } } },
+  })
+
+  void explainer.buildInBackground(row.id)
+
+  res.status(201).json({ explainer: shapeExplainer(row, false) })
+}
+
+export async function deleteExplainer(req: Request, res: Response) {
+  const roomId = await gate(req)
+  const row = await prisma.explainer.findFirst({
+    where: { id: req.params.explainerId!, roomId },
+    select: { id: true },
+  })
+  if (!row) throw HttpError.notFound('That lesson is not here.')
+
+  await explainer.discardAudio(row.id)
+  await prisma.explainer.delete({ where: { id: row.id } })
   res.json({ ok: true })
 }
 

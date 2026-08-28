@@ -1,0 +1,429 @@
+import { mkdir, rm, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+
+import { prisma } from '../models/prisma.js'
+import { UPLOAD_DIR, UPLOAD_ROUTE } from './upload.service.js'
+import * as azure from './azure.service.js'
+import * as generate from './generate.service.js'
+import * as speech from './speech.service.js'
+import { HttpError } from '../utils/HttpError.js'
+
+/**
+ * A lesson that plays.
+ *
+ * Not a generated video. The model writes a script — narration split into
+ * beats, each carrying one visual drawn from a fixed vocabulary — and the
+ * browser animates those beats against narration audio. The distinction is
+ * the whole design: a diagram here is data rendered by the same code that
+ * draws the notes, so it is exactly as correct as the data, where a diagram
+ * generated as pixels is confidently wrong in a medium nobody can spot-check
+ * at a glance.
+ *
+ * Beats are deliberately small — one idea, one visual state. That removes the
+ * need for word-level timing entirely: a beat's own audio length is when its
+ * visual is on screen, and consecutive beats sharing a `group` build one
+ * diagram up a piece at a time rather than restarting it.
+ */
+
+export const EXPLAINER_STATUS = ['pending', 'scripting', 'narrating', 'ready', 'failed'] as const
+export type ExplainerStatus = (typeof EXPLAINER_STATUS)[number]
+
+/** What a beat puts on screen. The player knows exactly these and no others. */
+export type Visual =
+  | { kind: 'title'; text: string; subtitle?: string }
+  | { kind: 'bullets'; heading?: string; items: string[]; reveal?: number }
+  | { kind: 'steps'; heading?: string; items: string[]; active?: number }
+  | { kind: 'diagram'; mermaid: string; caption?: string }
+  | { kind: 'code'; language: string; code: string; highlight?: number[]; caption?: string }
+  | {
+      kind: 'compare'
+      heading?: string
+      left: { title: string; points: string[] }
+      right: { title: string; points: string[] }
+    }
+  | { kind: 'callout'; tone: 'exam' | 'pitfall' | 'insight'; text: string }
+
+export type Beat = {
+  /** What is spoken over this beat. */
+  say: string
+  show: Visual
+  /** Beats sharing this keep one visual mounted and only advance it. */
+  group?: string
+  /** Filled in by narration: a URL the player can fetch, and its length. */
+  audio?: string
+  seconds?: number
+}
+
+/**
+ * The script prompt.
+ *
+ * Written at length because this is the one place the quality of the whole
+ * feature is decided. Two failure modes are worth naming: a script that
+ * explains a university topic the way a children's channel would, all analogy
+ * and no mechanism; and a script that recites the syllabus back without ever
+ * saying how anything works. The first is patronising, the second is useless
+ * in an exam, and a model asked only for "a lesson" produces one or the other
+ * roughly at random.
+ */
+const SCRIPT_SYSTEM = `You write the script for a narrated lesson, for a
+university student revising a course they are enrolled in and will be examined
+on.
+
+WHO IS LISTENING
+An adult who has already sat the lectures. Not a beginner, not a child. They
+can read code, follow a derivation, and hold two ideas at once. Write to that
+person: no "imagine you're at a pizza shop", no "let's dive in", no
+exclamation marks, no reassurance, no "in this lesson we will". Analogy is
+allowed once, and only when it carries real structure.
+
+THE BAR
+State the mechanism, not the label. "The box model defines how elements are
+sized" is a glossary entry and is worthless to somebody revising. "Width sets
+the content box only, so padding and border are added outside it — which is
+why a 200 pixel box with 20 of padding occupies 240 and breaks a three-column
+layout" is a lesson. Every beat should carry one of:
+  - the rule stated precisely, including where it stops applying
+  - why the plausible wrong answer is wrong
+  - the distinction an examiner uses to separate people who understand from
+    people who memorised
+  - a worked case with real numbers carried through to a real result
+If a beat could be replaced by its own heading without loss, cut it.
+
+EXAM RELEVANCE
+The course syllabus is given to you. Where it names this topic, let it set the
+emphasis and the vocabulary — use the course's own terms, because those are
+the words the question paper will use. Mark the two or three genuinely
+assessable points with a "callout" of tone "exam". Two or three. Not every
+beat.
+
+OUTPUT
+{ "title": "a specific title, not the topic echoed back",
+  "beats": [ { "say": "...", "show": { ... }, "group": "optional" } ] }
+
+"say" is spoken aloud: two to four sentences of real English. Write it to be
+heard — no bullet fragments, no markdown, no "as shown below", no symbols that
+are not words. Say "n squared", not "n^2". Say "two hundred pixels", not
+"200px".
+
+"show" is exactly one of:
+  { "kind": "title", "text": "...", "subtitle": "..." }
+  { "kind": "bullets", "heading": "...", "items": ["...","..."], "reveal": 1 }
+  { "kind": "steps", "heading": "...", "items": ["...","..."], "active": 0 }
+  { "kind": "diagram", "mermaid": "graph LR\n  A[...] --> B[...]", "caption": "..." }
+  { "kind": "code", "language": "css", "code": "...", "highlight": [2], "caption": "..." }
+  { "kind": "compare", "heading": "...",
+    "left": { "title": "...", "points": ["..."] },
+    "right": { "title": "...", "points": ["..."] } }
+  { "kind": "callout", "tone": "exam" | "pitfall" | "insight", "text": "..." }
+
+GROUPS — READ THIS TWICE
+A "group" is how one visual stays on screen and is built up across several
+beats instead of being thrown away. The rule is mechanical:
+
+  Every beat in a group MUST have the same "kind" AND byte-identical content,
+  except for exactly one advancing field.
+
+  - "bullets": identical "heading" and identical "items". "reveal" starts at 1
+    and goes up by one each beat. The narration of each beat must be about the
+    item that beat newly reveals — the last one now visible.
+  - "steps": identical "heading" and identical "items". "active" starts at 0
+    and goes up by one each beat. The narration of each beat must explain the
+    item at "active" — not introduce the next one, not recap the last. A beat
+    highlighting "add the padding" while the voice says "first take the
+    width" is worse than no highlight at all, because the eye follows the
+    highlight and the ear follows the voice and they disagree.
+  - "code": identical "code" and "language". "highlight" moves to the lines
+    being discussed.
+  - "diagram": identical "mermaid". Use a group only to hold it while you talk
+    over it.
+
+If the kind changes, or the items change, it is NOT the same group — leave
+"group" out or start a new one. A group of a diagram followed by two callouts
+is wrong and produces nothing.
+
+At least two groups per lesson, each at least three beats long. That is where
+the lesson stops being a slideshow: a list revealing one line at a time as
+each line is explained, a walkthrough stepping through its own stages, code
+with attention moving line to line.
+
+WHEN THE STUDENT HAS TOLD YOU WHAT THEY STRUGGLE WITH
+If they name a specific thing they get wrong, that thing gets the most beats
+in the lesson — not a passing mention at the end. Somebody who says they lose
+marks on margin collapse needs the rule, the vertical-only boundary, the
+nested-element case, the case where it does not happen, and a worked example.
+Four beats minimum on a named weakness. Everything else in the topic can be
+covered more briskly to make room; they asked for help with one thing.
+
+LENGTH AND SHAPE
+- 16 to 20 beats, and "say" runs three to five sentences. Two-sentence beats
+  make a lesson that is over before it has taught anything. Fewer than 14 is too thin to have taught anything.
+- Open on a "title" beat whose narration states what the listener will be able
+  to do by the end. "By the end of this you will be able to work out the
+  rendered width of any element and say which rule decided it." Never a
+  definition of the topic's own name — that teaches nothing and wastes the
+  one moment you have their full attention.
+- Somewhere in the middle, carry one worked example all the way through with
+  real numbers, using a "steps" group.
+- If the subject involves code, markup or syntax at all, at least two "code"
+  beats with real, correct, idiomatic code.
+- Close by stating what now holds, not "thanks for watching".
+
+DIAGRAMS
+Valid, simple Mermaid: "graph LR", "graph TD", or "sequenceDiagram". Node
+labels under six words. No styling directives, no colours, no subgraph unless
+containment is genuinely the point. If a relationship is containment rather
+than sequence, say so in the labels — arrows read as "then", not "inside".
+
+Return only the JSON object.`
+
+/** Kept modest: eighteen beats of three sentences is not a long document. */
+const MAX_BEATS = 18
+
+type Raw = { title?: unknown; beats?: unknown }
+
+function asVisual(value: unknown): Visual | null {
+  if (!value || typeof value !== 'object') return null
+  const v = value as Record<string, unknown>
+  const str = (k: string) => (typeof v[k] === 'string' ? (v[k] as string).trim() : '')
+  const list = (k: string) =>
+    Array.isArray(v[k]) ? (v[k] as unknown[]).filter((x): x is string => typeof x === 'string') : []
+
+  switch (v.kind) {
+    case 'title':
+      return str('text') ? { kind: 'title', text: str('text'), subtitle: str('subtitle') || undefined } : null
+    case 'bullets': {
+      const items = list('items')
+      if (items.length === 0) return null
+      return {
+        kind: 'bullets',
+        heading: str('heading') || undefined,
+        items,
+        reveal: typeof v.reveal === 'number' ? Math.max(1, Math.min(items.length, v.reveal)) : items.length,
+      }
+    }
+    case 'steps': {
+      const items = list('items')
+      if (items.length === 0) return null
+      return {
+        kind: 'steps',
+        heading: str('heading') || undefined,
+        items,
+        active: typeof v.active === 'number' ? Math.max(0, Math.min(items.length - 1, v.active)) : 0,
+      }
+    }
+    case 'diagram':
+      return str('mermaid') ? { kind: 'diagram', mermaid: str('mermaid'), caption: str('caption') || undefined } : null
+    case 'code': {
+      if (!str('code')) return null
+      const highlight = Array.isArray(v.highlight)
+        ? (v.highlight as unknown[]).filter((n): n is number => typeof n === 'number' && n > 0)
+        : undefined
+      return {
+        kind: 'code',
+        language: str('language') || 'text',
+        code: str('code'),
+        highlight: highlight?.length ? highlight : undefined,
+        caption: str('caption') || undefined,
+      }
+    }
+    case 'compare': {
+      const side = (k: string) => {
+        const raw = v[k]
+        if (!raw || typeof raw !== 'object') return null
+        const o = raw as Record<string, unknown>
+        const points = Array.isArray(o.points)
+          ? (o.points as unknown[]).filter((x): x is string => typeof x === 'string')
+          : []
+        const title = typeof o.title === 'string' ? o.title.trim() : ''
+        return title || points.length ? { title, points } : null
+      }
+      const left = side('left')
+      const right = side('right')
+      return left && right ? { kind: 'compare', heading: str('heading') || undefined, left, right } : null
+    }
+    case 'callout': {
+      const tone = v.tone
+      const ok = tone === 'exam' || tone === 'pitfall' || tone === 'insight'
+      return str('text') ? { kind: 'callout', tone: ok ? tone : 'insight', text: str('text') } : null
+    }
+    default:
+      return null
+  }
+}
+
+/**
+ * Write the script.
+ *
+ * Grounded through the same `gather` every other generator uses, so the
+ * syllabus sets scope and the uploaded lecture material supplies substance —
+ * and `grounded` records which of those actually happened rather than
+ * assuming.
+ */
+export async function script(input: {
+  subjectId: string
+  topic: string
+  style: string
+  resourceIds?: string[]
+}) {
+  const grounding = await generate.gather(input.subjectId, input.topic, { only: input.resourceIds })
+
+  /* The student's own words about how they want to be taught, passed through
+     rather than paraphrased. "I have the exam on Friday and I keep losing
+     marks on the derivation" carries intent no menu of options would. */
+  const asked = input.style.trim()
+    ? `\n\n---\n\nThe student described how they want this taught, in their words. Honour it, so long as it does not conflict with the rules above:\n\n"${input.style.trim()}"`
+    : ''
+
+  const parsed = await azure.chatJson<Raw>(
+    [
+      { role: 'system', content: SCRIPT_SYSTEM },
+      {
+        role: 'user',
+        content: `${generate.promptContext(grounding)}\n\n---\n\nWrite the lesson on: ${input.topic}${asked}`,
+      },
+    ],
+    { temperature: 0.55, maxTokens: 8000 },
+  )
+
+  const beats: Beat[] = []
+  for (const raw of Array.isArray(parsed.beats) ? parsed.beats : []) {
+    if (!raw || typeof raw !== 'object') continue
+    const r = raw as Record<string, unknown>
+    const say = typeof r.say === 'string' ? r.say.trim() : ''
+    const show = asVisual(r.show)
+    if (!say || !show) continue
+    beats.push({ say, show, group: typeof r.group === 'string' && r.group ? r.group : undefined })
+    if (beats.length >= MAX_BEATS) break
+  }
+
+  /* Six is a floor against a broken response, not the target — the prompt
+     asks for fourteen. A lesson that comes back at five beats is a failed
+     generation wearing a success, and shipping it teaches nothing. */
+  if (beats.length < 6) {
+    throw HttpError.badGateway('The lesson came back too short to be useful. Try again.')
+  }
+
+  return {
+    title:
+      typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : input.topic,
+    beats,
+    grounded: grounding.grounded,
+    sources: grounding.sources,
+  }
+}
+
+/** Where one lesson's narration clips live on disk. */
+const folderFor = (explainerId: string) => path.join(UPLOAD_DIR, 'explainers', explainerId)
+
+/**
+ * Narration length, from the byte count.
+ *
+ * The output format is fixed constant-bitrate 48 kbit/s, so the duration is
+ * arithmetic rather than a question for a media library. Checked against
+ * ffprobe across several clips and voices: identical to the millisecond.
+ */
+const BITRATE_BYTES_PER_SECOND = 48_000 / 8
+
+/**
+ * Narrate every beat, writing each clip to disk as it lands.
+ *
+ * Sequential on purpose. A lesson is fifteen-odd clips against a per-second
+ * quota, and firing them at once is the quickest way to be rate limited into
+ * a half-narrated lesson — which would look like a broken feature rather than
+ * a busy one. The whole set takes about half a minute either way.
+ */
+async function narrate(explainerId: string, beats: Beat[], voice: string) {
+  const folder = folderFor(explainerId)
+  await mkdir(folder, { recursive: true })
+
+  let total = 0
+  const done: Beat[] = []
+
+  for (const [index, beat] of beats.entries()) {
+    const audio = await speech.speak(beat.say, voice)
+    const name = `${String(index).padStart(2, '0')}.mp3`
+    await writeFile(path.join(folder, name), audio)
+
+    const seconds = audio.byteLength / BITRATE_BYTES_PER_SECOND
+    total += seconds
+    done.push({
+      ...beat,
+      audio: `${UPLOAD_ROUTE}/explainers/${explainerId}/${name}`,
+      seconds: Math.round(seconds * 1000) / 1000,
+    })
+  }
+
+  return { beats: done, duration: Math.round(total * 1000) / 1000 }
+}
+
+async function fail(explainerId: string, message: string) {
+  await prisma.explainer
+    .update({ where: { id: explainerId }, data: { status: 'failed', error: message.slice(0, 400) } })
+    .catch(() => undefined)
+}
+
+/**
+ * Build the lesson, after the response has already gone.
+ *
+ * Scripting is a large completion and narration is a few dozen round trips —
+ * together well past what anybody should hold a request open for. So the row
+ * is written first and moves through its statuses while the client watches
+ * the list, exactly as an uploaded document does.
+ */
+export async function buildInBackground(explainerId: string) {
+  void build(explainerId).catch(async (cause) => {
+    await fail(explainerId, cause instanceof Error ? cause.message : 'The lesson could not be built.')
+  })
+}
+
+async function build(explainerId: string) {
+  const row = await prisma.explainer.findUnique({ where: { id: explainerId } })
+  if (!row) return
+
+  try {
+    await prisma.explainer.update({
+      where: { id: explainerId },
+      data: { status: 'scripting', error: null },
+    })
+
+    const written = await script({
+      subjectId: row.subjectId,
+      topic: row.topic,
+      style: row.style,
+      resourceIds: undefined,
+    })
+
+    await prisma.explainer.update({
+      where: { id: explainerId },
+      data: {
+        status: 'narrating',
+        title: written.title,
+        beats: JSON.stringify(written.beats),
+        grounded: written.grounded,
+        sources: JSON.stringify(written.sources),
+      },
+    })
+
+    const narrated = await narrate(explainerId, written.beats, row.voice)
+
+    await prisma.explainer.update({
+      where: { id: explainerId },
+      data: {
+        status: 'ready',
+        error: null,
+        beats: JSON.stringify(narrated.beats),
+        duration: narrated.duration,
+      },
+    })
+  } catch (cause) {
+    /* A half-narrated lesson is worse than none: it plays, stops partway, and
+       looks like the player is broken. The clips go with the failure. */
+    await rm(folderFor(explainerId), { recursive: true, force: true }).catch(() => undefined)
+    throw cause
+  }
+}
+
+/** Remove a lesson's narration from disk. The row is the caller's to delete. */
+export async function discardAudio(explainerId: string) {
+  await rm(folderFor(explainerId), { recursive: true, force: true }).catch(() => undefined)
+}

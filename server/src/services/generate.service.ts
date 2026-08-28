@@ -100,8 +100,14 @@ export async function gather(
   }
 }
 
-/** The shared preamble: what course this is, and what the shelf says. */
-function context(grounding: Grounding) {
+/**
+ * The shared preamble: what course this is, and what the shelf says.
+ *
+ * Exported because the explainer scripts are grounded the same way, and two
+ * copies of this would be two chances for them to drift apart on which of
+ * the syllabus and the material is authoritative.
+ */
+export function promptContext(grounding: Grounding) {
   const parts: string[] = []
 
   if (grounding.outline) {
@@ -164,7 +170,7 @@ export async function mcq(input: {
       { role: 'system', content: MCQ_SYSTEM },
       {
         role: 'user',
-        content: `${context(grounding)}\n\n---\n\nWrite ${input.count} ${input.difficulty} questions on: ${input.topic}`,
+        content: `${promptContext(grounding)}\n\n---\n\nWrite ${input.count} ${input.difficulty} questions on: ${input.topic}`,
       },
     ],
     { temperature: 0.6, maxTokens: 6000 },
@@ -246,7 +252,7 @@ export async function notes(input: {
       { role: 'system', content: NOTES_SYSTEM },
       {
         role: 'user',
-        content: `${context(grounding)}\n\n---\n\nWrite ${input.depth} notes on: ${input.topic}`,
+        content: `${promptContext(grounding)}\n\n---\n\nWrite ${input.depth} notes on: ${input.topic}`,
       },
     ],
     { temperature: 0.5, maxTokens: 8000 },
@@ -453,7 +459,7 @@ export async function coding(input: {
       { role: 'system', content: CODING_SYSTEM },
       {
         role: 'user',
-        content: `${context(grounding)}\n\n---\n\nWrite one ${input.difficulty} problem on: ${input.topic}`,
+        content: `${promptContext(grounding)}\n\n---\n\nWrite one ${input.difficulty} problem on: ${input.topic}`,
       },
     ],
     { temperature: 0.7, maxTokens: 8000 },
