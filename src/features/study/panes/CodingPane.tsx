@@ -13,6 +13,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import * as studyApi from '@/features/study/api'
+import { useStudyDark } from '@/features/study/useStudyDark'
 import { useTutor } from '@/features/study/tutorContext'
 import {
   Blank,
@@ -31,13 +32,13 @@ const Editor = lazy(() =>
 )
 
 const DIFFICULTY: Record<string, string> = {
-  easy: 'text-emerald-400',
-  medium: 'text-amber-400',
-  hard: 'text-signal-bright',
+  easy: 'text-[var(--study-good)]',
+  medium: 'text-[var(--study-accent)]',
+  hard: 'text-[var(--study-bad)]',
 }
 
 /** Problems for the subject, and the judge that marks them. */
-export default function CodingPane({ roomId, subject, caps, announce }: PaneProps) {
+export default function CodingPane({ roomId, subject, caps, announce, seed }: PaneProps) {
   const [rows, setRows] = useState<studyApi.ProblemSummary[] | null>(null)
   const [open, setOpen] = useState<studyApi.Problem | null>(null)
   const [busy, setBusy] = useState(false)
@@ -107,13 +108,14 @@ export default function CodingPane({ roomId, subject, caps, announce }: PaneProp
         disabled={!caps?.ai}
         reason="This server has no AI key configured."
         busy={busy}
+        seed={seed}
         label="Write a problem"
         showDifficulty
         onSubmit={(topic, options) => void generate(topic, options.difficulty)}
       />
 
       {caps && caps.ai && !caps.judge && (
-        <p className="mt-3 text-[0.76rem] text-dusk">
+        <p className="mt-3 text-[0.76rem] text-[var(--study-faint)]">
           No judge configured on this server — problems can be written and read, but not run.
         </p>
       )}
@@ -132,7 +134,7 @@ export default function CodingPane({ roomId, subject, caps, announce }: PaneProp
         <ul className="space-y-2 pb-4">
           {rows.map((row) => (
             <li key={row.id}>
-              <div className="group flex items-center gap-3 rounded-card border border-white/[0.07] bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.05]">
+              <div className="group flex items-center gap-3 rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-3 transition-colors hover:bg-[var(--study-card-strong)]">
                 <button
                   type="button"
                   onClick={async () => {
@@ -143,19 +145,19 @@ export default function CodingPane({ roomId, subject, caps, announce }: PaneProp
                       setError(cause instanceof Error ? cause.message : 'Could not open that.')
                     }
                   }}
-                  className="min-w-0 flex-1 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                  className="min-w-0 flex-1 text-left outline-none"
                 >
-                  <p className="truncate text-[0.88rem] text-chalk">{row.title}</p>
+                  <p className="truncate text-[0.88rem] text-[var(--study-text)]">{row.title}</p>
                   <p className="mt-1 flex items-center gap-2 text-[0.72rem]">
-                    <span className={cn('capitalize', DIFFICULTY[row.difficulty] ?? 'text-dusk')}>
+                    <span className={cn('capitalize', DIFFICULTY[row.difficulty] ?? 'text-[var(--study-faint)]')}>
                       {row.difficulty}
                     </span>
                     {row.lastSubmission && (
                       <>
-                        <span aria-hidden className="text-dusk">·</span>
+                        <span aria-hidden className="text-[var(--study-faint)]">·</span>
                         <span
                           className={
-                            row.lastSubmission.status === 'passed' ? 'text-emerald-400' : 'text-dusk'
+                            row.lastSubmission.status === 'passed' ? 'text-[var(--study-good)]' : 'text-[var(--study-faint)]'
                           }
                         >
                           {row.lastSubmission.status === 'passed'
@@ -174,7 +176,7 @@ export default function CodingPane({ roomId, subject, caps, announce }: PaneProp
                     await load()
                   }}
                   aria-label="Delete this problem"
-                  className="grid size-8 shrink-0 place-items-center rounded-full text-dusk opacity-0 outline-none transition-all hover:bg-signal/15 hover:text-signal-bright focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal group-hover:opacity-100"
+                  className="grid size-8 shrink-0 place-items-center rounded-full text-[var(--study-faint)] opacity-0 outline-none transition-all hover:bg-[var(--study-bad-soft)] hover:text-[var(--study-bad)] focus-visible:opacity-100 group-hover:opacity-100"
                 >
                   <Trash2 aria-hidden className="size-3.5" />
                 </button>
@@ -214,6 +216,7 @@ function Workspace({
   const [running, setRunning] = useState<'samples' | 'submit' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const tutor = useTutor()
+  const dark = useStudyDark()
 
   /* Switching language swaps the starter, but only when nothing has been
      written — silently discarding somebody's half-finished solution because
@@ -248,7 +251,7 @@ function Workspace({
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-2 text-[0.82rem] text-mist outline-none transition-colors hover:text-chalk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          className="flex items-center gap-2 text-[0.82rem] text-[var(--study-soft)] outline-none transition-colors hover:text-[var(--study-text)]"
         >
           <ArrowLeft aria-hidden className="size-4" />
           All problems
@@ -278,7 +281,7 @@ function Workspace({
               }
               disabled={!tutor.available}
               title={tutor.available ? undefined : 'No AI key on this server'}
-              className="flex h-9 items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 text-[0.78rem] text-chalk outline-none transition-colors hover:bg-white/[0.1] disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+              className="flex h-9 items-center gap-2 rounded-full border border-[var(--study-line)] bg-[var(--study-card)] px-3.5 text-[0.78rem] text-[var(--study-text)] outline-none transition-colors hover:bg-[var(--study-card-strong)] disabled:opacity-40"
             >
               <LifeBuoy aria-hidden className="size-3.5" />
               Help
@@ -289,10 +292,10 @@ function Workspace({
             value={language}
             aria-label="Language"
             onChange={(event) => switchLanguage(event.target.value)}
-            className="h-9 rounded-full border border-white/10 bg-white/[0.04] px-3 text-[0.78rem] text-chalk outline-none focus-visible:border-signal/50"
+            className="h-9 rounded-full border border-[var(--study-line)] bg-[var(--study-card)] px-3 text-[0.78rem] text-[var(--study-text)] outline-none focus-visible:border-[var(--study-accent)]"
           >
             {(offered.length ? offered : problem.languages).map((entry) => (
-              <option key={entry} value={entry} className="bg-deep text-chalk">
+              <option key={entry} value={entry} className="bg-[var(--study-bg)] text-[var(--study-text)]">
                 {entry}
               </option>
             ))}
@@ -303,7 +306,7 @@ function Workspace({
             onClick={() => void run(true)}
             disabled={!canRun || running !== null}
             title={canRun ? undefined : 'No judge configured on this server'}
-            className="flex h-9 items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 text-[0.78rem] text-chalk outline-none transition-colors hover:bg-white/[0.1] disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            className="flex h-9 items-center gap-2 rounded-full border border-[var(--study-line)] bg-[var(--study-card)] px-3.5 text-[0.78rem] text-[var(--study-text)] outline-none transition-colors hover:bg-[var(--study-card-strong)] disabled:opacity-40"
           >
             {running === 'samples' ? (
               <Loader2 aria-hidden className="size-3.5 animate-spin" />
@@ -318,7 +321,7 @@ function Workspace({
             onClick={() => void run(false)}
             disabled={!canRun || running !== null}
             title={canRun ? undefined : 'No judge configured on this server'}
-            className="h-9 rounded-full bg-chalk px-4 text-[0.78rem] font-medium text-void outline-none transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            className="h-9 rounded-full bg-[var(--study-accent)] px-4 text-[0.78rem] font-medium text-[var(--study-on-accent)] outline-none transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             {running === 'submit' ? 'Running…' : 'Submit'}
           </button>
@@ -327,15 +330,15 @@ function Workspace({
 
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
         <div data-lenis-prevent className="min-h-0 overflow-y-auto pr-1">
-          <h3 className="font-display text-[1.15rem] font-semibold tracking-[-0.02em] text-chalk">
+          <h3 className="font-display text-[1.15rem] font-semibold tracking-[-0.02em] text-[var(--study-text)]">
             {problem.title}
           </h3>
           <p className="mt-1 flex items-center gap-2 text-[0.74rem]">
-            <span className={cn('capitalize', DIFFICULTY[problem.difficulty] ?? 'text-dusk')}>
+            <span className={cn('capitalize', DIFFICULTY[problem.difficulty] ?? 'text-[var(--study-faint)]')}>
               {problem.difficulty}
             </span>
-            <span aria-hidden className="text-dusk">·</span>
-            <span className="inline-flex items-center gap-1 text-dusk">
+            <span aria-hidden className="text-[var(--study-faint)]">·</span>
+            <span className="inline-flex items-center gap-1 text-[var(--study-faint)]">
               <Lock aria-hidden className="size-3" />
               {problem.hiddenCount} hidden cases
             </span>
@@ -346,34 +349,36 @@ function Workspace({
           </div>
 
           <div className="mt-5 space-y-2">
-            <p className="text-[0.78rem] text-mist">Examples</p>
+            <p className="text-[0.78rem] text-[var(--study-soft)]">Examples</p>
             {problem.samples.map((sample, index) => (
               <div
                 key={index}
-                className="rounded-card border border-white/[0.07] bg-white/[0.02] p-3 font-mono text-[0.74rem] leading-relaxed"
+                className="rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-3 font-mono text-[0.74rem] leading-relaxed"
               >
-                <p className="text-dusk">input</p>
-                <pre className="overflow-x-auto whitespace-pre-wrap text-chalk">{sample.input}</pre>
-                <p className="mt-2 text-dusk">expected</p>
-                <pre className="overflow-x-auto whitespace-pre-wrap text-chalk">{sample.expected}</pre>
+                <p className="text-[var(--study-faint)]">input</p>
+                <pre className="overflow-x-auto whitespace-pre-wrap text-[var(--study-text)]">{sample.input}</pre>
+                <p className="mt-2 text-[var(--study-faint)]">expected</p>
+                <pre className="overflow-x-auto whitespace-pre-wrap text-[var(--study-text)]">{sample.expected}</pre>
               </div>
             ))}
           </div>
         </div>
 
         <div className="flex min-h-0 flex-col gap-3">
-          <div className="min-h-[16rem] flex-1 overflow-hidden rounded-card border border-white/[0.07]">
+          <div className="min-h-[16rem] flex-1 overflow-hidden rounded-[0.9rem] border border-[var(--study-line)]">
             <Suspense
               fallback={
                 <div className="grid h-full place-items-center">
-                  <Loader2 aria-hidden className="size-4 animate-spin text-mist" />
+                  <Loader2 aria-hidden className="size-4 animate-spin text-[var(--study-soft)]" />
                 </div>
               }
             >
               <Editor
                 height="100%"
                 language={monacoLanguage(language)}
-                theme="vs-dark"
+                /* Follows the page. A black editor punched into a light page
+                   is the single most jarring thing a themed tab can do. */
+                theme={dark ? 'vs-dark' : 'light'}
                 value={code}
                 onChange={(next) => setCode(next ?? '')}
                 options={{
@@ -411,17 +416,17 @@ function Result({ verdict }: { verdict: studyApi.Verdict }) {
   return (
     <div
       className={cn(
-        'shrink-0 rounded-card border p-3',
-        passed ? 'border-emerald-400/30 bg-emerald-400/[0.07]' : 'border-signal/30 bg-signal/[0.07]',
+        'shrink-0 rounded-[0.9rem] border p-3',
+        passed ? 'border-[var(--study-good)] bg-[var(--study-good-soft)]' : 'border-[var(--study-bad)] bg-[var(--study-bad-soft)]',
       )}
     >
       <p className="flex items-center gap-2 text-[0.84rem]">
         {passed ? (
-          <CheckCircle2 aria-hidden className="size-4 text-emerald-400" />
+          <CheckCircle2 aria-hidden className="size-4 text-[var(--study-good)]" />
         ) : (
-          <XCircle aria-hidden className="size-4 text-signal-bright" />
+          <XCircle aria-hidden className="size-4 text-[var(--study-bad)]" />
         )}
-        <span className={passed ? 'text-emerald-400' : 'text-signal-bright'}>
+        <span className={passed ? 'text-[var(--study-good)]' : 'text-[var(--study-bad)]'}>
           {passed
             ? `All ${verdict.totalCount} cases passed`
             : verdict.status === 'error'
@@ -430,7 +435,7 @@ function Result({ verdict }: { verdict: studyApi.Verdict }) {
         </span>
       </p>
       {verdict.detail && (
-        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[0.72rem] leading-relaxed text-mist">
+        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[0.72rem] leading-relaxed text-[var(--study-soft)]">
           {verdict.detail}
         </pre>
       )}

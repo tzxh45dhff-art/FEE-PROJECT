@@ -109,7 +109,7 @@ export default function ResourcesPane({ roomId, subject, caps, announce }: PaneP
           type="button"
           onClick={() => picker.current?.click()}
           disabled={uploading}
-          className="flex h-10 shrink-0 items-center gap-2 rounded-full bg-chalk px-4 text-[0.82rem] font-medium text-void outline-none transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          className="flex h-10 shrink-0 items-center gap-2 rounded-full bg-[var(--study-accent)] px-4 text-[0.82rem] font-medium text-[var(--study-on-accent)] outline-none transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {uploading ? (
             <Loader2 aria-hidden className="size-4 animate-spin" />
@@ -152,8 +152,8 @@ export default function ResourcesPane({ roomId, subject, caps, announce }: PaneP
           void upload(event.dataTransfer.files)
         }}
         className={cn(
-          'rounded-card border border-dashed p-1 transition-colors',
-          dragging ? 'border-signal/50 bg-signal/[0.04]' : 'border-white/10',
+          'rounded-[0.9rem] border border-dashed p-1 transition-colors',
+          dragging ? 'border-[var(--study-accent)] bg-[var(--study-accent-soft)]' : 'border-[var(--study-line)]',
         )}
       >
         {rows === null ? (
@@ -210,22 +210,22 @@ function Row({
 }) {
   return (
     <li className="flex items-start gap-3 px-3 py-3">
-      <FileText aria-hidden className="mt-0.5 size-4 shrink-0 text-dusk" />
+      <FileText aria-hidden className="mt-0.5 size-4 shrink-0 text-[var(--study-faint)]" />
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[0.85rem] text-chalk">{row.title}</p>
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.72rem] text-dusk">
+        <p className="truncate text-[0.85rem] text-[var(--study-text)]">{row.title}</p>
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.72rem] text-[var(--study-faint)]">
           <span>{bytes(row.bytes)}</span>
           <span aria-hidden>·</span>
           <Status row={row} />
           {isSyllabus && (
             <>
               <span aria-hidden>·</span>
-              <span className="text-signal-bright">syllabus</span>
+              <span className="text-[var(--study-bad)]">syllabus</span>
             </>
           )}
         </p>
-        {row.error && <p className="mt-1.5 text-[0.74rem] leading-relaxed text-mist">{row.error}</p>}
+        {row.error && <p className="mt-1.5 text-[0.74rem] leading-relaxed text-[var(--study-soft)]">{row.error}</p>}
       </div>
 
       <span className="flex shrink-0 items-center gap-1">
@@ -258,7 +258,7 @@ function Row({
 function Status({ row }: { row: studyApi.StudyResource }) {
   if (row.status === 'ready') {
     return (
-      <span className="inline-flex items-center gap-1 text-mist">
+      <span className="inline-flex items-center gap-1 text-[var(--study-soft)]">
         <CheckCircle2 aria-hidden className="size-3" />
         searchable · {row.chunkCount} passages
       </span>
@@ -266,14 +266,14 @@ function Status({ row }: { row: studyApi.StudyResource }) {
   }
   if (row.status === 'failed') {
     return (
-      <span className="inline-flex items-center gap-1 text-signal-bright">
+      <span className="inline-flex items-center gap-1 text-[var(--study-bad)]">
         <AlertCircle aria-hidden className="size-3" />
         could not be read
       </span>
     )
   }
   return (
-    <span className="inline-flex items-center gap-1 text-mist">
+    <span className="inline-flex items-center gap-1 text-[var(--study-soft)]">
       <Loader2 aria-hidden className="size-3 animate-spin" />
       reading…
     </span>
@@ -301,9 +301,9 @@ function Action({
       aria-label={label}
       title={label}
       className={cn(
-        'grid size-8 place-items-center rounded-full text-dusk outline-none transition-colors',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
-        danger ? 'hover:bg-signal/15 hover:text-signal-bright' : 'hover:bg-white/[0.08] hover:text-chalk',
+        'grid size-8 place-items-center rounded-full text-[var(--study-faint)] outline-none transition-colors',
+        '',
+        danger ? 'hover:bg-[var(--study-bad-soft)] hover:text-[var(--study-bad)]' : 'hover:bg-[var(--study-card-strong)] hover:text-[var(--study-text)]',
       )}
     >
       {busy ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : icon}
@@ -320,9 +320,9 @@ function Action({
  */
 function Outline({ syllabus }: { syllabus: studyApi.Syllabus }) {
   return (
-    <div className="mb-4 rounded-card border border-white/10 bg-white/[0.03] p-4">
-      <p className="font-display text-[0.95rem] font-semibold text-chalk">{syllabus.title}</p>
-      <p className="mt-1 text-[0.76rem] text-dusk">
+    <div className="mb-4 rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-4">
+      <p className="font-display text-[0.95rem] font-semibold text-[var(--study-text)]">{syllabus.title}</p>
+      <p className="mt-1 text-[0.76rem] text-[var(--study-faint)]">
         Read from the handout — every generated question and note is written against this.
       </p>
 
@@ -330,16 +330,16 @@ function Outline({ syllabus }: { syllabus: studyApi.Syllabus }) {
         {syllabus.units.map((unit, index) => (
           <li key={`${unit.name}-${index}`}>
             <p className="flex flex-wrap items-baseline gap-2">
-              <span className="text-[0.84rem] text-chalk">{unit.name}</span>
+              <span className="text-[0.84rem] text-[var(--study-text)]">{unit.name}</span>
               {unit.weightage != null && (
-                <span className="text-[0.72rem] text-dusk">{unit.weightage}%</span>
+                <span className="text-[0.72rem] text-[var(--study-faint)]">{unit.weightage}%</span>
               )}
               {unit.lectures != null && (
-                <span className="text-[0.72rem] text-dusk">{unit.lectures} lectures</span>
+                <span className="text-[0.72rem] text-[var(--study-faint)]">{unit.lectures} lectures</span>
               )}
             </p>
             {unit.topics.length > 0 && (
-              <p className="mt-1 text-[0.76rem] leading-relaxed text-mist">
+              <p className="mt-1 text-[0.76rem] leading-relaxed text-[var(--study-soft)]">
                 {unit.topics.join(' · ')}
               </p>
             )}
@@ -349,12 +349,12 @@ function Outline({ syllabus }: { syllabus: studyApi.Syllabus }) {
 
       {syllabus.outcomes.length > 0 && (
         <details className="mt-4">
-          <summary className="cursor-pointer text-[0.76rem] text-dusk outline-none transition-colors hover:text-mist focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal">
+          <summary className="cursor-pointer text-[0.76rem] text-[var(--study-faint)] outline-none transition-colors hover:text-[var(--study-soft)]">
             {syllabus.outcomes.length} stated outcomes
           </summary>
           <ul className="mt-2 space-y-1.5">
             {syllabus.outcomes.map((outcome, index) => (
-              <li key={index} className="text-[0.76rem] leading-relaxed text-mist">
+              <li key={index} className="text-[0.76rem] leading-relaxed text-[var(--study-soft)]">
                 {outcome}
               </li>
             ))}

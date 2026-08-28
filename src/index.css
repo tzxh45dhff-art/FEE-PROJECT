@@ -1129,7 +1129,7 @@ body::-webkit-scrollbar {
  */
 .study-prose {
   max-width: 44rem;
-  color: var(--color-mist);
+  color: var(--study-soft);
   font-size: 0.9rem;
   line-height: 1.75;
 }
@@ -1142,7 +1142,7 @@ body::-webkit-scrollbar {
 .study-prose h2,
 .study-prose h3,
 .study-prose h4 {
-  color: var(--color-chalk);
+  color: var(--study-text);
   font-family: var(--font-display), system-ui, sans-serif;
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -1156,12 +1156,12 @@ body::-webkit-scrollbar {
 .study-prose h4 { font-size: 0.92rem; margin-top: 1.4em; }
 
 .study-prose strong {
-  color: var(--color-chalk);
+  color: var(--study-text);
   font-weight: 600;
 }
 
 .study-prose a {
-  color: var(--color-signal-bright);
+  color: var(--study-accent);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -1177,7 +1177,7 @@ body::-webkit-scrollbar {
 .study-prose li + li { margin-top: 0.4em; }
 
 .study-prose blockquote {
-  border-left: 2px solid var(--color-line);
+  border-left: 2px solid var(--study-line);
   padding-left: 1em;
   color: var(--color-dusk);
 }
@@ -1195,32 +1195,32 @@ body::-webkit-scrollbar {
 
 .study-prose th,
 .study-prose td {
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--study-line);
   padding: 0.5em 0.75em;
   text-align: left;
   vertical-align: top;
 }
 
 .study-prose th {
-  background: rgb(255 255 255 / 0.04);
-  color: var(--color-chalk);
+  background: var(--study-card);
+  color: var(--study-text);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .study-prose code {
-  background: rgb(255 255 255 / 0.06);
+  background: var(--study-card-strong);
   border-radius: 0.35em;
   padding: 0.15em 0.4em;
   font-size: 0.86em;
-  color: var(--color-chalk);
+  color: var(--study-text);
 }
 
 .study-prose pre {
   overflow-x: auto;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--study-line);
   border-radius: var(--radius-card, 0.9rem);
-  background: rgb(255 255 255 / 0.03);
+  background: var(--study-card);
   padding: 0.9rem 1rem;
 }
 
@@ -1233,7 +1233,7 @@ body::-webkit-scrollbar {
 
 .study-prose hr {
   border: 0;
-  border-top: 1px solid var(--color-line);
+  border-top: 1px solid var(--study-line);
   margin: 2em 0;
 }
 
@@ -1253,3 +1253,135 @@ body::-webkit-scrollbar {
 .study-prose-tight pre { padding: 0.6rem 0.75rem; }
 .study-prose-tight pre code { font-size: 0.74rem; }
 .study-prose-tight hr { margin: 1.2em 0; }
+
+/* ═══════════════════════════════════════════════════════════════
+   The Study tab's own palette
+   ───────────────────────────────────────────────────────────────
+   Everything else in this app is dark and only dark, which is right
+   for a room built around watching things together. Study is the one
+   place people sit for two hours in a lit room reading text, and a
+   black page is the wrong surface for that as often as it is the
+   right one — so this scope carries its own palette and the person
+   picks which.
+
+   Scoped rather than global on purpose. Flipping the whole app to
+   light would mean restyling a film player and a record sleeve to be
+   readable on white, and neither of those wants to be.
+   ═══════════════════════════════════════════════════════════════ */
+.study-scope {
+  --study-bg: #0a0a0b;
+  --study-bg-soft: #101012;
+  --study-card: rgb(255 255 255 / 0.035);
+  --study-card-strong: rgb(255 255 255 / 0.065);
+  --study-line: rgb(255 255 255 / 0.09);
+  --study-line-strong: rgb(255 255 255 / 0.16);
+  --study-text: #f4f4f5;
+  --study-soft: #a1a1aa;
+  --study-faint: #71717a;
+  --study-on-accent: #ffffff;
+  --study-good: #34d399;
+  --study-good-soft: rgb(52 211 153 / 0.12);
+  --study-bad: #fb7185;
+  --study-bad-soft: rgb(251 113 133 / 0.12);
+  --study-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
+
+  background: var(--study-bg);
+  color: var(--study-text);
+  color-scheme: dark;
+}
+
+.study-scope[data-study-theme='light'] {
+  /* Not pure white. A page of body text on #fff is the classic way to
+     make a screen tiring to read for an hour, and warming it very
+     slightly is what stops the borders below reading as grey smears. */
+  --study-bg: #fbfaf9;
+  --study-bg-soft: #f4f2f0;
+  --study-card: rgb(17 17 20 / 0.028);
+  --study-card-strong: rgb(17 17 20 / 0.06);
+  --study-line: rgb(17 17 20 / 0.1);
+  --study-line-strong: rgb(17 17 20 / 0.2);
+  --study-text: #17171b;
+  --study-soft: #55555f;
+  --study-faint: #8a8a94;
+  --study-good: #0f9a6a;
+  --study-good-soft: rgb(15 154 106 / 0.1);
+  --study-bad: #d13d4e;
+  --study-bad-soft: rgb(209 61 78 / 0.09);
+  --study-shadow: 0 1px 2px rgb(17 17 20 / 0.07);
+  color-scheme: light;
+}
+
+/* Accents. The default is the app's own red, so Study still belongs to
+   the room it lives in; the rest are for people who find red at the
+   edge of their vision for two hours a lot. Each carries a light-mode
+   value too, because a hue that reads well on black is usually too pale
+   on paper. */
+.study-scope { --study-accent: #ff3b30; --study-accent-soft: rgb(255 59 48 / 0.14); }
+.study-scope[data-study-accent='amber'] { --study-accent: #f5a524; --study-accent-soft: rgb(245 165 36 / 0.16); }
+.study-scope[data-study-accent='emerald'] { --study-accent: #10b981; --study-accent-soft: rgb(16 185 129 / 0.15); }
+.study-scope[data-study-accent='violet'] { --study-accent: #a78bfa; --study-accent-soft: rgb(167 139 250 / 0.16); }
+.study-scope[data-study-accent='blue'] { --study-accent: #60a5fa; --study-accent-soft: rgb(96 165 250 / 0.16); }
+
+.study-scope[data-study-theme='light'] { --study-accent: #d92d20; --study-accent-soft: rgb(217 45 32 / 0.09); }
+.study-scope[data-study-theme='light'][data-study-accent='amber'] { --study-accent: #b45309; --study-accent-soft: rgb(180 83 9 / 0.09); }
+.study-scope[data-study-theme='light'][data-study-accent='emerald'] { --study-accent: #047857; --study-accent-soft: rgb(4 120 87 / 0.09); }
+.study-scope[data-study-theme='light'][data-study-accent='violet'] { --study-accent: #6d28d9; --study-accent-soft: rgb(109 40 217 / 0.09); }
+.study-scope[data-study-theme='light'][data-study-accent='blue'] { --study-accent: #1d4ed8; --study-accent-soft: rgb(29 78 216 / 0.09); }
+
+/* ── The four shapes the whole tab is built from ──────────────────
+   Written as classes rather than repeated Tailwind strings because
+   each is used in a dozen places and each has to answer to the theme
+   above. A card is a card in both. */
+
+.study-card {
+  border: 1px solid var(--study-line);
+  border-radius: 0.9rem;
+  background: var(--study-card);
+}
+
+.study-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.25rem;
+  padding-inline: 0.9rem;
+  border: 1px solid var(--study-line);
+  border-radius: 999px;
+  background: var(--study-card);
+  color: var(--study-text);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  transition: background-color 0.18s, border-color 0.18s, opacity 0.18s;
+}
+.study-btn:hover:not(:disabled) { background: var(--study-card-strong); border-color: var(--study-line-strong); }
+.study-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.study-btn-primary {
+  border-color: transparent;
+  background: var(--study-accent);
+  color: var(--study-on-accent);
+  font-weight: 500;
+}
+.study-btn-primary:hover:not(:disabled) { background: var(--study-accent); border-color: transparent; filter: brightness(1.08); }
+
+.study-field {
+  height: 2.25rem;
+  padding-inline: 0.9rem;
+  border: 1px solid var(--study-line);
+  border-radius: 999px;
+  background: var(--study-card);
+  color: var(--study-text);
+  font-size: 0.82rem;
+  outline: none;
+  transition: border-color 0.18s;
+}
+.study-field::placeholder { color: var(--study-faint); }
+.study-field:focus-visible { border-color: var(--study-accent); }
+
+/* One focus ring for the whole tab, in the chosen accent, so keyboard
+   navigation is visible without every button restating it. */
+.study-scope :focus-visible {
+  outline: 2px solid var(--study-accent);
+  outline-offset: 2px;
+}

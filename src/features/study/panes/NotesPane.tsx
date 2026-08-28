@@ -17,7 +17,7 @@ import {
 import { TopicPicker } from '@/features/study/TopicPicker'
 
 /** Notes on the subject, written from its documents where there are any. */
-export default function NotesPane({ roomId, subject, caps, announce }: PaneProps) {
+export default function NotesPane({ roomId, subject, caps, announce, seed }: PaneProps) {
   const [rows, setRows] = useState<studyApi.NoteSummary[] | null>(null)
   const [open, setOpen] = useState<studyApi.Note | null>(null)
   const [busy, setBusy] = useState(false)
@@ -106,7 +106,7 @@ export default function NotesPane({ roomId, subject, caps, announce }: PaneProps
           <button
             type="button"
             onClick={() => setOpen(null)}
-            className="flex items-center gap-2 text-[0.82rem] text-mist outline-none transition-colors hover:text-chalk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            className="flex items-center gap-2 text-[0.82rem] text-[var(--study-soft)] outline-none transition-colors hover:text-[var(--study-text)]"
           >
             <ArrowLeft aria-hidden className="size-4" />
             All notes
@@ -119,7 +119,7 @@ export default function NotesPane({ roomId, subject, caps, announce }: PaneProps
                 onClick={explain}
                 disabled={!tutor.available}
                 title={tutor.available ? undefined : 'No AI key on this server'}
-                className="flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 text-[0.76rem] text-chalk outline-none transition-colors hover:bg-white/[0.1] disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                className="flex h-8 items-center gap-1.5 rounded-full border border-[var(--study-line)] bg-[var(--study-card)] px-3 text-[0.76rem] text-[var(--study-text)] outline-none transition-colors hover:bg-[var(--study-card-strong)] disabled:opacity-40"
               >
                 <Sparkles aria-hidden className="size-3.5" />
                 {selected ? 'Explain selection' : 'Explain'}
@@ -137,7 +137,7 @@ export default function NotesPane({ roomId, subject, caps, announce }: PaneProps
           data-lenis-prevent
           className="min-h-0 flex-1 overflow-y-auto pb-6 pr-1"
         >
-          <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.02em] text-chalk">
+          <h3 className="font-display text-[1.35rem] font-semibold tracking-[-0.02em] text-[var(--study-text)]">
             {open.title}
           </h3>
           <div className="study-prose mt-4">
@@ -175,6 +175,7 @@ export default function NotesPane({ roomId, subject, caps, announce }: PaneProps
         disabled={!caps?.ai}
         reason="This server has no AI key configured."
         busy={busy}
+        seed={seed}
         label="Write notes"
         showDepth
         onSubmit={(topic, options) => void generate(topic, options.depth)}
@@ -197,7 +198,7 @@ export default function NotesPane({ roomId, subject, caps, announce }: PaneProps
         <ul className="space-y-2 pb-4">
           {rows.map((row) => (
             <li key={row.id}>
-              <div className="group flex items-center gap-3 rounded-card border border-white/[0.07] bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.05]">
+              <div className="group flex items-center gap-3 rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-3 transition-colors hover:bg-[var(--study-card-strong)]">
                 <button
                   type="button"
                   onClick={async () => {
@@ -208,10 +209,10 @@ export default function NotesPane({ roomId, subject, caps, announce }: PaneProps
                       setError(cause instanceof Error ? cause.message : 'Could not open that.')
                     }
                   }}
-                  className="min-w-0 flex-1 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                  className="min-w-0 flex-1 text-left outline-none"
                 >
-                  <p className="truncate text-[0.88rem] text-chalk">{row.title}</p>
-                  <p className="mt-1 truncate text-[0.72rem] text-dusk">{row.topic}</p>
+                  <p className="truncate text-[0.88rem] text-[var(--study-text)]">{row.title}</p>
+                  <p className="mt-1 truncate text-[0.72rem] text-[var(--study-faint)]">{row.topic}</p>
                 </button>
 
                 <GroundedBadge grounded={row.grounded} sources={row.sources} />
@@ -223,7 +224,7 @@ export default function NotesPane({ roomId, subject, caps, announce }: PaneProps
                     await load()
                   }}
                   aria-label="Delete these notes"
-                  className="grid size-8 shrink-0 place-items-center rounded-full text-dusk opacity-0 outline-none transition-all hover:bg-signal/15 hover:text-signal-bright focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal group-hover:opacity-100"
+                  className="grid size-8 shrink-0 place-items-center rounded-full text-[var(--study-faint)] opacity-0 outline-none transition-all hover:bg-[var(--study-bad-soft)] hover:text-[var(--study-bad)] focus-visible:opacity-100 group-hover:opacity-100"
                 >
                   <Trash2 aria-hidden className="size-3.5" />
                 </button>

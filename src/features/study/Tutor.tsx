@@ -162,11 +162,11 @@ export default function Tutor({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.07] px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--study-line)] px-4 py-3">
         <span className="flex min-w-0 items-center gap-2">
-          <Sparkles aria-hidden className="size-3.5 shrink-0 text-mist" />
-          <span className="truncate text-[0.82rem] text-chalk">Tutor</span>
-          <span className="truncate text-[0.72rem] text-dusk">{subjectName}</span>
+          <Sparkles aria-hidden className="size-3.5 shrink-0 text-[var(--study-soft)]" />
+          <span className="truncate text-[0.82rem] text-[var(--study-text)]">Tutor</span>
+          <span className="truncate text-[0.72rem] text-[var(--study-faint)]">{subjectName}</span>
         </span>
 
         <span className="flex shrink-0 items-center gap-1">
@@ -175,7 +175,7 @@ export default function Tutor({
             onClick={() => void clear()}
             aria-label="Clear this conversation"
             title="Clear this conversation"
-            className="grid size-8 place-items-center rounded-full text-dusk outline-none transition-colors hover:bg-white/[0.06] hover:text-chalk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            className="grid size-8 place-items-center rounded-full text-[var(--study-faint)] outline-none transition-colors hover:bg-[var(--study-card-strong)] hover:text-[var(--study-text)]"
           >
             <Eraser aria-hidden className="size-3.5" />
           </button>
@@ -183,7 +183,7 @@ export default function Tutor({
             type="button"
             onClick={onClose}
             aria-label="Close the tutor"
-            className="grid size-8 place-items-center rounded-full text-dusk outline-none transition-colors hover:bg-white/[0.06] hover:text-chalk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            className="grid size-8 place-items-center rounded-full text-[var(--study-faint)] outline-none transition-colors hover:bg-[var(--study-card-strong)] hover:text-[var(--study-text)]"
           >
             <X aria-hidden className="size-3.5" />
           </button>
@@ -191,11 +191,11 @@ export default function Tutor({
       </div>
 
       {focus && (
-        <div className="shrink-0 border-b border-white/[0.06] px-4 py-2.5">
-          <p className="flex items-center gap-2 text-[0.68rem] uppercase tracking-[0.08em] text-dusk">
+        <div className="shrink-0 border-b border-[var(--study-line)] px-4 py-2.5">
+          <p className="flex items-center gap-2 text-[0.68rem] uppercase tracking-[0.08em] text-[var(--study-faint)]">
             {MODE_LABEL[mode]}
           </p>
-          <p className="mt-1 truncate text-[0.78rem] text-mist" title={focus.title}>
+          <p className="mt-1 truncate text-[0.78rem] text-[var(--study-soft)]" title={focus.title}>
             {focus.title}
           </p>
           <button
@@ -204,7 +204,7 @@ export default function Tutor({
               setFocus(null)
               setMode('ask')
             }}
-            className="mt-1 text-[0.7rem] text-dusk underline-offset-2 outline-none transition-colors hover:text-mist hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            className="mt-1 text-[0.7rem] text-[var(--study-faint)] underline-offset-2 outline-none transition-colors hover:text-[var(--study-soft)] hover:underline"
           >
             Ask about something else
           </button>
@@ -218,13 +218,13 @@ export default function Tutor({
       >
         {messages === null ? (
           <div className="grid place-items-center py-10">
-            <Loader2 aria-hidden className="size-4 animate-spin text-mist" />
+            <Loader2 aria-hidden className="size-4 animate-spin text-[var(--study-soft)]" />
           </div>
         ) : messages.length === 0 ? (
-          <p className="px-1 py-6 text-[0.8rem] leading-relaxed text-dusk">
-            Ask anything about {subjectName}. Or press <span className="text-mist">Explain</span> on
-            a passage of notes, <span className="text-mist">Hint</span> on a question you are stuck
-            on, or <span className="text-mist">Help</span> on a problem — it will answer about that
+          <p className="px-1 py-6 text-[0.8rem] leading-relaxed text-[var(--study-faint)]">
+            Ask anything about {subjectName}. Or press <span className="text-[var(--study-soft)]">Explain</span> on
+            a passage of notes, <span className="text-[var(--study-soft)]">Hint</span> on a question you are stuck
+            on, or <span className="text-[var(--study-soft)]">Help</span> on a problem — it will answer about that
             exact thing, using this subject's documents where they say anything about it.
           </p>
         ) : (
@@ -232,7 +232,7 @@ export default function Tutor({
             row.role === 'user' ? (
               <p
                 key={row.id}
-                className="ml-6 rounded-card rounded-br-sm bg-white/[0.07] px-3 py-2 text-[0.82rem] leading-relaxed text-chalk"
+                className="ml-6 rounded-[0.9rem] rounded-br-sm bg-[var(--study-card-strong)] px-3 py-2 text-[0.82rem] leading-relaxed text-[var(--study-text)]"
               >
                 {row.content}
               </p>
@@ -257,7 +257,7 @@ export default function Tutor({
                   </ReactMarkdown>
                 </div>
                 {row.grounded && row.sources.length > 0 && (
-                  <p className="mt-1.5 text-[0.68rem] text-dusk">
+                  <p className="mt-1.5 text-[0.68rem] text-[var(--study-faint)]">
                     from {row.sources.join(', ')}
                   </p>
                 )}
@@ -267,14 +267,14 @@ export default function Tutor({
         )}
 
         {sending && (
-          <p className="flex items-center gap-2 text-[0.76rem] text-dusk">
+          <p className="flex items-center gap-2 text-[0.76rem] text-[var(--study-faint)]">
             <Loader2 aria-hidden className="size-3.5 animate-spin" />
             Thinking…
           </p>
         )}
 
         {error && (
-          <p role="alert" className="rounded-card bg-signal/10 px-3 py-2 text-[0.76rem] text-signal-bright">
+          <p role="alert" className="rounded-[0.9rem] bg-[var(--study-bad-soft)] px-3 py-2 text-[0.76rem] text-[var(--study-bad)]">
             {error}
           </p>
         )}
@@ -285,7 +285,7 @@ export default function Tutor({
           event.preventDefault()
           void send(draft, mode, focus)
         }}
-        className="shrink-0 border-t border-white/[0.07] p-3"
+        className="shrink-0 border-t border-[var(--study-line)] p-3"
       >
         <div className="flex items-end gap-2">
           <textarea
@@ -303,15 +303,15 @@ export default function Tutor({
             rows={1}
             placeholder={focus ? 'Ask a follow-up…' : 'Ask about this subject…'}
             maxLength={4000}
-            className="max-h-32 min-h-9 flex-1 resize-none rounded-card border border-white/10 bg-white/[0.04] px-3 py-2 text-[0.82rem] leading-relaxed text-chalk outline-none placeholder:text-dusk focus-visible:border-signal/50"
+            className="max-h-32 min-h-9 flex-1 resize-none rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] px-3 py-2 text-[0.82rem] leading-relaxed text-[var(--study-text)] outline-none placeholder:text-[var(--study-faint)] focus-visible:border-[var(--study-accent)]"
           />
           <button
             type="submit"
             disabled={sending || !draft.trim()}
             aria-label="Send"
             className={cn(
-              'grid size-9 shrink-0 place-items-center rounded-full bg-chalk text-void outline-none transition-opacity',
-              'hover:opacity-90 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
+              'grid size-9 shrink-0 place-items-center rounded-full bg-[var(--study-accent)] text-[var(--study-on-accent)] outline-none transition-opacity',
+              'hover:opacity-90 disabled:opacity-40',
             )}
           >
             <Send aria-hidden className="size-3.5" />

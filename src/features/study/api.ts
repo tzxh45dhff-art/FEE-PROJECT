@@ -83,13 +83,29 @@ export type McqSet = {
   questions: McqQuestion[]
 }
 
-export type McqReview = {
-  id: string
-  prompt: string
-  options: string[]
+/** One answered question, with what answering it revealed. */
+export type Revealed = {
+  questionId: string
+  chosenIndex: number
   correctIndex: number
   explanation: string
-  chosenIndex: number | null
+  correct: boolean
+}
+
+/**
+ * Where somebody is in a set.
+ *
+ * Comes back with the set itself, so reloading halfway through a quiz does
+ * not put you back in front of questions you have already answered with the
+ * answers hidden again.
+ */
+export type McqAttempt = {
+  id: string
+  revealed: Revealed[]
+  score: number
+  answered: number
+  total: number
+  completed: boolean
 }
 
 export type NoteSummary = {
@@ -232,17 +248,19 @@ export const createMcq = (
 ) => api.post<{ set: McqSetSummary }>(`${base(roomId)}/mcq`, input)
 
 export const mcqSet = (roomId: string, setId: string) =>
-  api.get<{ set: McqSet }>(`${base(roomId)}/mcq/${setId}`)
+  api.get<{ set: McqSet; attempt: McqAttempt | null }>(`${base(roomId)}/mcq/${setId}`)
 
-export const submitMcq = (
+/**
+ * Answer one question and find out what it was.
+ *
+ * A null `attemptId` starts a fresh attempt — which is also how retaking a
+ * set works, since retaking is just the first answer of the next attempt.
+ */
+export const answerMcq = (
   roomId: string,
   setId: string,
-  answers: { questionId: string; chosenIndex: number }[],
-) =>
-  api.post<{ attempt: { id: string; score: number; total: number }; review: McqReview[] }>(
-    `${base(roomId)}/mcq/${setId}/attempts`,
-    { answers },
-  )
+  input: { attemptId: string | null; questionId: string; chosenIndex: number },
+) => api.post<{ attempt: McqAttempt }>(`${base(roomId)}/mcq/${setId}/answers`, input)
 
 export const deleteMcq = (roomId: string, setId: string) =>
   api.del<{ ok: true }>(`${base(roomId)}/mcq/${setId}`)

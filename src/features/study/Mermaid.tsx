@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
+import { useStudyDark } from '@/features/study/useStudyDark'
 
 /**
  * A diagram, from the text a model wrote.
@@ -16,37 +16,50 @@ import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 
 let mermaidPromise: Promise<typeof import('mermaid')['default']> | null = null
 
-function loadMermaid(reduced: boolean) {
+/* Mermaid bakes its colours into the SVG at render time, so the palette has to
+   be handed to it rather than inherited. Re-initialised whenever the tab's
+   theme changes — the library allows it, and the alternative is dark boxes
+   with dark text sitting in a white page. */
+const PALETTE = {
+  dark: {
+    primaryColor: '#1c1c1f',
+    primaryTextColor: '#fafafa',
+    primaryBorderColor: '#3a3a40',
+    lineColor: '#8a8a94',
+    secondaryColor: '#141416',
+    tertiaryColor: '#0d0d0f',
+  },
+  light: {
+    primaryColor: '#f1efec',
+    primaryTextColor: '#17171b',
+    primaryBorderColor: '#c9c5c0',
+    lineColor: '#6b6b75',
+    secondaryColor: '#e7e4e0',
+    tertiaryColor: '#fbfaf9',
+  },
+}
+
+function loadMermaid(dark: boolean) {
   if (!mermaidPromise) {
-    mermaidPromise = import('mermaid').then((module) => {
-      const mermaid = module.default
-      mermaid.initialize({
-        startOnLoad: false,
-        /* Errors are handled below, as a readable fallback. Left to itself the
-           library writes its own error graphic into the page, which is a
-           picture of a bomb where a diagram should be. */
-        suppressErrorRendering: true,
-        securityLevel: 'strict',
-        theme: 'dark',
-        darkMode: true,
-        fontFamily: 'inherit',
-        themeVariables: {
-          background: 'transparent',
-          primaryColor: '#1c1c1f',
-          primaryTextColor: '#fafafa',
-          primaryBorderColor: '#2a2a2e',
-          lineColor: '#6e6e77',
-          secondaryColor: '#141416',
-          tertiaryColor: '#0d0d0f',
-        },
-        flowchart: { curve: 'basis', useMaxWidth: true },
-        sequence: { useMaxWidth: true },
-      })
-      return mermaid
-    })
+    mermaidPromise = import('mermaid').then((module) => module.default)
   }
-  void reduced
-  return mermaidPromise
+  return mermaidPromise.then((mermaid) => {
+    mermaid.initialize({
+      startOnLoad: false,
+      /* Errors are handled below, as a readable fallback. Left to itself the
+         library writes its own error graphic into the page, which is a
+         picture of a bomb where a diagram should be. */
+      suppressErrorRendering: true,
+      securityLevel: 'strict',
+      theme: dark ? 'dark' : 'neutral',
+      darkMode: dark,
+      fontFamily: 'inherit',
+      themeVariables: { background: 'transparent', ...(dark ? PALETTE.dark : PALETTE.light) },
+      flowchart: { curve: 'basis', useMaxWidth: true },
+      sequence: { useMaxWidth: true },
+    })
+    return mermaid
+  })
 }
 
 let counter = 0
@@ -55,14 +68,14 @@ export function Mermaid({ chart }: { chart: string }) {
   const [svg, setSvg] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
   const host = useRef<HTMLDivElement>(null)
-  const reduced = usePrefersReducedMotion()
+  const dark = useStudyDark()
 
   useEffect(() => {
     let cancelled = false
     counter += 1
     const id = `study-diagram-${counter}`
 
-    void loadMermaid(reduced)
+    void loadMermaid(dark)
       .then((mermaid) => mermaid.render(id, chart))
       .then(({ svg: rendered }) => {
         if (!cancelled) {
@@ -85,11 +98,11 @@ export function Mermaid({ chart }: { chart: string }) {
     return () => {
       cancelled = true
     }
-  }, [chart, reduced])
+  }, [chart, dark])
 
   if (failed) {
     return (
-      <pre className="overflow-x-auto rounded-card border border-white/10 bg-white/[0.03] p-3 text-[0.74rem] leading-relaxed text-mist">
+      <pre className="overflow-x-auto rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-3 text-[0.74rem] leading-relaxed text-[var(--study-soft)]">
         <code>{chart}</code>
       </pre>
     )
@@ -98,12 +111,12 @@ export function Mermaid({ chart }: { chart: string }) {
   return (
     <div
       ref={host}
-      className="my-4 overflow-x-auto rounded-card border border-white/[0.07] bg-white/[0.02] p-4 [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
+      className="my-4 overflow-x-auto rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-4 [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
       /* The SVG comes from Mermaid's own renderer with `securityLevel: strict`,
          which strips script and event handlers from the graph it is given. */
       dangerouslySetInnerHTML={svg ? { __html: svg } : undefined}
     >
-      {svg ? undefined : <span className="text-[0.76rem] text-dusk">Drawing…</span>}
+      {svg ? undefined : <span className="text-[0.76rem] text-[var(--study-faint)]">Drawing…</span>}
     </div>
   )
 }

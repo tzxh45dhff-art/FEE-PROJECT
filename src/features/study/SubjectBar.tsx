@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Loader2, Plus, X } from 'lucide-react'
+import { BookOpen, Check, Loader2, Plus, X } from 'lucide-react'
 
 import * as studyApi from '@/features/study/api'
 import { cn } from '@/lib/utils'
@@ -7,9 +7,9 @@ import { cn } from '@/lib/utils'
 /**
  * Which subject the page is about.
  *
- * Above the tabs rather than inside one of them, because it governs all of
- * them — every list below is scoped to whatever is selected here, and a
- * control that changes six panes at once should not be buried in one.
+ * In the header rather than in a pane, because it governs all of them — every
+ * list below is scoped to whatever is selected here, and a control that
+ * changes seven panes at once should not be buried in one of them.
  */
 export function SubjectBar({
   roomId,
@@ -49,104 +49,107 @@ export function SubjectBar({
     }
   }
 
-  return (
-    <div className="relative z-10 shrink-0 px-5 pb-3">
-      {adding ? (
-        <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
-          <input
-            autoFocus
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Subject name"
-            maxLength={120}
-            className="h-9 min-w-0 flex-1 rounded-full border border-white/10 bg-white/[0.04] px-4 text-[0.82rem] text-chalk outline-none placeholder:text-dusk focus-visible:border-signal/50"
-          />
-          <input
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-            placeholder="Code (optional)"
-            maxLength={40}
-            className="h-9 w-36 rounded-full border border-white/10 bg-white/[0.04] px-4 text-[0.82rem] text-chalk outline-none placeholder:text-dusk focus-visible:border-signal/50"
-          />
-          <button
-            type="submit"
-            disabled={busy || !name.trim()}
-            aria-label="Add subject"
-            className="grid size-9 place-items-center rounded-full bg-chalk text-void transition-opacity disabled:opacity-40"
-          >
-            {busy ? (
-              <Loader2 aria-hidden className="size-4 animate-spin" />
-            ) : (
-              <Check aria-hidden className="size-4" />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAdding(false)
-              setError(null)
-            }}
-            aria-label="Cancel"
-            className="grid size-9 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-mist transition-colors hover:text-chalk"
-          >
-            <X aria-hidden className="size-4" />
-          </button>
-          {error && (
-            <p role="alert" className="w-full text-[0.76rem] text-signal-bright">
-              {error}
-            </p>
-          )}
-        </form>
-      ) : (
-        <div data-lenis-prevent className="flex items-center gap-2 overflow-x-auto">
-          {subjects === null ? (
-            <span className="text-[0.78rem] text-dusk">Loading…</span>
+  if (adding) {
+    return (
+      <form onSubmit={submit} className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <input
+          autoFocus
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Subject name"
+          maxLength={120}
+          className="study-field min-w-0 flex-1"
+        />
+        <input
+          value={code}
+          onChange={(event) => setCode(event.target.value)}
+          placeholder="Code (optional)"
+          maxLength={40}
+          className="study-field w-36 shrink-0"
+        />
+        <button
+          type="submit"
+          disabled={busy || !name.trim()}
+          aria-label="Add subject"
+          className="study-btn study-btn-primary size-9 shrink-0 px-0"
+        >
+          {busy ? (
+            <Loader2 aria-hidden className="size-4 animate-spin" />
           ) : (
-            subjects.map((subject) => {
-              const active = subject.id === activeId
-              return (
-                <button
-                  key={subject.id}
-                  type="button"
-                  onClick={() => onPick(subject.id)}
-                  aria-pressed={active}
-                  className={cn(
-                    'flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-1.5 outline-none transition-colors duration-300',
-                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
-                    active
-                      ? 'border-white/20 bg-white/[0.1] text-chalk'
-                      : 'border-white/10 bg-white/[0.03] text-mist hover:text-chalk',
-                  )}
-                >
-                  <span className="whitespace-nowrap text-[0.8rem]">{subject.name}</span>
-                  {subject.code && (
-                    <span className="whitespace-nowrap text-[0.7rem] text-dusk">{subject.code}</span>
-                  )}
-                  {/* A subject that has read its syllabus knows what it covers,
-                      which changes what every generator below will produce —
-                      worth showing rather than leaving to be discovered. */}
-                  {subject.hasSyllabus && (
-                    <span
-                      aria-label="Syllabus read"
-                      title="Syllabus read"
-                      className="size-1.5 shrink-0 rounded-full bg-signal"
-                    />
-                  )}
-                </button>
-              )
-            })
+            <Check aria-hidden className="size-4" />
           )}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setAdding(false)
+            setError(null)
+          }}
+          aria-label="Cancel"
+          className="study-btn size-9 shrink-0 px-0"
+        >
+          <X aria-hidden className="size-4" />
+        </button>
+        {error && (
+          <p role="alert" className="w-full text-[0.76rem] text-[var(--study-bad)]">
+            {error}
+          </p>
+        )}
+      </form>
+    )
+  }
 
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            aria-label="Add a subject"
-            className="grid size-8 shrink-0 place-items-center rounded-full border border-dashed border-white/15 text-mist outline-none transition-colors hover:border-white/30 hover:text-chalk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-          >
-            <Plus aria-hidden className="size-4" />
-          </button>
-        </div>
+  return (
+    <div data-lenis-prevent className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+      <BookOpen aria-hidden className="size-4 shrink-0 text-[var(--study-faint)]" />
+
+      {subjects === null ? (
+        <span className="text-[0.78rem] text-[var(--study-faint)]">Loading…</span>
+      ) : (
+        subjects.map((subject) => {
+          const active = subject.id === activeId
+          return (
+            <button
+              key={subject.id}
+              type="button"
+              onClick={() => onPick(subject.id)}
+              aria-pressed={active}
+              className={cn(
+                'flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-[0.8rem] outline-none transition-colors duration-200',
+                active
+                  ? 'bg-[var(--study-card-strong)] text-[var(--study-text)]'
+                  : 'text-[var(--study-soft)] hover:bg-[var(--study-card)] hover:text-[var(--study-text)]',
+              )}
+            >
+              <span className="whitespace-nowrap">{subject.name}</span>
+              {subject.code && (
+                <span className="whitespace-nowrap text-[0.68rem] text-[var(--study-faint)]">
+                  {subject.code}
+                </span>
+              )}
+              {/* A subject that has read its syllabus knows what it covers,
+                  which changes what every generator below will produce —
+                  worth showing rather than leaving to be discovered. */}
+              {subject.hasSyllabus && (
+                <span
+                  aria-label="Syllabus read"
+                  title="Syllabus read"
+                  className="size-1.5 shrink-0 rounded-full bg-[var(--study-accent)]"
+                />
+              )}
+            </button>
+          )
+        })
       )}
+
+      <button
+        type="button"
+        onClick={() => setAdding(true)}
+        aria-label="Add a subject"
+        className="grid size-7 shrink-0 place-items-center rounded-full text-[var(--study-faint)] outline-none transition-colors hover:bg-[var(--study-card)] hover:text-[var(--study-text)]"
+      >
+        <Plus aria-hidden className="size-4" />
+      </button>
     </div>
   )
 }

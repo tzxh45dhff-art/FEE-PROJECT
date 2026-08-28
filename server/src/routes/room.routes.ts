@@ -91,7 +91,7 @@ roomRoutes.get('/:id/study/next', asyncHandler(studyController.nextUp))
 roomRoutes.get('/:id/study/mcq', asyncHandler(studyController.listMcq))
 roomRoutes.post('/:id/study/mcq', asyncHandler(studyController.createMcq))
 roomRoutes.get('/:id/study/mcq/:setId', asyncHandler(studyController.getMcq))
-roomRoutes.post('/:id/study/mcq/:setId/attempts', asyncHandler(studyController.submitMcq))
+roomRoutes.post('/:id/study/mcq/:setId/answers', asyncHandler(studyController.answerMcq))
 roomRoutes.delete('/:id/study/mcq/:setId', asyncHandler(studyController.deleteMcq))
 
 roomRoutes.get('/:id/study/notes', asyncHandler(studyController.listNotes))

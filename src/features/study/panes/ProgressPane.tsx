@@ -87,21 +87,21 @@ export default function ProgressPane({ roomId, subject }: PaneProps) {
               <ul className="space-y-2">
                 {progress.quiz.weakest.map((entry) => (
                   <li key={entry.topic} className="flex items-center gap-3">
-                    <span className="min-w-0 flex-1 truncate text-[0.84rem] text-chalk">
+                    <span className="min-w-0 flex-1 truncate text-[0.84rem] text-[var(--study-text)]">
                       {entry.topic}
                     </span>
-                    <span className="shrink-0 text-[0.76rem] tabular-nums text-dusk">
+                    <span className="shrink-0 text-[0.76rem] tabular-nums text-[var(--study-faint)]">
                       {entry.asked} asked
                     </span>
                     <span className="w-24 shrink-0">
-                      <span className="block h-1 overflow-hidden rounded-full bg-white/[0.08]">
+                      <span className="block h-1 overflow-hidden rounded-full bg-[var(--study-card-strong)]">
                         <span
-                          className="block h-full rounded-full bg-signal"
+                          className="block h-full rounded-full bg-[var(--study-accent)]"
                           style={{ width: `${Math.round(entry.accuracy * 100)}%` }}
                         />
                       </span>
                     </span>
-                    <span className="w-10 shrink-0 text-right text-[0.76rem] tabular-nums text-mist">
+                    <span className="w-10 shrink-0 text-right text-[0.76rem] tabular-nums text-[var(--study-soft)]">
                       {Math.round(entry.accuracy * 100)}%
                     </span>
                   </li>
@@ -120,7 +120,7 @@ export default function ProgressPane({ roomId, subject }: PaneProps) {
                   <span
                     key={`${entry.unit}-${entry.topic}`}
                     title={entry.unit}
-                    className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[0.76rem] text-mist"
+                    className="rounded-full border border-[var(--study-line)] bg-[var(--study-card)] px-3 py-1 text-[0.76rem] text-[var(--study-soft)]"
                   >
                     {entry.topic}
                   </span>
@@ -145,12 +145,12 @@ export default function ProgressPane({ roomId, subject }: PaneProps) {
 
 function Tile({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="rounded-card border border-white/[0.07] bg-white/[0.02] p-3">
-      <p className="text-[0.72rem] text-dusk">{label}</p>
-      <p className="mt-1 font-display text-[1.5rem] font-semibold tabular-nums leading-none text-chalk">
+    <div className="rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-3">
+      <p className="text-[0.72rem] text-[var(--study-faint)]">{label}</p>
+      <p className="mt-1 font-display text-[1.5rem] font-semibold tabular-nums leading-none text-[var(--study-text)]">
         {value}
       </p>
-      <p className="mt-1.5 text-[0.7rem] text-dusk">{hint}</p>
+      <p className="mt-1.5 text-[0.7rem] text-[var(--study-faint)]">{hint}</p>
     </div>
   )
 }
@@ -165,9 +165,9 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-card border border-white/[0.07] bg-white/[0.02] p-4">
-      <p className="text-[0.88rem] text-chalk">{title}</p>
-      <p className="mb-3 mt-0.5 text-[0.72rem] text-dusk">{hint}</p>
+    <div className="rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-4">
+      <p className="text-[0.88rem] text-[var(--study-text)]">{title}</p>
+      <p className="mb-3 mt-0.5 text-[0.72rem] text-[var(--study-faint)]">{hint}</p>
       {children}
     </div>
   )

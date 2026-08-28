@@ -2,12 +2,13 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  BookOpen,
   FileQuestion,
   FolderOpen,
+  Home,
   Loader2,
   MessagesSquare,
   NotebookPen,
+  Settings2,
   Sparkles,
   Terminal,
   Timer,
@@ -16,18 +17,20 @@ import {
   X,
 } from 'lucide-react'
 
-import { CoverAmbience } from '@/features/music/CoverAmbience'
 import * as studyApi from '@/features/study/api'
 import { SubjectBar } from '@/features/study/SubjectBar'
 import { FocusTimer } from '@/features/study/FocusTimer'
+import { StudySettings } from '@/features/study/StudySettings'
 import { TutorContext, type Tutor as TutorHandle, type TutorAsk } from '@/features/study/tutorContext'
+import { useStudyPreferences } from '@/features/study/useStudyPreferences'
 import { useStudySync, useStudyTimer } from '@/features/study/useStudyTimer'
 import { cn } from '@/lib/utils'
 
 /* Each pane is its own chunk. The library pane pulls a PDF-shaped list, the
    notes pane pulls a markdown renderer and a diagram engine, and the coding
-   pane pulls an entire editor — loading all of that to show a countdown would
+   pane pulls an entire editor — loading all of that to show a dashboard would
    make the cheapest thing here the slowest. */
+const HomePane = lazy(() => import('@/features/study/panes/HomePane'))
 const ResourcesPane = lazy(() => import('@/features/study/panes/ResourcesPane'))
 const McqPane = lazy(() => import('@/features/study/panes/McqPane'))
 const NotesPane = lazy(() => import('@/features/study/panes/NotesPane'))
@@ -37,14 +40,22 @@ const Tutor = lazy(() => import('@/features/study/Tutor'))
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
-export type StudyTab = 'timer' | 'resources' | 'mcq' | 'notes' | 'coding' | 'progress'
+export type StudyTab =
+  | 'home'
+  | 'timer'
+  | 'resources'
+  | 'mcq'
+  | 'notes'
+  | 'coding'
+  | 'progress'
 
 const TABS: { id: StudyTab; label: string; icon: typeof Timer }[] = [
-  { id: 'timer', label: 'Focus', icon: Timer },
-  { id: 'resources', label: 'Library', icon: FolderOpen },
+  { id: 'home', label: 'Home', icon: Home },
   { id: 'notes', label: 'Notes', icon: NotebookPen },
   { id: 'mcq', label: 'Questions', icon: FileQuestion },
   { id: 'coding', label: 'Problems', icon: Terminal },
+  { id: 'resources', label: 'Library', icon: FolderOpen },
+  { id: 'timer', label: 'Focus', icon: Timer },
   { id: 'progress', label: 'Progress', icon: TrendingUp },
 ]
 
@@ -59,6 +70,9 @@ const TABS: { id: StudyTab; label: string; icon: typeof Timer }[] = [
  * studying three courses is the normal case, and a shelf that mixes them is
  * worse than useless: the search that grounds every generated question would
  * pull the wrong document and answer confidently from it.
+ *
+ * Unlike every other stage this one carries its own palette rather than the
+ * app's. See `.study-scope` in the stylesheet for why.
  */
 export function StudyStage({
   roomId,
@@ -79,12 +93,19 @@ export function StudyStage({
   unread?: number
   origin?: DOMRect | null
 }) {
-  const [tab, setTab] = useState<StudyTab>('timer')
+  const [tab, setTab] = useState<StudyTab>('home')
   const [subjects, setSubjects] = useState<studyApi.Subject[] | null>(null)
   const [subjectId, setSubjectId] = useState<string | null>(null)
   const [caps, setCaps] = useState<studyApi.Capabilities | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
+  /* A topic handed from the home page to whichever pane it points at, so
+     "this is your weakest topic" is one click from a set about it rather than
+     a name to remember and retype. */
+  const [seed, setSeed] = useState<string | null>(null)
+
+  const { preferences, theme, update } = useStudyPreferences(selfId)
   const timer = useStudyTimer(roomId, true)
 
   const loadSubjects = useCallback(async () => {
@@ -107,7 +128,9 @@ export function StudyStage({
     void studyApi
       .capabilities(roomId)
       .then(setCaps)
-      .catch(() => setCaps({ ai: false, search: false, judge: false, judgeLanguages: [], chatModel: null }))
+      .catch(() =>
+        setCaps({ ai: false, search: false, judge: false, judgeLanguages: [], chatModel: null }),
+      )
   }, [roomId, loadSubjects])
 
   /* Somebody else added a subject; the list is the one thing every pane shares
@@ -121,17 +144,12 @@ export function StudyStage({
     [subjects, subjectId],
   )
 
-  const revealX = origin ? `${Math.round(origin.left + origin.width / 2)}px` : '50%'
-  const revealY = origin ? `${Math.round(origin.top + origin.height / 2)}px` : '50%'
-
-  const paneProps = { roomId, subject, caps, announce, selfId }
+  const [tutorOpen, setTutorOpen] = useState(false)
+  const [handover, setHandover] = useState<TutorAsk | null>(null)
 
   /* The tutor lives up here rather than in any one pane, because the thing it
      is asked about comes from whichever pane happens to be open — a hint about
      a question, then the notes behind it, is one conversation. */
-  const [tutorOpen, setTutorOpen] = useState(false)
-  const [handover, setHandover] = useState<TutorAsk | null>(null)
-
   const tutor = useMemo<TutorHandle>(
     () => ({
       available: Boolean(caps?.ai),
@@ -147,222 +165,231 @@ export function StudyStage({
     [caps?.ai],
   )
 
+  const go = useCallback((next: string, topic?: string) => {
+    setTab(next as StudyTab)
+    setSeed(topic ?? null)
+  }, [])
+
+  const revealX = origin ? `${Math.round(origin.left + origin.width / 2)}px` : '50%'
+  const revealY = origin ? `${Math.round(origin.top + origin.height / 2)}px` : '50%'
+
+  const paneProps = { roomId, subject, caps, announce, selfId, go, seed }
+
   return createPortal(
     <TutorContext.Provider value={tutor}>
-    <motion.div
-      className="fixed left-0 top-0 z-[135] flex flex-col overflow-hidden bg-void transition-[padding] duration-500 ease-glass"
-      style={{
-        width: '100vw',
-        height: '100dvh',
-        paddingRight: `${insetRight}rem`,
-        ['--reveal-x' as string]: revealX,
-        ['--reveal-y' as string]: revealY,
-        animation: 'stage-reveal 0.62s cubic-bezier(0.16, 1, 0.3, 1) both',
-      }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.3, ease: EASE }}
-    >
-      <CoverAmbience palette={null} />
+      <motion.div
+        className="study-scope fixed left-0 top-0 z-[135] flex flex-col overflow-hidden transition-[padding] duration-500 ease-glass"
+        data-study-theme={theme}
+        data-study-accent={preferences.accent}
+        style={{
+          width: '100vw',
+          height: '100dvh',
+          paddingRight: `${insetRight}rem`,
+          fontSize: preferences.roomy ? '1.075rem' : undefined,
+          ['--reveal-x' as string]: revealX,
+          ['--reveal-y' as string]: revealY,
+          animation: 'stage-reveal 0.62s cubic-bezier(0.16, 1, 0.3, 1) both',
+        }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3, ease: EASE }}
+      >
+        <header className="relative z-20 flex shrink-0 items-center justify-between gap-3 border-b border-[var(--study-line)] px-4 py-3">
+          <SubjectBar
+            roomId={roomId}
+            subjects={subjects}
+            activeId={subjectId}
+            onPick={(id) => {
+              setSubjectId(id)
+              setSeed(null)
+            }}
+            onChanged={() => {
+              void loadSubjects()
+              announce('subjects')
+            }}
+          />
 
-      <header className="relative z-10 flex shrink-0 items-center justify-between gap-3 px-5 py-4">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 backdrop-blur-md">
-            <BookOpen aria-hidden className="size-3.5 text-mist" />
-            <span className="truncate text-[0.72rem] text-chalk">
-              {subject ? subject.name : 'Study'}
-            </span>
-          </span>
-
-          {!timer.connected && (
-            <span className="flex items-center gap-2 rounded-full border border-signal/30 bg-signal/10 px-3 py-1.5 text-signal-bright">
-              <WifiOff aria-hidden className="size-3.5" />
-              <span className="text-[0.72rem]">Reconnecting…</span>
-            </span>
-          )}
-
-          {/* Said once, at the top, rather than on every disabled button —
-              and said honestly: the two capabilities are independent, so a
-              server can write questions with no way to search documents, or
-              search documents through a different provider than the one
-              writing them. */}
-          {caps && !caps.ai && (
-            <span className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-dusk sm:flex">
-              <span className="text-[0.72rem]">No AI key on this server — generating is off</span>
-            </span>
-          )}
-          {caps && caps.ai && !caps.search && (
-            <span className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-dusk sm:flex">
-              <span className="text-[0.72rem]">No embedding provider — documents won't be searchable</span>
-            </span>
-          )}
-        </span>
-
-        <span className="flex shrink-0 items-center gap-2">
-          {/* The one control that is always reachable, whichever pane is open —
-              the per-item Explain/Hint/Help buttons are shortcuts into the
-              same panel, not the only way in. */}
-          <button
-            type="button"
-            onClick={() => (tutorOpen ? setTutorOpen(false) : tutor.open())}
-            disabled={!caps?.ai || !subject}
-            aria-label="Tutor"
-            aria-pressed={tutorOpen}
-            title={caps?.ai ? 'Ask about this subject' : 'No AI key on this server'}
-            className={cn(
-              'flex h-11 items-center gap-2 rounded-full border px-3.5 outline-none backdrop-blur-md sm:h-9 transition-colors duration-300 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
-              tutorOpen
-                ? 'border-signal/50 bg-signal/15 text-chalk'
-                : 'border-white/10 bg-white/[0.04] text-chalk hover:bg-white/[0.1]',
+          <span className="flex shrink-0 items-center gap-1.5">
+            {!timer.connected && (
+              <span
+                title="Reconnecting"
+                className="grid size-9 place-items-center rounded-full text-[var(--study-accent)]"
+              >
+                <WifiOff aria-hidden className="size-4" />
+              </span>
             )}
-          >
-            <Sparkles aria-hidden className="size-4" />
-            <span className="hidden text-[0.76rem] sm:inline">Tutor</span>
-          </button>
 
-          {onTogglePanel && (
+            {/* Always reachable, whichever pane is open — the per-item
+                Explain / Hint / Help buttons are shortcuts into this same
+                panel, not the only way in. */}
             <button
               type="button"
-              onClick={onTogglePanel}
-              aria-label="Chat and call"
-              aria-pressed={panelOpen}
+              onClick={() => (tutorOpen ? setTutorOpen(false) : tutor.open())}
+              disabled={!caps?.ai || !subject}
+              aria-label="Tutor"
+              aria-pressed={tutorOpen}
+              title={caps?.ai ? 'Ask about this subject' : 'No AI key on this server'}
               className={cn(
-                'relative flex h-11 items-center gap-2 rounded-full border px-3.5 outline-none backdrop-blur-md sm:h-9 transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
-                panelOpen
-                  ? 'border-signal/50 bg-signal/15 text-chalk'
-                  : 'border-white/10 bg-white/[0.04] text-chalk hover:bg-white/[0.1]',
+                'study-btn',
+                tutorOpen && 'border-transparent bg-[var(--study-accent-soft)] text-[var(--study-accent)]',
               )}
             >
-              <MessagesSquare aria-hidden className="size-4" />
-              {unread > 0 && !panelOpen && (
-                <span className="min-w-4 rounded-full bg-signal px-1 text-[0.62rem] font-semibold leading-4 text-white">
-                  {unread > 9 ? '9+' : unread}
-                </span>
-              )}
+              <Sparkles aria-hidden className="size-4" />
+              <span className="hidden sm:inline">Tutor</span>
             </button>
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Leave study"
-            className="grid size-11 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-chalk outline-none backdrop-blur-md sm:size-9 transition-colors hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-          >
-            <X aria-hidden className="size-4" />
-          </button>
-        </span>
-      </header>
 
-      <SubjectBar
-        roomId={roomId}
-        subjects={subjects}
-        activeId={subjectId}
-        onPick={setSubjectId}
-        onChanged={() => {
-          void loadSubjects()
-          announce('subjects')
-        }}
-      />
-
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col md:flex-row">
-        {/* A rail on a wide screen, a scrolling strip on a narrow one — the
-            same shape the Listen browser uses for its own sections. */}
-        <nav
-          data-lenis-prevent
-          className="flex shrink-0 gap-1 overflow-x-auto px-4 pb-2 pt-1 md:w-48 md:flex-col md:overflow-visible md:px-4 md:pb-6 md:pt-2"
-        >
-          {TABS.map((entry) => {
-            const active = tab === entry.id
-            return (
+            <div className="relative">
               <button
-                key={entry.id}
                 type="button"
-                onClick={() => setTab(entry.id)}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'relative flex shrink-0 items-center gap-2.5 rounded-full px-3.5 py-2 text-left outline-none transition-colors duration-300',
-                  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
-                  active ? 'text-chalk' : 'text-mist hover:text-chalk',
-                )}
+                onClick={() => setSettingsOpen((open) => !open)}
+                aria-label="Appearance"
+                aria-expanded={settingsOpen}
+                className="study-btn size-9 px-0"
               >
-                {active && (
-                  <motion.span
-                    layoutId="study-nav-active"
-                    className="absolute inset-0 -z-10 rounded-full bg-white/[0.08] ring-1 ring-inset ring-white/10"
-                    transition={{ duration: 0.32, ease: EASE }}
+                <Settings2 aria-hidden className="size-4" />
+              </button>
+              <AnimatePresence>
+                {settingsOpen && (
+                  <StudySettings
+                    preferences={preferences}
+                    update={update}
+                    onClose={() => setSettingsOpen(false)}
                   />
                 )}
-                <entry.icon aria-hidden className="size-4 shrink-0" />
-                <span className="whitespace-nowrap text-[0.82rem]">{entry.label}</span>
+              </AnimatePresence>
+            </div>
+
+            {onTogglePanel && (
+              <button
+                type="button"
+                onClick={onTogglePanel}
+                aria-label="Chat and call"
+                aria-pressed={panelOpen}
+                className={cn(
+                  'study-btn relative size-9 px-0',
+                  panelOpen && 'border-transparent bg-[var(--study-accent-soft)] text-[var(--study-accent)]',
+                )}
+              >
+                <MessagesSquare aria-hidden className="size-4" />
+                {unread > 0 && !panelOpen && (
+                  <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-[var(--study-accent)] px-1 text-[0.6rem] font-semibold leading-4 text-[var(--study-on-accent)]">
+                    {unread > 9 ? '9+' : unread}
+                  </span>
+                )}
               </button>
-            )
-          })}
-        </nav>
+            )}
 
-        <div className="min-h-0 flex-1 overflow-hidden px-4 pb-4 md:pl-0 md:pr-6">
-          {error && (
-            <p role="alert" className="px-2 pb-3 text-[0.8rem] text-signal-bright">
-              {error}
-            </p>
-          )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Leave study"
+              className="study-btn size-9 px-0"
+            >
+              <X aria-hidden className="size-4" />
+            </button>
+          </span>
+        </header>
 
-          {/* A subject is the unit everything else hangs off, so the panes are
-              not shown until there is one — an empty Library for a subject
-              that does not exist would just be a dead end. */}
-          {subjects !== null && subjects.length === 0 ? (
-            <Empty />
-          ) : (
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={tab}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.22, ease: EASE }}
-                className="h-full min-h-0"
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col md:flex-row">
+          {/* A rail on a wide screen, a scrolling strip on a narrow one — the
+              same shape the Listen browser uses for its own sections. */}
+          <nav
+            data-lenis-prevent
+            className="flex shrink-0 gap-1 overflow-x-auto px-3 py-2 md:w-44 md:flex-col md:overflow-visible md:border-r md:border-[var(--study-line)] md:px-3 md:py-4"
+          >
+            {TABS.map((entry) => {
+              const active = tab === entry.id
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => go(entry.id)}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'relative flex shrink-0 items-center gap-2.5 rounded-full px-3 py-2 text-left text-[0.82rem] transition-colors duration-200',
+                    active ? 'text-[var(--study-text)]' : 'text-[var(--study-soft)] hover:text-[var(--study-text)]',
+                  )}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="study-nav-active"
+                      className="absolute inset-0 -z-10 rounded-full bg-[var(--study-card-strong)]"
+                      transition={{ duration: 0.3, ease: EASE }}
+                    />
+                  )}
+                  <entry.icon aria-hidden className="size-4 shrink-0" />
+                  <span className="whitespace-nowrap">{entry.label}</span>
+                </button>
+              )
+            })}
+          </nav>
+
+          <div className="min-h-0 flex-1 overflow-hidden px-4 py-4 md:px-6 md:py-6">
+            {error && (
+              <p role="alert" className="pb-3 text-[0.8rem] text-[var(--study-bad)]">
+                {error}
+              </p>
+            )}
+
+            {/* A subject is the unit everything else hangs off, so the panes are
+                not shown until there is one — an empty Library for a subject
+                that does not exist would just be a dead end. */}
+            {subjects !== null && subjects.length === 0 ? (
+              <Empty />
+            ) : (
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={tab}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.2, ease: EASE }}
+                  className="h-full min-h-0"
+                >
+                  <Suspense fallback={<Waiting />}>
+                    {tab === 'home' && <HomePane {...paneProps} />}
+                    {tab === 'timer' && <FocusTimer timer={timer} />}
+                    {tab === 'resources' && <ResourcesPane {...paneProps} />}
+                    {tab === 'mcq' && <McqPane {...paneProps} />}
+                    {tab === 'notes' && <NotesPane {...paneProps} />}
+                    {tab === 'coding' && <CodingPane {...paneProps} />}
+                    {tab === 'progress' && <ProgressPane {...paneProps} />}
+                  </Suspense>
+                </motion.div>
+              </AnimatePresence>
+            )}
+          </div>
+
+          {/* A column on a wide screen, a sheet over the work on a narrow one.
+              Beside rather than over wherever there is room, because every
+              question it answers is about something still on screen. */}
+          <AnimatePresence>
+            {tutorOpen && subject && (
+              <motion.aside
+                key="study-tutor"
+                initial={{ opacity: 0, x: 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 24 }}
+                transition={{ duration: 0.26, ease: EASE }}
+                className={cn(
+                  'absolute inset-0 z-20 bg-[var(--study-bg)]',
+                  'lg:relative lg:inset-auto lg:z-auto lg:w-[23rem] lg:shrink-0 lg:border-l lg:border-[var(--study-line)]',
+                )}
               >
                 <Suspense fallback={<Waiting />}>
-                  {tab === 'timer' && <FocusTimer timer={timer} />}
-                  {tab === 'resources' && <ResourcesPane {...paneProps} />}
-                  {tab === 'mcq' && <McqPane {...paneProps} />}
-                  {tab === 'notes' && <NotesPane {...paneProps} />}
-                  {tab === 'coding' && <CodingPane {...paneProps} />}
-                  {tab === 'progress' && <ProgressPane {...paneProps} />}
+                  <Tutor
+                    roomId={roomId}
+                    subjectId={subject.id}
+                    subjectName={subject.name}
+                    request={handover}
+                    onConsumed={() => setHandover(null)}
+                    onClose={() => setTutorOpen(false)}
+                  />
                 </Suspense>
-              </motion.div>
-            </AnimatePresence>
-          )}
+              </motion.aside>
+            )}
+          </AnimatePresence>
         </div>
-
-        {/* A column on a wide screen, a sheet over the work on a narrow one.
-            Beside rather than over wherever there is room, because every
-            question it answers is about something still on screen. */}
-        <AnimatePresence>
-          {tutorOpen && subject && (
-            <motion.aside
-              key="study-tutor"
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 24 }}
-              transition={{ duration: 0.26, ease: EASE }}
-              className={cn(
-                'absolute inset-0 z-20 border-white/[0.07] bg-void/95 backdrop-blur-xl',
-                'lg:relative lg:inset-auto lg:z-auto lg:w-[23rem] lg:shrink-0 lg:border-l lg:bg-transparent lg:backdrop-blur-none',
-              )}
-            >
-              <Suspense fallback={<Waiting />}>
-                <Tutor
-                  roomId={roomId}
-                  subjectId={subject.id}
-                  subjectName={subject.name}
-                  request={handover}
-                  onConsumed={() => setHandover(null)}
-                  onClose={() => setTutorOpen(false)}
-                />
-              </Suspense>
-            </motion.aside>
-          )}
-        </AnimatePresence>
-      </div>
-    </motion.div>
+      </motion.div>
     </TutorContext.Provider>,
     document.body,
   )
@@ -371,7 +398,7 @@ export function StudyStage({
 function Waiting() {
   return (
     <div className="grid h-full place-items-center">
-      <Loader2 aria-hidden className="size-5 animate-spin text-mist" />
+      <Loader2 aria-hidden className="size-5 animate-spin text-[var(--study-soft)]" />
     </div>
   )
 }
@@ -380,13 +407,11 @@ function Empty() {
   return (
     <div className="grid h-full place-items-center px-6">
       <div className="max-w-sm text-center">
-        <BookOpen aria-hidden className="mx-auto size-7 text-dusk" />
-        <p className="mt-4 font-display text-[1.05rem] font-semibold text-chalk">
-          Add a subject to begin
-        </p>
-        <p className="mt-2 text-[0.85rem] leading-relaxed text-mist">
-          Everything here belongs to one subject — its documents, its questions, its notes. Upload
-          a course handout to one and the rest is written from what that course actually covers.
+        <Home aria-hidden className="mx-auto size-7 text-[var(--study-faint)]" />
+        <p className="mt-4 font-display text-[1.05rem] font-semibold">Add a subject to begin</p>
+        <p className="mt-2 text-[0.85rem] leading-relaxed text-[var(--study-soft)]">
+          Everything here belongs to one subject — its documents, its questions, its notes. Upload a
+          course handout to one and the rest is written from what that course actually covers.
         </p>
       </div>
     </div>

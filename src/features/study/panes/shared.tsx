@@ -10,6 +10,10 @@ export type PaneProps = {
   caps: studyApi.Capabilities | null
   announce: (kind: string, subjectId?: string | null) => void
   selfId: string | undefined
+  /** Jump to another pane — the home dashboard is mostly made of these. */
+  go: (tab: string, topic?: string) => void
+  /** A topic handed over by whatever sent you here, to prefill the box. */
+  seed?: string | null
 }
 
 export function PaneShell({
@@ -19,18 +23,20 @@ export function PaneShell({
   children,
 }: {
   title: string
-  description: string
+  description?: string
   aside?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 pb-4">
+      <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 pb-5">
         <div className="min-w-0">
-          <h2 className="font-display text-[1.15rem] font-semibold tracking-[-0.02em] text-chalk">
-            {title}
-          </h2>
-          <p className="mt-1 max-w-lg text-[0.82rem] leading-relaxed text-mist">{description}</p>
+          <h2 className="font-display text-[1.3rem] font-semibold tracking-[-0.02em]">{title}</h2>
+          {description && (
+            <p className="mt-1 max-w-lg text-[0.82rem] leading-relaxed text-[var(--study-soft)]">
+              {description}
+            </p>
+          )}
         </div>
         {aside}
       </div>
@@ -47,7 +53,7 @@ export function PaneShell({
 export function Spinner({ label }: { label?: string }) {
   return (
     <div className="grid place-items-center py-16">
-      <span className="flex items-center gap-2.5 text-mist">
+      <span className="flex items-center gap-2.5 text-[var(--study-soft)]">
         <Loader2 aria-hidden className="size-4 animate-spin" />
         {label && <span className="text-[0.82rem]">{label}</span>}
       </span>
@@ -55,12 +61,21 @@ export function Spinner({ label }: { label?: string }) {
   )
 }
 
-export function Blank({ title, body }: { title: string; body: string }) {
+export function Blank({
+  title,
+  body,
+  action,
+}: {
+  title: string
+  body: string
+  action?: React.ReactNode
+}) {
   return (
     <div className="grid place-items-center px-6 py-16 text-center">
       <div className="max-w-sm">
-        <p className="font-display text-[0.98rem] font-semibold text-chalk">{title}</p>
-        <p className="mt-2 text-[0.82rem] leading-relaxed text-mist">{body}</p>
+        <p className="font-display text-[1rem] font-semibold">{title}</p>
+        <p className="mt-2 text-[0.82rem] leading-relaxed text-[var(--study-soft)]">{body}</p>
+        {action && <div className="mt-5 flex justify-center">{action}</div>}
       </div>
     </div>
   )
@@ -68,7 +83,10 @@ export function Blank({ title, body }: { title: string; body: string }) {
 
 export function Problem({ message }: { message: string }) {
   return (
-    <p role="alert" className="rounded-card bg-signal/10 px-4 py-3 text-[0.8rem] text-signal-bright">
+    <p
+      role="alert"
+      className="rounded-[0.9rem] bg-[var(--study-bad-soft)] px-4 py-3 text-[0.8rem] text-[var(--study-bad)]"
+    >
       {message}
     </p>
   )
@@ -82,27 +100,23 @@ export function Problem({ message }: { message: string }) {
  * drawn from the room's own documents — and a page that lets those look
  * identical is teaching somebody a syllabus that might not be theirs.
  */
-export function GroundedBadge({
-  grounded,
-  sources,
-}: {
-  grounded: boolean
-  sources: string[]
-}) {
+export function GroundedBadge({ grounded, sources }: { grounded: boolean; sources: string[] }) {
   return (
     <span
       title={grounded ? `From ${sources.join(', ')}` : 'Written from general knowledge'}
       className={cn(
         'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.68rem]',
         grounded
-          ? 'border-white/15 bg-white/[0.06] text-chalk'
-          : 'border-white/10 bg-transparent text-dusk',
+          ? 'border-[var(--study-line)] bg-[var(--study-card)]'
+          : 'border-[var(--study-line)] bg-transparent text-[var(--study-faint)]',
       )}
     >
       {grounded ? (
         <>
-          <span className="size-1.5 rounded-full bg-signal" />
-          {sources.length === 1 ? sources[0] : `${sources.length} documents`}
+          <span className="size-1.5 rounded-full bg-[var(--study-accent)]" />
+          <span className="max-w-[10rem] truncate">
+            {sources.length === 1 ? sources[0] : `${sources.length} documents`}
+          </span>
         </>
       ) : (
         'General knowledge'
@@ -131,7 +145,7 @@ export function GenerateButton({
       onClick={onClick}
       disabled={busy || disabled}
       title={disabled ? reason : undefined}
-      className="flex h-10 shrink-0 items-center gap-2 rounded-full bg-chalk px-4 text-[0.82rem] font-medium text-void outline-none transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+      className="study-btn study-btn-primary h-10 px-4"
     >
       {busy ? (
         <Loader2 aria-hidden className="size-4 animate-spin" />

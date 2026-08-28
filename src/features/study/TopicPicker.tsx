@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 
 import * as studyApi from '@/features/study/api'
 import { GenerateButton } from '@/features/study/panes/shared'
-import { cn } from '@/lib/utils'
 
 /**
  * What to write about, with the syllabus offering answers.
@@ -25,6 +24,7 @@ export function TopicPicker({
   showDifficulty = false,
   showDepth = false,
   label = 'Write questions',
+  seed,
 }: {
   roomId: string
   subjectId: string | null
@@ -36,12 +36,19 @@ export function TopicPicker({
   showDifficulty?: boolean
   showDepth?: boolean
   label?: string
+  /** A topic handed over from the home page, dropped straight into the box. */
+  seed?: string | null
 }) {
-  const [topic, setTopic] = useState('')
+  const [topic, setTopic] = useState(seed ?? '')
   const [count, setCount] = useState(8)
   const [difficulty, setDifficulty] = useState('mixed')
   const [depth, setDepth] = useState('standard')
   const [suggestions, setSuggestions] = useState<studyApi.Suggestion[]>([])
+
+  /* Only when a new one arrives — this must not fight with typing. */
+  useEffect(() => {
+    if (seed) setTopic(seed)
+  }, [seed])
 
   useEffect(() => {
     if (!subjectId) return
@@ -64,7 +71,7 @@ export function TopicPicker({
   }
 
   return (
-    <div className="rounded-card border border-white/[0.07] bg-white/[0.02] p-3">
+    <div className="study-card mb-5 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={topic}
@@ -77,7 +84,7 @@ export function TopicPicker({
           /* Its own line on a phone. Sharing a row with two selects leaves it
              about eight characters wide, which is not a field anybody can
              read what they typed in. */
-          className="h-10 w-full min-w-0 rounded-full border border-white/10 bg-white/[0.04] px-4 text-[0.82rem] text-chalk outline-none placeholder:text-dusk focus-visible:border-signal/50 sm:w-auto sm:flex-1"
+          className="study-field h-10 w-full min-w-0 sm:w-auto sm:flex-1"
         />
 
         {showCount && (
@@ -85,10 +92,10 @@ export function TopicPicker({
             value={String(count)}
             onChange={(value) => setCount(Number(value))}
             options={[
-              ['5', '5'],
-              ['8', '8'],
-              ['12', '12'],
-              ['20', '20'],
+              ['5', '5 questions'],
+              ['8', '8 questions'],
+              ['12', '12 questions'],
+              ['20', '20 questions'],
             ]}
             label="How many"
           />
@@ -131,8 +138,8 @@ export function TopicPicker({
       </div>
 
       {suggestions.length > 0 && (
-        <div className="mt-3 border-t border-white/[0.06] pt-3">
-          <p className="text-[0.72rem] text-dusk">
+        <div className="mt-3 border-t border-[var(--study-line)] pt-3">
+          <p className="text-[0.72rem] text-[var(--study-faint)]">
             From the syllabus, not covered yet — heaviest units first
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -142,7 +149,7 @@ export function TopicPicker({
                 type="button"
                 onClick={() => setTopic(suggestion.topic)}
                 title={suggestion.unit}
-                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[0.74rem] text-mist outline-none transition-colors hover:border-white/20 hover:text-chalk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                className="rounded-full border border-[var(--study-line)] px-3 py-1 text-[0.74rem] text-[var(--study-soft)] outline-none transition-colors hover:border-[var(--study-line-strong)] hover:bg-[var(--study-card)]"
               >
                 {suggestion.topic}
               </button>
@@ -170,13 +177,10 @@ function Select({
       value={value}
       aria-label={label}
       onChange={(event) => onChange(event.target.value)}
-      className={cn(
-        'h-10 shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-3 text-[0.8rem] text-chalk outline-none',
-        'focus-visible:border-signal/50',
-      )}
+      className="study-field h-10 shrink-0 px-3"
     >
       {options.map(([id, text]) => (
-        <option key={id} value={id} className="bg-deep text-chalk">
+        <option key={id} value={id} style={{ background: 'var(--study-bg)', color: 'var(--study-text)' }}>
           {text}
         </option>
       ))}

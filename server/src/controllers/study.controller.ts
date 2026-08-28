@@ -381,12 +381,16 @@ export async function createMcq(req: Request, res: Response) {
 }
 
 /**
- * A set to attempt.
+ * A set to attempt, plus wherever the person had got to in it.
  *
- * The correct answer and the explanation are withheld until the attempt is
- * marked. They are in the same row as the question, so a client that received
- * the row would have the answers sitting in its network tab — filtering here
- * is the only place it can be done.
+ * The correct answer and the explanation are withheld until a question is
+ * actually answered. They live in the same row as the question, so a client
+ * that received the row would have the answers sitting in its network tab —
+ * filtering here is the only place it can be done.
+ *
+ * The attempt comes back with it because a quiz that reveals as it goes has
+ * state worth losing: reload halfway through and without this you would be
+ * looking at four blank options you have already answered.
  */
 export async function getMcq(req: Request, res: Response) {
   const roomId = await gate(req)
@@ -395,6 +399,8 @@ export async function getMcq(req: Request, res: Response) {
     include: { questions: { orderBy: { position: 'asc' } } },
   })
   if (!set) throw HttpError.notFound('That set is not here.')
+
+  const attempt = await latestAttempt(set.id, req.userId!)
 
   res.json({
     set: {
@@ -410,24 +416,87 @@ export async function getMcq(req: Request, res: Response) {
         options: JSON.parse(question.options) as string[],
       })),
     },
+    attempt: attempt ? shapeAttempt(attempt, set.questions.length) : null,
   })
 }
 
-const attemptInput = z.object({
-  answers: z.array(z.object({ questionId: z.string(), chosenIndex: z.number().int().min(0).max(3) })),
+type AttemptRow = {
+  id: string
+  completedAt: Date | null
+  answers: {
+    chosenIndex: number
+    correct: boolean
+    questionId: string
+    question: { correctIndex: number; explanation: string }
+  }[]
+}
+
+function latestAttempt(setId: string, userId: string) {
+  return prisma.mcqAttempt.findFirst({
+    where: { setId, userId },
+    orderBy: { startedAt: 'desc' },
+    select: {
+      id: true,
+      completedAt: true,
+      answers: {
+        select: {
+          chosenIndex: true,
+          correct: true,
+          questionId: true,
+          question: { select: { correctIndex: true, explanation: true } },
+        },
+      },
+    },
+  })
+}
+
+/* Answered questions carry their answer and explanation, because answering is
+   what reveals them. Unanswered ones are simply absent. */
+function shapeAttempt(attempt: AttemptRow, total: number) {
+  const revealed = attempt.answers.map((answer) => ({
+    questionId: answer.questionId,
+    chosenIndex: answer.chosenIndex,
+    correctIndex: answer.question.correctIndex,
+    explanation: answer.question.explanation,
+    correct: answer.correct,
+  }))
+
+  return {
+    id: attempt.id,
+    revealed,
+    score: revealed.filter((entry) => entry.correct).length,
+    answered: revealed.length,
+    total,
+    completed: attempt.completedAt !== null,
+  }
+}
+
+const answerInput = z.object({
+  /* Absent starts a new attempt. That is also how a retake works — there is
+     no separate endpoint for beginning again, because beginning again is just
+     the first answer of the next attempt. */
+  attemptId: z.string().nullable().default(null),
+  questionId: z.string(),
+  chosenIndex: z.number().int().min(0).max(9),
 })
 
 /**
- * Mark an attempt.
+ * Answer one question, and get back what it was.
  *
  * Marked here rather than in the browser, and not because anybody would cheat
  * on their own revision — because the score is what the progress page counts,
  * and a number the client computed and posted is a number the client can be
  * wrong about.
+ *
+ * Answering is deliberately once-only per question: the reply contains the
+ * correct index, so accepting a second answer would let a wrong one be walked
+ * back into a right one after the fact. A repeat returns the original answer
+ * unchanged rather than an error, so a double-tap or a retried request is
+ * harmless.
  */
-export async function submitMcq(req: Request, res: Response) {
+export async function answerMcq(req: Request, res: Response) {
   const roomId = await gate(req)
-  const input = attemptInput.parse(req.body)
+  const input = answerInput.parse(req.body)
 
   const set = await prisma.mcqSet.findFirst({
     where: { id: req.params.setId!, roomId },
@@ -435,45 +504,55 @@ export async function submitMcq(req: Request, res: Response) {
   })
   if (!set) throw HttpError.notFound('That set is not here.')
 
-  const byId = new Map(set.questions.map((question) => [question.id, question]))
-  const marked = input.answers
-    .map((answer) => {
-      const question = byId.get(answer.questionId)
-      if (!question) return null
-      return {
-        questionId: question.id,
-        chosenIndex: answer.chosenIndex,
-        correct: answer.chosenIndex === question.correctIndex,
-      }
+  const question = set.questions.find((entry) => entry.id === input.questionId)
+  if (!question) throw HttpError.notFound('That question is not in this set.')
+
+  let attemptId = input.attemptId
+  if (attemptId) {
+    const owned = await prisma.mcqAttempt.findFirst({
+      where: { id: attemptId, setId: set.id, userId: req.userId! },
+      select: { id: true },
     })
-    .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+    if (!owned) throw HttpError.notFound('That attempt is not here.')
+  } else {
+    const started = await prisma.mcqAttempt.create({
+      data: { setId: set.id, userId: req.userId!, total: set.questions.length },
+      select: { id: true },
+    })
+    attemptId = started.id
+  }
 
-  const score = marked.filter((entry) => entry.correct).length
-
-  const attempt = await prisma.mcqAttempt.create({
-    data: {
-      setId: set.id,
-      userId: req.userId!,
-      completedAt: new Date(),
-      score,
-      total: set.questions.length,
-      answers: { create: marked },
-    },
+  const existing = await prisma.mcqAnswer.findUnique({
+    where: { attemptId_questionId: { attemptId, questionId: question.id } },
+    select: { id: true },
   })
 
-  res.json({
-    attempt: { id: attempt.id, score, total: set.questions.length },
-    /* Returned only now — this is the review screen, and until an attempt is
-       submitted there is nothing to review. */
-    review: set.questions.map((question) => ({
-      id: question.id,
-      prompt: question.prompt,
-      options: JSON.parse(question.options) as string[],
-      correctIndex: question.correctIndex,
-      explanation: question.explanation,
-      chosenIndex: marked.find((entry) => entry.questionId === question.id)?.chosenIndex ?? null,
-    })),
-  })
+  if (!existing) {
+    await prisma.mcqAnswer.create({
+      data: {
+        attemptId,
+        questionId: question.id,
+        chosenIndex: input.chosenIndex,
+        correct: input.chosenIndex === question.correctIndex,
+      },
+    })
+  }
+
+  const attempt = await latestAttempt(set.id, req.userId!)
+  const shaped = shapeAttempt(attempt!, set.questions.length)
+
+  /* The last answer closes the attempt. The score is written onto the row
+     here rather than counted from the answers every time the progress page
+     loads — the answers are still the record, this is the summary of them. */
+  if (shaped.answered >= set.questions.length && !shaped.completed) {
+    await prisma.mcqAttempt.update({
+      where: { id: attemptId },
+      data: { completedAt: new Date(), score: shaped.score, total: set.questions.length },
+    })
+    shaped.completed = true
+  }
+
+  res.json({ attempt: shaped })
 }
 
 export async function deleteMcq(req: Request, res: Response) {
@@ -742,10 +821,18 @@ export async function progress(req: Request, res: Response) {
   const userId = req.userId!
 
   const [attempts, notes, problems, submissions, resourceRows] = await Promise.all([
+    /* Every attempt that got at least one answer into it, counted from the
+       answers rather than the summary on the row — an abandoned half of a
+       quiz is still ten questions somebody answered, and dropping it would
+       make the accuracy here disagree with what they remember doing. */
     prisma.mcqAttempt.findMany({
-      where: { userId, completedAt: { not: null }, set: { subjectId: subject.id } },
-      select: { score: true, total: true, completedAt: true, set: { select: { topic: true } } },
-      orderBy: { completedAt: 'desc' },
+      where: { userId, set: { subjectId: subject.id }, answers: { some: {} } },
+      select: {
+        completedAt: true,
+        set: { select: { topic: true } },
+        answers: { select: { correct: true } },
+      },
+      orderBy: { startedAt: 'desc' },
       take: 50,
     }),
     prisma.note.count({ where: { subjectId: subject.id } }),
@@ -761,8 +848,11 @@ export async function progress(req: Request, res: Response) {
     }),
   ])
 
-  const answered = attempts.reduce((sum, attempt) => sum + (attempt.total ?? 0), 0)
-  const correct = attempts.reduce((sum, attempt) => sum + (attempt.score ?? 0), 0)
+  const answered = attempts.reduce((sum, attempt) => sum + attempt.answers.length, 0)
+  const correct = attempts.reduce(
+    (sum, attempt) => sum + attempt.answers.filter((answer) => answer.correct).length,
+    0,
+  )
 
   /* Weakest topics by accuracy, not by count — three wrong out of four is a
      worse signal than ten wrong out of forty, and a list ordered by volume
@@ -771,8 +861,8 @@ export async function progress(req: Request, res: Response) {
   for (const attempt of attempts) {
     const topic = attempt.set.topic
     const entry = byTopic.get(topic) ?? { correct: 0, total: 0 }
-    entry.correct += attempt.score ?? 0
-    entry.total += attempt.total ?? 0
+    entry.correct += attempt.answers.filter((answer) => answer.correct).length
+    entry.total += attempt.answers.length
     byTopic.set(topic, entry)
   }
 
