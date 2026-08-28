@@ -123,7 +123,11 @@ export default function ResourcesPane({ roomId, subject, caps, announce }: PaneP
       <input
         ref={picker}
         type="file"
-        accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"
+        /* Extensions, not just media types. A .docx is announced as the OOXML
+           type by one browser, as application/zip by another and as
+           octet-stream by a few file managers, and a picker that lists only
+           types greys out coursework depending on which machine it is on. */
+        accept=".pdf,.docx,.pptx,.xlsx,.odt,.odp,.ods,.epub,.rtf,.html,.htm,.txt,.md,.markdown,.csv,.tsv"
         multiple
         hidden
         onChange={(event) => {
@@ -161,10 +165,10 @@ export default function ResourcesPane({ roomId, subject, caps, announce }: PaneP
         ) : rows.length === 0 ? (
           <Blank
             title="Nothing here yet"
-            body="Drop a PDF in, or use the button above. A course handout first — everything else is written from what it says the course covers."
+            body="Drop a file in, or use the button above. PDFs, Word, PowerPoint, slides, spreadsheets, EPUB and plain text all get read. A course handout first — everything else is written from what it says the course covers."
           />
         ) : (
-          <ul className="divide-y divide-white/[0.06]">
+          <ul className="divide-y divide-[var(--study-line)]">
             {rows.map((row) => (
               <Row
                 key={row.id}

@@ -60,17 +60,68 @@ const PLAYABLE_AUDIO = new Set([
 /**
  * What the study shelf will take.
  *
- * Narrow on purpose. Everything here is something the extractor can get text
- * out of, because a document that cannot be read is a document the whole
- * feature can do nothing with — it would upload, sit there, and quietly fail
- * to answer any question asked of it.
+ * Everything here is something the extractor can get words out of, because a
+ * document that cannot be read is a document the whole feature can do nothing
+ * with — it would upload, sit there, and quietly fail to answer any question
+ * asked of it. `extract.service.ts` is the other half of this list, and the
+ * two have to agree.
+ *
+ * The extension is the authority, not the declared type. The same .docx
+ * arrives as the OOXML type from one browser, as application/zip from
+ * another, and as application/octet-stream from a few file managers — a gate
+ * built on the type alone rejects perfectly good coursework depending on
+ * which machine it was dragged from. The type is still checked, as a second
+ * way in for a file whose name lost its suffix.
  */
-const STUDY_DOCS = new Set([
+const STUDY_DOC_EXTENSIONS =
+  /^\.(pdf|docx|pptx|xlsx|odt|odp|ods|epub|rtf|html?|xhtml|txt|text|md|markdown|csv|tsv|log|json)$/
+
+const STUDY_DOC_TYPES = new Set([
   'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.presentation',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'application/epub+zip',
+  'application/rtf',
+  'text/rtf',
+  'text/html',
+  'application/xhtml+xml',
   'text/plain',
   'text/markdown',
   'text/x-markdown',
+  'text/csv',
+  'text/tab-separated-values',
+  'application/json',
 ])
+
+/**
+ * The formats people most often try that this genuinely cannot read.
+ *
+ * Named individually because "unsupported" sends somebody away to guess,
+ * where "save it as .docx" is a thing they can go and do in thirty seconds.
+ * These are OLE compound binaries with no honest pure-JS parser, and
+ * half-reading one produces a document full of field codes that embeds as
+ * nonsense and retrieves as nonsense.
+ */
+const LEGACY_OFFICE: Record<string, string> = {
+  '.doc': 'Word',
+  '.ppt': 'PowerPoint',
+  '.xls': 'Excel',
+}
+
+function docExtension(originalName: string) {
+  return path.extname(originalName).toLowerCase()
+}
+
+function isStudyDoc(file: Express.Multer.File) {
+  return (
+    STUDY_DOC_EXTENSIONS.test(docExtension(file.originalname)) ||
+    STUDY_DOC_TYPES.has(file.mimetype.toLowerCase())
+  )
+}
 
 const MAX_BYTES = 2 * 1024 * 1024 * 1024
 
@@ -90,39 +141,78 @@ const finalName = (part: string) => part.replace(/^\./, '').replace(/\.part$/, '
 /** Absolute path each request is currently writing to, for cleanup on abort. */
 const partials = new WeakMap<Request, string>()
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, done) => done(null, UPLOAD_DIR),
-  filename: (req, file, done) => {
-    /*
-     * Never trust the supplied name for the path. A crafted `originalname`
-     * containing `../` would otherwise write wherever it liked; the extension
-     * is the only part worth keeping, and it is whitelisted.
-     */
-    const ext = path.extname(file.originalname).toLowerCase()
-    const audio = file.mimetype.startsWith('audio/')
-    const doc = STUDY_DOCS.has(file.mimetype)
-    const allowed = doc
-      ? /^\.(pdf|txt|md|markdown)$/
-      : audio
-        ? /^\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|weba)$/
-        : /^\.(mp4|webm|ogv|ogg|mov|m4v)$/
-    /* Falling back to the family's most universal container rather than
-       refusing: the mimetype has already been checked by `fileFilter`, so an
-       odd extension is a naming quirk, not a rejection. */
-    const safeExt = allowed.test(ext) ? ext : doc ? '.pdf' : audio ? '.mp3' : '.mp4'
-    const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+const EXTENSIONS = {
+  video: /^\.(mp4|webm|ogv|ogg|mov|m4v)$/,
+  audio: /^\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|weba)$/,
+  doc: STUDY_DOC_EXTENSIONS,
+}
 
-    const name = inProgressName(`${unique}${safeExt}`)
-    /* Recorded here because multer only hands back `req.file` on success, and
-       the failure this protects against is precisely the one where it never
-       does. */
-    partials.set(req, path.join(UPLOAD_DIR, name))
-    done(null, name)
-  },
-})
+/* Where an odd extension lands. Falling back to the family's most universal
+   container rather than refusing: the file has already been through
+   `fileFilter`, so a missing suffix is a naming quirk, not a rejection. */
+const FALLBACK = { video: '.mp4', audio: '.mp3', doc: '.txt' } as const
+
+/*
+ * For documents the fallback consults the declared type first.
+ *
+ * The extension is not decoration here — it is what the extractor dispatches
+ * on. A PDF dragged in without one would otherwise be stored as `.txt` and
+ * then read as text, which produces a page of binary and a resource that
+ * fails for a reason no one could guess from the file.
+ */
+const DOC_FALLBACK: Record<string, string> = {
+  'application/pdf': '.pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'application/vnd.oasis.opendocument.text': '.odt',
+  'application/vnd.oasis.opendocument.presentation': '.odp',
+  'application/vnd.oasis.opendocument.spreadsheet': '.ods',
+  'application/epub+zip': '.epub',
+  'application/rtf': '.rtf',
+  'text/rtf': '.rtf',
+  'text/html': '.html',
+  'application/xhtml+xml': '.html',
+}
+
+/**
+ * Storage for one kind of upload.
+ *
+ * Per kind rather than one shared store, because the stored name has to carry
+ * the right extension and the only honest way to know which family a file
+ * belongs to is which endpoint it arrived at. Inferring it from the mimetype
+ * instead is how a .docx that a file manager labelled
+ * application/octet-stream ends up saved as somebody's .mp4.
+ */
+function storageFor(kind: 'video' | 'audio' | 'doc') {
+  return multer.diskStorage({
+    destination: (_req, _file, done) => done(null, UPLOAD_DIR),
+    filename: (req, file, done) => {
+      /*
+       * Never trust the supplied name for the path. A crafted `originalname`
+       * containing `../` would otherwise write wherever it liked; the
+       * extension is the only part worth keeping, and it is whitelisted.
+       */
+      const ext = path.extname(file.originalname).toLowerCase()
+      const safeExt = EXTENSIONS[kind].test(ext)
+        ? ext
+        : kind === 'doc'
+          ? (DOC_FALLBACK[file.mimetype.toLowerCase()] ?? FALLBACK.doc)
+          : FALLBACK[kind]
+      const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+
+      const name = inProgressName(`${unique}${safeExt}`)
+      /* Recorded here because multer only hands back `req.file` on success,
+         and the failure this protects against is precisely the one where it
+         never does. */
+      partials.set(req, path.join(UPLOAD_DIR, name))
+      done(null, name)
+    },
+  })
+}
 
 const videoUpload = multer({
-  storage,
+  storage: storageFor('video'),
   limits: { fileSize: MAX_BYTES, files: 1 },
   fileFilter: (_req, file, done) => {
     if (PLAYABLE.has(file.mimetype)) return done(null, true)
@@ -139,7 +229,7 @@ const videoUpload = multer({
 const MAX_AUDIO_BYTES = 200 * 1024 * 1024
 
 const audioUpload = multer({
-  storage,
+  storage: storageFor('audio'),
   limits: { fileSize: MAX_AUDIO_BYTES, files: 1 },
   fileFilter: (_req, file, done) => {
     if (PLAYABLE_AUDIO.has(file.mimetype)) return done(null, true)
@@ -185,13 +275,17 @@ export function receiveAudio(req: Request, res: Response, next: NextFunction) {
 const MAX_DOC_BYTES = 40 * 1024 * 1024
 
 const docUpload = multer({
-  storage,
+  storage: storageFor('doc'),
   limits: { fileSize: MAX_DOC_BYTES, files: 1 },
   fileFilter: (_req, file, done) => {
-    if (STUDY_DOCS.has(file.mimetype)) return done(null, true)
+    if (isStudyDoc(file)) return done(null, true)
+
+    const legacy = LEGACY_OFFICE[docExtension(file.originalname)]
     done(
       HttpError.badRequest(
-        "That file can't be read for studying. Use a PDF, a text file, or Markdown.",
+        legacy
+          ? `Old ${legacy} files can't be read. Open it and save as .${legacy === 'Word' ? 'docx' : legacy === 'PowerPoint' ? 'pptx' : 'xlsx'}, then upload that.`
+          : "That file can't be read for studying. PDF, Word, PowerPoint, Excel, OpenDocument, EPUB, HTML, RTF, Markdown and plain text all work.",
       ),
     )
   },

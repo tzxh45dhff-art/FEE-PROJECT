@@ -18,11 +18,42 @@ import type { EmbeddingProvider } from './embeddings.service.js'
  * appearance of being grounded.
  */
 
+/**
+ * What a document's divisions are called.
+ *
+ * A slide cited as "p.3" is a small lie, and the model repeats it in every
+ * note and explanation it writes from that passage. Derived from the file
+ * rather than stored, because it is a property of the format and the format
+ * is already recorded.
+ */
+type Unit = 'p.' | 'slide' | 'sheet' | 'chapter' | 'section'
+
+const UNITS: Record<string, Unit> = {
+  '.pdf': 'p.',
+  '.pptx': 'slide',
+  '.odp': 'slide',
+  '.xlsx': 'sheet',
+  '.ods': 'sheet',
+  '.epub': 'chapter',
+}
+
+function unitFor(file: string, mimeType: string) {
+  const dot = file.lastIndexOf('.')
+  const byExtension = dot === -1 ? undefined : UNITS[file.slice(dot).toLowerCase()]
+  if (byExtension) return byExtension
+  if (mimeType.includes('presentation')) return 'slide'
+  if (mimeType.includes('spreadsheet')) return 'sheet'
+  if (mimeType.includes('epub')) return 'chapter'
+  return 'section'
+}
+
 export type Hit = {
   chunkId: string
   resourceId: string
   title: string
   page: number | null
+  /** What `page` counts in this document — a deck has slides, not pages. */
+  unit: Unit
   text: string
   score: number
 }
@@ -109,7 +140,7 @@ export async function search(
       page: true,
       embedding: true,
       resourceId: true,
-      resource: { select: { title: true } },
+      resource: { select: { title: true, file: true, mimeType: true } },
     },
   })
   if (rows.length === 0) return []
@@ -136,6 +167,7 @@ export async function search(
       resourceId: row.resourceId,
       title: row.resource.title,
       page: row.page,
+      unit: unitFor(row.resource.file, row.resource.mimeType),
       text: row.text,
       score,
     })
@@ -156,7 +188,7 @@ export async function search(
 export function asContext(hits: Hit[]) {
   return hits
     .map((hit, index) => {
-      const where = hit.page ? `${hit.title}, p.${hit.page}` : hit.title
+      const where = hit.page ? `${hit.title}, ${hit.unit} ${hit.page}` : hit.title
       return `[${index + 1}] (${where})\n${hit.text}`
     })
     .join('\n\n')

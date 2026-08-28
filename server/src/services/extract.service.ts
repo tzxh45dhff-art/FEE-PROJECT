@@ -1,4 +1,6 @@
 import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+import { unzipSync } from 'fflate'
 import { PDFParse } from 'pdf-parse'
 
 /**
@@ -147,18 +149,387 @@ async function extractPdf(buffer: Buffer): Promise<Extracted> {
   return { text: cleaned.join('\n\n'), pages: total, pageOffsets }
 }
 
+
+/* ── Everything that is not a PDF ─────────────────────────────────────────
+ *
+ * Word, PowerPoint and the OpenDocument pair are all a ZIP of XML, so one
+ * reader and one tag-stripper cover the lot; EPUB is the same trick again
+ * with a reading order to respect. What differs per format is only which
+ * entries hold the words and which tags mean "new paragraph", so that is all
+ * each extractor below actually says.
+ *
+ * The legacy binaries — .doc, .ppt, .xls — are deliberately not here. They
+ * are OLE compound files with no honest pure-JS parser, and half-reading one
+ * would produce a document full of field codes that embeds as nonsense and
+ * retrieves as nonsense. Rejecting them with "save it as .docx" is the
+ * better answer.
+ */
+
+/**
+ * Total uncompressed bytes any one archive may expand to.
+ *
+ * A 40 MB upload cap says nothing about what is inside it — a zip of a
+ * repeated byte expands by three orders of magnitude, and inflating that
+ * takes the server down with it. Checked against the sizes in the archive's
+ * own directory, before anything is decompressed.
+ */
+const MAX_UNZIPPED_BYTES = 300 * 1024 * 1024
+
+/** Read the named entries out of a ZIP, as UTF-8 text. */
+function openZip(buffer: Buffer, wanted: (name: string) => boolean): Map<string, string> {
+  let budget = MAX_UNZIPPED_BYTES
+
+  const files = unzipSync(new Uint8Array(buffer), {
+    filter: (entry) => {
+      if (!wanted(entry.name)) return false
+      budget -= entry.originalSize
+      if (budget < 0) throw new Error('This archive expands to far more than it should.')
+      return true
+    },
+  })
+
+  const out = new Map<string, string>()
+  const decoder = new TextDecoder('utf-8')
+  for (const [name, bytes] of Object.entries(files)) out.set(name, decoder.decode(bytes))
+  return out
+}
+
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  ndash: '–',
+  mdash: '—',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
+  hellip: '…',
+  bull: '•',
+  deg: '°',
+  times: '×',
+  middot: '·',
+}
+
+function entities(text: string) {
+  return text.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (whole, body: string) => {
+    if (body.startsWith('#')) {
+      const code = body[1] === 'x' || body[1] === 'X' ? parseInt(body.slice(2), 16) : Number(body.slice(1))
+      return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : ''
+    }
+    return NAMED_ENTITIES[body.toLowerCase()] ?? whole
+  })
+}
+
+/**
+ * XML or HTML to plain text.
+ *
+ * `breaks` names the tags that end a line of thought — everything else is
+ * markup around words and is simply removed. Done with patterns rather than a
+ * parser because the input is machine-written XML from a small set of
+ * producers, and the only question being asked of it is where the paragraphs
+ * are.
+ */
+function untag(markup: string, breaks: RegExp, hard?: RegExp) {
+  let text = markup
+  if (hard) text = text.replace(hard, '\n')
+  return entities(
+    text
+      .replace(breaks, '\n\n')
+      .replace(/<[^>]*>/g, '')
+      /* A run split across formatting spans must not weld into one word. */
+      .replace(/ /g, ' '),
+  )
+}
+
+/** Entry names like `slide10.xml` must sort after `slide2.xml`, not before. */
+function byNumber(a: string, b: string) {
+  const digits = (name: string) => Number(name.match(/(\d+)\D*$/)?.[1] ?? 0)
+  return digits(a) - digits(b) || a.localeCompare(b)
+}
+
+/**
+ * Assemble sections into one document.
+ *
+ * Sections are what the format itself divides on — slides, chapters, sheets —
+ * and they become the "pages" a retrieved passage is cited by, which is why
+ * they are kept rather than concatenated blindly.
+ */
+function fromSections(sections: string[]): Extracted {
+  const kept: string[] = []
+  const pageOffsets: number[] = []
+  let offset = 0
+
+  for (const section of sections) {
+    const body = collapse(dehyphenate(section))
+    pageOffsets.push(offset)
+    if (body) {
+      kept.push(body)
+      offset += body.length + 2
+    }
+  }
+
+  return { text: kept.join('\n\n'), pages: sections.length || 1, pageOffsets }
+}
+
+function extractDocx(buffer: Buffer): Extracted {
+  const parts = openZip(buffer, (name) =>
+    /^word\/(document|footnotes|endnotes)\d*\.xml$/.test(name),
+  )
+
+  /* Body first, then the notes — a footnote read in the middle of the
+     sentence that referenced it is worse than one read at the end. */
+  const order = [...parts.keys()].sort((a, b) =>
+    Number(b.includes('document')) - Number(a.includes('document')) || a.localeCompare(b),
+  )
+
+  const text = order
+    .map((name) =>
+      untag(parts.get(name)!, /<\/w:(p|tbl)>/g, /<w:(br|cr|tab)\b[^>]*\/?>/g),
+    )
+    .join('\n\n')
+
+  return fromSections([text])
+}
+
+function extractPptx(buffer: Buffer): Extracted {
+  const parts = openZip(buffer, (name) =>
+    /^ppt\/(slides\/slide|notesSlides\/notesSlide)\d+\.xml$/.test(name),
+  )
+
+  const slides = [...parts.keys()].filter((name) => name.includes('/slides/')).sort(byNumber)
+
+  return fromSections(
+    slides.map((name) => {
+      const number = name.match(/(\d+)\.xml$/)?.[1]
+      const notes = parts.get(`ppt/notesSlides/notesSlide${number}.xml`)
+
+      const body = untag(parts.get(name)!, /<\/a:p>/g, /<a:br\b[^>]*\/?>/g)
+      /* Speaker notes are usually the sentence the slide's three words were an
+         abbreviation of, so they are worth more to a search than the slide. */
+      const spoken = notes ? untag(notes, /<\/a:p>/g) : ''
+
+      return spoken.trim() ? `${body}\n\n${spoken}` : body
+    }),
+  )
+}
+
+/** OpenDocument text and presentations — LibreOffice, Google Docs exports. */
+function extractOpenDocument(buffer: Buffer): Extracted {
+  const parts = openZip(buffer, (name) => name === 'content.xml')
+  const content = parts.get('content.xml')
+  if (!content) return { text: '', pages: 1, pageOffsets: [0] }
+
+  const breaks = /<\/text:(p|h)>/g
+  const hard = /<text:(line-break|tab)\b[^>]*\/?>/g
+
+  /* A presentation divides into slides the same way a deck does; a document
+     has no page structure in the XML at all and stays one section. */
+  const slides = content.match(/<draw:page\b[\s\S]*?<\/draw:page>/g)
+  if (slides?.length) return fromSections(slides.map((slide) => untag(slide, breaks, hard)))
+
+  return fromSections([untag(content, breaks, hard)])
+}
+
+function extractEpub(buffer: Buffer): Extracted {
+  const parts = openZip(buffer, (name) => /\.(opf|x?html?|xml)$/i.test(name))
+
+  /*
+   * Spine order, not filename order.
+   *
+   * A book's chapters are named by the tool that built it, and those names
+   * sort into an order that has nothing to do with reading it. The OPF is
+   * where the actual sequence is written down.
+   */
+  const opfName = [...parts.keys()].find((name) => name.endsWith('.opf'))
+  const opf = opfName ? parts.get(opfName)! : ''
+  const root = opfName?.includes('/') ? opfName.slice(0, opfName.lastIndexOf('/') + 1) : ''
+
+  const manifest = new Map<string, string>()
+  for (const item of opf.match(/<item\b[^>]*>/g) ?? []) {
+    const id = item.match(/\bid="([^"]+)"/)?.[1]
+    const href = item.match(/\bhref="([^"]+)"/)?.[1]
+    if (id && href) manifest.set(id, decodeURIComponent(root + href))
+  }
+
+  const spine = (opf.match(/<itemref\b[^>]*>/g) ?? [])
+    .map((ref) => ref.match(/\bidref="([^"]+)"/)?.[1])
+    .map((id) => (id ? manifest.get(id) : undefined))
+    .filter((name): name is string => Boolean(name && parts.has(name)))
+
+  /* No usable spine — a malformed book, or one whose OPF this did not find.
+     Reading it in name order is worse than not reading it at all only if the
+     order mattered more than the words, and it does not. */
+  const chapters = spine.length
+    ? spine
+    : [...parts.keys()].filter((name) => /\.x?html?$/i.test(name)).sort(byNumber)
+
+  return fromSections(chapters.map((name) => htmlToText(parts.get(name) ?? '')))
+}
+
+function extractXlsx(buffer: Buffer): Extracted {
+  const parts = openZip(buffer, (name) =>
+    /^xl\/(sharedStrings\.xml|workbook\.xml|worksheets\/sheet\d+\.xml)$/.test(name),
+  )
+
+  /* Cell values are indices into one shared string table — the same word
+     written in a thousand cells is stored once. Without this a spreadsheet
+     extracts as a grid of integers. */
+  const shared = [...(parts.get('xl/sharedStrings.xml')?.matchAll(/<si>([\s\S]*?)<\/si>/g) ?? [])].map(
+    (match) => untag(match[1]!, /$^/g).replace(/\s+/g, ' ').trim(),
+  )
+
+  const names = [...(parts.get('xl/workbook.xml')?.matchAll(/<sheet\b[^>]*\bname="([^"]*)"/g) ?? [])].map(
+    (match) => entities(match[1]!),
+  )
+
+  const sheets = [...parts.keys()].filter((name) => name.includes('/worksheets/')).sort(byNumber)
+
+  return fromSections(
+    sheets.map((name, at) => {
+      const rows = [...(parts.get(name)!.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g) ?? [])].map((row) =>
+        [...row[1]!.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)]
+          .map(([, attrs, body]) => {
+            const value = body!.match(/<v>([\s\S]*?)<\/v>/)?.[1]
+            /* t="s" means the value is a shared-string index; t="inlineStr"
+               keeps its text in the cell. Anything else is a literal. */
+            if (/\bt="s"/.test(attrs!)) return shared[Number(value)] ?? ''
+            if (/\bt="inlineStr"/.test(attrs!)) return untag(body!, /$^/g).trim()
+            return value ? entities(value) : ''
+          })
+          .filter(Boolean)
+          .join(' · '),
+      )
+
+      const heading = names[at] ? `${names[at]}\n\n` : ''
+      return heading + rows.filter(Boolean).join('\n')
+    }),
+  )
+}
+
+function htmlToText(markup: string) {
+  return untag(
+    markup
+      /* Dropped whole, contents and all — a stylesheet embedded in the page
+         is thousands of words of selectors that would swamp the prose. */
+      .replace(/<(script|style|head|nav|footer)\b[\s\S]*?<\/\1>/gi, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' '),
+    /<\/(p|div|li|h[1-6]|tr|section|article|blockquote|pre)>/gi,
+    /<(br|hr)\b[^>]*\/?>/gi,
+  )
+}
+
+/**
+ * Rich text, reduced to the text.
+ *
+ * RTF is a stream of control words around the words themselves. This drops
+ * the ones that carry no text at all — font tables, colour tables, embedded
+ * pictures — then removes the rest, which is enough for a document somebody
+ * wrote in a word processor and saved in the wrong format.
+ */
+function rtfToText(raw: string) {
+  return raw
+    /* A destination group is `{\fonttbl…}` or `{\*\fonttbl…}` — the optional
+       `\*` is what marks a group a reader may skip, and requiring it leaves
+       the font table's own names sitting in the middle of the prose. */
+    .replace(/\{\\(?:\*\\)?(?:fonttbl|colortbl|stylesheet|listtable|info|pict|object|themedata)[\s\S]*?\}\s*\}?/g, ' ')
+    .replace(/\\'([0-9a-fA-F]{2})/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\u(-?\d+)\s?\??/g, (_, code: string) => String.fromCodePoint(Number(code) & 0xffff))
+    .replace(/\\(par|line|page)\b/g, '\n')
+    .replace(/\\(tab)\b/g, '\t')
+    .replace(/\\[a-zA-Z]+-?\d*\s?/g, '')
+    .replace(/[{}]/g, '')
+}
+
+/**
+ * Which family a file belongs to.
+ *
+ * Decided on the extension first and the declared type second, because the
+ * type a browser attaches is not reliable: the same .docx arrives as the
+ * OOXML type from Chrome on one machine, as application/zip on another, and
+ * as application/octet-stream from a few file managers. The extension is what
+ * the person actually named the thing.
+ */
+type Family = 'pdf' | 'docx' | 'pptx' | 'xlsx' | 'opendocument' | 'epub' | 'html' | 'rtf' | 'plain'
+
+const BY_EXTENSION: Record<string, Family> = {
+  '.pdf': 'pdf',
+  '.docx': 'docx',
+  '.pptx': 'pptx',
+  '.xlsx': 'xlsx',
+  '.odt': 'opendocument',
+  '.odp': 'opendocument',
+  '.ods': 'opendocument',
+  '.epub': 'epub',
+  '.html': 'html',
+  '.htm': 'html',
+  '.xhtml': 'html',
+  '.rtf': 'rtf',
+  '.txt': 'plain',
+  '.text': 'plain',
+  '.md': 'plain',
+  '.markdown': 'plain',
+  '.csv': 'plain',
+  '.tsv': 'plain',
+  '.log': 'plain',
+  '.json': 'plain',
+}
+
+const BY_MIME: Record<string, Family> = {
+  'application/pdf': 'pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.oasis.opendocument.text': 'opendocument',
+  'application/vnd.oasis.opendocument.presentation': 'opendocument',
+  'application/vnd.oasis.opendocument.spreadsheet': 'opendocument',
+  'application/epub+zip': 'epub',
+  'text/html': 'html',
+  'application/xhtml+xml': 'html',
+  'application/rtf': 'rtf',
+  'text/rtf': 'rtf',
+}
+
+export function familyOf(fileName: string, mimeType: string): Family {
+  return (
+    BY_EXTENSION[path.extname(fileName).toLowerCase()] ?? BY_MIME[mimeType.toLowerCase()] ?? 'plain'
+  )
+}
+
 /**
  * Read a file into clean text.
  *
- * Returns empty text rather than throwing when a PDF has no text layer — a
- * scan is a normal thing for somebody to upload, and the caller needs to tell
- * that apart from a corrupt file so it can say which one happened.
+ * Returns empty text rather than throwing when a document has no words in it —
+ * a scan, or a deck that is entirely images, is a normal thing for somebody to
+ * upload, and the caller needs to tell that apart from a corrupt file so it
+ * can say which one happened.
  */
 export async function extract(filePath: string, mimeType: string): Promise<Extracted> {
   const buffer = await readFile(filePath)
 
-  if (mimeType === 'application/pdf') return extractPdf(buffer)
-  return extractPlain(buffer.toString('utf8'))
+  switch (familyOf(filePath, mimeType)) {
+    case 'pdf':
+      return extractPdf(buffer)
+    case 'docx':
+      return extractDocx(buffer)
+    case 'pptx':
+      return extractPptx(buffer)
+    case 'xlsx':
+      return extractXlsx(buffer)
+    case 'opendocument':
+      return extractOpenDocument(buffer)
+    case 'epub':
+      return extractEpub(buffer)
+    case 'html':
+      return fromSections([htmlToText(buffer.toString('utf8'))])
+    case 'rtf':
+      return fromSections([rtfToText(buffer.toString('utf8'))])
+    default:
+      return extractPlain(buffer.toString('utf8'))
+  }
 }
 
 /**
