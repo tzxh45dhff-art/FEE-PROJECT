@@ -394,6 +394,17 @@ function Workspace({
             </Suspense>
           </div>
 
+          {/* Said here, not only as a tooltip on a greyed button. A disabled
+              control with no visible reason reads as broken, and the reason
+              is one a person can act on. */}
+          {!canRun && (
+            <p className="shrink-0 rounded-[0.9rem] border border-[var(--study-line)] px-3 py-2.5 text-[0.76rem] leading-relaxed text-[var(--study-soft)]">
+              No judge is configured on this server, so this cannot be run. Set{' '}
+              <code className="text-[var(--study-text)]">JUDGE_URL</code> to a Judge0-compatible
+              API and the buttons above come alive.
+            </p>
+          )}
+
           {error && <Problem message={error} />}
           {verdict && <Result verdict={verdict} />}
         </div>

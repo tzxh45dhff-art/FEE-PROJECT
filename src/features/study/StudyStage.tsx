@@ -212,7 +212,7 @@ export function StudyStage({
             {!timer.connected && (
               <span
                 title="Reconnecting"
-                className="grid size-9 place-items-center rounded-full text-[var(--study-accent)]"
+                className="grid size-11 place-items-center rounded-full text-[var(--study-accent)] sm:size-10"
               >
                 <WifiOff aria-hidden className="size-4" />
               </span>
@@ -229,11 +229,13 @@ export function StudyStage({
               aria-pressed={tutorOpen}
               title={caps?.ai ? 'Ask about this subject' : 'No AI key on this server'}
               className={cn(
-                'study-btn',
+                /* 44px on a touch screen, 40 on a pointer — the sizes the rest
+                   of the app already uses for a control in a bar like this. */
+                'study-btn h-11 px-4 sm:h-10',
                 tutorOpen && 'border-transparent bg-[var(--study-accent-soft)] text-[var(--study-accent)]',
               )}
             >
-              <Sparkles aria-hidden className="size-4" />
+              <Sparkles aria-hidden className="size-[1.05rem]" />
               <span className="hidden sm:inline">Tutor</span>
             </button>
 
@@ -243,9 +245,9 @@ export function StudyStage({
                 onClick={() => setSettingsOpen((open) => !open)}
                 aria-label="Appearance"
                 aria-expanded={settingsOpen}
-                className="study-btn size-9 px-0"
+                className="study-btn size-11 px-0 sm:size-10"
               >
-                <Settings2 aria-hidden className="size-4" />
+                <Settings2 aria-hidden className="size-[1.05rem]" />
               </button>
               <AnimatePresence>
                 {settingsOpen && (
@@ -265,11 +267,11 @@ export function StudyStage({
                 aria-label="Chat and call"
                 aria-pressed={panelOpen}
                 className={cn(
-                  'study-btn relative size-9 px-0',
+                  'study-btn relative size-11 px-0 sm:size-10',
                   panelOpen && 'border-transparent bg-[var(--study-accent-soft)] text-[var(--study-accent)]',
                 )}
               >
-                <MessagesSquare aria-hidden className="size-4" />
+                <MessagesSquare aria-hidden className="size-[1.05rem]" />
                 {unread > 0 && !panelOpen && (
                   <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-[var(--study-accent)] px-1 text-[0.6rem] font-semibold leading-4 text-[var(--study-on-accent)]">
                     {unread > 9 ? '9+' : unread}
@@ -282,9 +284,9 @@ export function StudyStage({
               type="button"
               onClick={onClose}
               aria-label="Leave study"
-              className="study-btn size-9 px-0"
+              className="study-btn size-11 px-0 sm:size-10"
             >
-              <X aria-hidden className="size-4" />
+              <X aria-hidden className="size-[1.05rem]" />
             </button>
           </span>
         </header>

@@ -151,8 +151,21 @@ export const env = {
    * run button is off.
    */
   judge: {
-    /** Base URL of a Judge0-compatible API. */
-    url: (process.env.JUDGE_URL ?? '').replace(/\/$/, ''),
+    /**
+     * Base URL of a Judge0-compatible API.
+     *
+     * Defaults to the project's own public instance, so Run and Submit work
+     * on a fresh checkout instead of being two permanently greyed buttons
+     * that never say why. It is shared and rate limited, which is the honest
+     * trade for needing no account: set `JUDGE_URL` to your own deployment
+     * when a class is using this in earnest.
+     *
+     * Set it to an empty string to switch running off altogether — the
+     * buttons then disable and say so, and problems can still be written and
+     * read. That is the setting for anyone who would rather no code left the
+     * machine at all.
+     */
+    url: (process.env.JUDGE_URL ?? 'https://ce.judge0.com').replace(/\/$/, ''),
     apiKey: process.env.JUDGE_API_KEY ?? '',
     /** RapidAPI-style host header, when the provider wants one. */
     apiHost: process.env.JUDGE_API_HOST ?? '',

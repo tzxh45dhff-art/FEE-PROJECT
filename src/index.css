@@ -1328,56 +1328,67 @@ body::-webkit-scrollbar {
 .study-scope[data-study-theme='light'][data-study-accent='violet'] { --study-accent: #6d28d9; --study-accent-soft: rgb(109 40 217 / 0.09); }
 .study-scope[data-study-theme='light'][data-study-accent='blue'] { --study-accent: #1d4ed8; --study-accent-soft: rgb(29 78 216 / 0.09); }
 
-/* ── The four shapes the whole tab is built from ──────────────────
-   Written as classes rather than repeated Tailwind strings because
-   each is used in a dozen places and each has to answer to the theme
-   above. A card is a card in both. */
+/*
+ * In the components layer, not loose at the end of the file.
+ *
+ * These are shorthands for shapes, not final say on them — `study-btn size-9
+ * px-0` has to give a square icon button, and a plain rule further down the
+ * stylesheet beats a utility on source order instead. That is how the header
+ * controls ended up 36px boxes holding 7px of content: the class kept its own
+ * padding and squeezed the icon into what was left.
+ */
+@layer components {
+  /* ── The four shapes the whole tab is built from ──────────────────
+     Written as classes rather than repeated Tailwind strings because
+     each is used in a dozen places and each has to answer to the theme
+     above. A card is a card in both. */
 
-.study-card {
-  border: 1px solid var(--study-line);
-  border-radius: 0.9rem;
-  background: var(--study-card);
-}
+  .study-card {
+    border: 1px solid var(--study-line);
+    border-radius: 0.9rem;
+    background: var(--study-card);
+  }
 
-.study-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  height: 2.25rem;
-  padding-inline: 0.9rem;
-  border: 1px solid var(--study-line);
-  border-radius: 999px;
-  background: var(--study-card);
-  color: var(--study-text);
-  font-size: 0.8rem;
-  white-space: nowrap;
-  transition: background-color 0.18s, border-color 0.18s, opacity 0.18s;
-}
-.study-btn:hover:not(:disabled) { background: var(--study-card-strong); border-color: var(--study-line-strong); }
-.study-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .study-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 2.25rem;
+    padding-inline: 0.9rem;
+    border: 1px solid var(--study-line);
+    border-radius: 999px;
+    background: var(--study-card);
+    color: var(--study-text);
+    font-size: 0.8rem;
+    white-space: nowrap;
+    transition: background-color 0.18s, border-color 0.18s, opacity 0.18s;
+  }
+  .study-btn:hover:not(:disabled) { background: var(--study-card-strong); border-color: var(--study-line-strong); }
+  .study-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.study-btn-primary {
-  border-color: transparent;
-  background: var(--study-accent);
-  color: var(--study-on-accent);
-  font-weight: 500;
-}
-.study-btn-primary:hover:not(:disabled) { background: var(--study-accent); border-color: transparent; filter: brightness(1.08); }
+  .study-btn-primary {
+    border-color: transparent;
+    background: var(--study-accent);
+    color: var(--study-on-accent);
+    font-weight: 500;
+  }
+  .study-btn-primary:hover:not(:disabled) { background: var(--study-accent); border-color: transparent; filter: brightness(1.08); }
 
-.study-field {
-  height: 2.25rem;
-  padding-inline: 0.9rem;
-  border: 1px solid var(--study-line);
-  border-radius: 999px;
-  background: var(--study-card);
-  color: var(--study-text);
-  font-size: 0.82rem;
-  outline: none;
-  transition: border-color 0.18s;
+  .study-field {
+    height: 2.25rem;
+    padding-inline: 0.9rem;
+    border: 1px solid var(--study-line);
+    border-radius: 999px;
+    background: var(--study-card);
+    color: var(--study-text);
+    font-size: 0.82rem;
+    outline: none;
+    transition: border-color 0.18s;
+  }
+  .study-field::placeholder { color: var(--study-faint); }
+  .study-field:focus-visible { border-color: var(--study-accent); }
 }
-.study-field::placeholder { color: var(--study-faint); }
-.study-field:focus-visible { border-color: var(--study-accent); }
 
 /* One focus ring for the whole tab, in the chosen accent, so keyboard
    navigation is visible without every button restating it. */
