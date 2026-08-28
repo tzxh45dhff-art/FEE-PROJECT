@@ -425,8 +425,11 @@ function Stage({
               <motion.li
                 key={item}
                 initial={false}
+                /* Not-yet-revealed items stay legible. At 0.18 they read as
+                   a rendering fault, and anybody who glances at the list
+                   before the voice gets there sees four broken rows. */
                 animate={{
-                  opacity: at < shown ? 1 : 0.18,
+                  opacity: at < shown ? 1 : 0.32,
                   x: at < shown ? 0 : -6,
                 }}
                 transition={{ duration: 0.4, ease: EASE }}
@@ -451,7 +454,11 @@ function Stage({
               <motion.li
                 key={item}
                 initial={false}
-                animate={{ opacity: at === active ? 1 : at < active ? 0.5 : 0.22 }}
+                /* The step being discussed is lit; the rest stay readable.
+                   A summary beat shows every step at once, so burying four of
+                   five at 0.22 would be telling the listener to ignore most of
+                   what is being said. */
+                animate={{ opacity: at === active ? 1 : at < active ? 0.62 : 0.42 }}
                 transition={{ duration: 0.35, ease: EASE }}
                 className={cn(
                   'flex items-start gap-3 rounded-[0.7rem] px-3 py-2.5 text-[1.02rem] leading-relaxed transition-colors',

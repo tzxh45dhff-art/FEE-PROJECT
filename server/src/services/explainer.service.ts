@@ -300,15 +300,45 @@ function asVisual(value: unknown): Visual | null {
     case 'diagram':
       return str('mermaid') ? { kind: 'diagram', mermaid: str('mermaid'), caption: str('caption') || undefined } : null
     case 'code': {
-      if (!str('code')) return null
+      const code = str('code')
+      if (!code) return null
+
+      /*
+       * Highlights, checked against the code they point into.
+       *
+       * The model counts lines by eye and gets it wrong: observed highlighting
+       * a blank line, a line holding nothing but a closing brace, and a line
+       * past the end of the listing — all in one lesson. A highlight on a
+       * blank line is worse than none, because the student assumes the
+       * emphasis means something and goes looking for what.
+       *
+       * So a line only survives if it exists and has something on it worth
+       * pointing at. Punctuation-only lines are dropped for the same reason a
+       * blank one is: nobody needs a brace singled out.
+       */
+      const lines = code.split('\n')
+      const worthPointingAt = (index: number) => {
+        const line = lines[index - 1]
+        if (line === undefined) return false
+        const bare = line.trim().replace(/[{}()[\];,]/g, '').trim()
+        return bare.length > 0
+      }
+
       const highlight = Array.isArray(v.highlight)
-        ? (v.highlight as unknown[]).filter((n): n is number => typeof n === 'number' && n > 0)
-        : undefined
+        ? [
+            ...new Set(
+              (v.highlight as unknown[]).filter(
+                (n): n is number => typeof n === 'number' && Number.isInteger(n) && worthPointingAt(n),
+              ),
+            ),
+          ].sort((a, b) => a - b)
+        : []
+
       return {
         kind: 'code',
         language: str('language') || 'text',
-        code: str('code'),
-        highlight: highlight?.length ? highlight : undefined,
+        code,
+        highlight: highlight.length ? highlight : undefined,
         caption: str('caption') || undefined,
       }
     }
@@ -419,6 +449,63 @@ function stitch(beats: Beat[]): Beat[] {
     if (JSON.stringify(sansIndex(previous.show)) !== JSON.stringify(sansIndex(beat.show))) continue
     previous.group = previous.group ?? `run-${i}`
     beat.group = previous.group
+  }
+
+  /*
+   * A group only ever moves forward.
+   *
+   * Observed on a closing beat: five key points on screen, the voice
+   * summarising all of them, and the highlight sitting on point one — because
+   * the model emitted `active: 0` again for the summary. The eye goes where
+   * the highlight is and the ear is somewhere else entirely, which is the
+   * same fault as explaining code that has left the screen, in miniature.
+   *
+   * Within a group the pointer is therefore forced to be non-decreasing, and
+   * a group's last beat shows the whole list — by then everything in it has
+   * been said, and dimming four of five points while summarising all five is
+   * telling the student to ignore what they are being told.
+   */
+  const groupRuns = new Map<string, number[]>()
+  out.forEach((beat, at) => {
+    if (!beat.group) return
+    groupRuns.set(beat.group, [...(groupRuns.get(beat.group) ?? []), at])
+  })
+
+  for (const positions of groupRuns.values()) {
+    let floor = -1
+    positions.forEach((at, nth) => {
+      const beat = out[at]!
+      const last = nth === positions.length - 1
+
+      if (beat.show.kind === 'steps') {
+        const items = beat.show.items.length
+        const wanted = last ? items - 1 : Math.max(beat.show.active ?? 0, floor)
+        beat.show = { ...beat.show, active: Math.min(items - 1, wanted) }
+        floor = beat.show.active ?? 0
+      } else if (beat.show.kind === 'bullets') {
+        const items = beat.show.items.length
+        const wanted = last ? items : Math.max(beat.show.reveal ?? items, floor)
+        beat.show = { ...beat.show, reveal: Math.min(items, Math.max(1, wanted)) }
+        floor = beat.show.reveal ?? 1
+      }
+    })
+  }
+
+  /*
+   * A list that is not being built shows all of itself.
+   *
+   * Revealing one item at a time is what a group is for. On a beat standing
+   * alone there is no next beat to reveal the rest, so a pointer at item one
+   * leaves four items greyed out permanently and the student reading a list
+   * they have been told not to read.
+   */
+  for (const beat of out) {
+    if (beat.group) continue
+    if (beat.show.kind === 'steps') {
+      beat.show = { ...beat.show, active: beat.show.items.length - 1 }
+    } else if (beat.show.kind === 'bullets') {
+      beat.show = { ...beat.show, reveal: beat.show.items.length }
+    }
   }
 
   return out
