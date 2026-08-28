@@ -160,6 +160,34 @@ are not words. Say "n squared", not "n^2". Say "two hundred pixels", not
     "right": { "title": "...", "points": ["..."] } }
   { "kind": "callout", "tone": "exam" | "pitfall" | "insight", "text": "..." }
 
+NEVER TALK ABOUT SOMETHING THAT IS NOT ON SCREEN
+This is the rule most often broken and the most damaging when it is. If the
+narration says "when this code runs", "look at line four", "notice the output",
+"in this example", or anything else that points at a thing — that thing MUST be
+the visual of that same beat. Not the one before it.
+
+The failure looks like this, and it makes the lesson useless:
+  beat 4  show: code        say: "here is a class with two constructors"
+  beat 5  show: callout     say: "when this code runs it prints Name: Unknown"
+By beat 5 the code is gone. The listener is being told what "this code" prints
+while looking at a sentence in a box. They cannot follow it and they cannot
+check it.
+
+Written correctly, the code stays and the attention moves:
+  beat 4  show: code (group "demo", highlight [6,7])   say: "here is the default constructor..."
+  beat 5  show: code (group "demo", highlight [12])    say: "and here is the parameterized one..."
+  beat 6  show: code (group "demo", highlight [18,19]) say: "when this runs it prints Name: Unknown, Age: 0..."
+Same code, same group, highlight moving, and the thing being discussed is in
+front of them the whole time.
+
+So: every code listing gets AT LEAST THREE consecutive beats in one group.
+Introduce it, walk the parts that matter, then run it in words. A code beat
+that appears for one beat and vanishes has taught nobody anything.
+
+The same applies to diagrams: if you are going to discuss a diagram over
+several sentences, hold it in a group rather than showing it once and moving
+to a callout.
+
 GROUPS — READ THIS TWICE
 A "group" is how one visual stays on screen and is built up across several
 beats instead of being thrown away. The rule is mechanical:
@@ -309,6 +337,102 @@ function asVisual(value: unknown): Visual | null {
   }
 }
 
+
+/**
+ * Phrases that point at something the listener is expected to be looking at.
+ *
+ * Deliberately narrow. "when this code runs" is unambiguously about a listing;
+ * a bare "prints" is not, and widening this would start rewriting beats that
+ * were fine.
+ */
+const POINTS_AT_CODE =
+  /\b(this code|the code above|the code below|when (?:this|it) runs|when this code runs|running this|the output (?:will be|is)|line \d+|in this example|as shown above)\b/i
+
+/** How far back a listing can still be "the code" being talked about. */
+const REACH = 3
+
+/**
+ * Put the code back on screen when the narration is talking about it.
+ *
+ * The model writes a listing, then explains it on the next beat with a
+ * callout — so the student hears "when this code runs it prints Name:
+ * Unknown" while looking at a sentence in a box, with the code two beats
+ * gone. It is the single most damaging thing a lesson can do, because the one
+ * moment the listener needs to see the code is the moment it is taken away.
+ *
+ * The prompt asks for this and the prompt is not enough: told explicitly, with
+ * a worked example of the failure, it still produced four such beats out of
+ * fifteen and no groups at all. So it is repaired here instead. Structure that
+ * can be checked mechanically should be, rather than requested and hoped for —
+ * the same reason the generated test cases are run before they are trusted.
+ *
+ * A beat is only rewritten when it says something that can only mean a
+ * listing, and only when a listing is recent enough to be the one it means.
+ * Its narration is never touched.
+ */
+function stitch(beats: Beat[]): Beat[] {
+  const out = beats.map((beat) => ({ ...beat }))
+
+  let lastCode: { at: number; visual: Extract<Visual, { kind: 'code' }> } | null = null
+  let groupSeq = 0
+
+  for (let i = 0; i < out.length; i += 1) {
+    const beat = out[i]!
+
+    if (beat.show.kind === 'code') {
+      /* A new listing, or the same one continuing. */
+      if (!lastCode || lastCode.visual.code !== beat.show.code) {
+        groupSeq += 1
+        lastCode = { at: i, visual: beat.show }
+      } else {
+        lastCode = { at: i, visual: beat.show }
+      }
+      beat.group = beat.group ?? `listing-${groupSeq}`
+      continue
+    }
+
+    if (!lastCode || i - lastCode.at > REACH) continue
+    if (!POINTS_AT_CODE.test(beat.say)) continue
+
+    /*
+     * Bring the listing back, un-highlighted.
+     *
+     * No highlight rather than the previous beat's: this beat is talking about
+     * what the whole thing does, and leaving the old lines lit would point at
+     * the wrong part of it.
+     */
+    beat.show = { ...lastCode.visual, highlight: undefined }
+    beat.group = out[lastCode.at]!.group
+    lastCode = { at: i, visual: beat.show }
+  }
+
+  /*
+   * Group any run of the same visual, whatever its kind.
+   *
+   * Two consecutive beats showing the identical diagram or list should hold
+   * one on screen rather than crossfading it into itself.
+   */
+  for (let i = 1; i < out.length; i += 1) {
+    const previous = out[i - 1]!
+    const beat = out[i]!
+    if (beat.group || previous.show.kind !== beat.show.kind) continue
+    if (JSON.stringify(sansIndex(previous.show)) !== JSON.stringify(sansIndex(beat.show))) continue
+    previous.group = previous.group ?? `run-${i}`
+    beat.group = previous.group
+  }
+
+  return out
+}
+
+/** The visual minus whatever advances within a group. */
+function sansIndex(visual: Visual) {
+  const { ...rest } = visual as Record<string, unknown>
+  delete rest.reveal
+  delete rest.active
+  delete rest.highlight
+  return rest
+}
+
 /**
  * Write the script.
  *
@@ -375,7 +499,7 @@ export async function script(input: {
   return {
     title:
       typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : input.topic,
-    beats,
+    beats: stitch(beats),
     grounded: grounding.grounded,
     sources: grounding.sources,
   }

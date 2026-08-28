@@ -176,8 +176,14 @@ export function ExplainerPlayer({
       <audio ref={audioRef} preload="auto" className="hidden" />
       <audio ref={preloadRef} preload="auto" className="hidden" />
 
-      {/* The stage. Wide, quiet, and the only thing on screen while it runs. */}
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded-[1rem] border border-[var(--study-line)] bg-[var(--study-bg-soft)]">
+      {/* The stage.
+          
+          Deliberately reads as a screen rather than a card: darker than the
+          page around it, edge to edge, with the content given the room to be
+          the whole picture. A lesson framed as a small panel in a large page
+          looks like a widget; the same content filling the frame looks like
+          something you watch. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-[1.1rem] bg-[var(--study-stage)] ring-1 ring-inset ring-[var(--study-line)]">
         {/*
           * Cross-faded, not wait-for-exit.
           *
@@ -200,17 +206,20 @@ export function ExplainerPlayer({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: reduced ? 0 : -8 }}
             transition={{ duration: reduced ? 0.12 : 0.35, ease: EASE }}
-            className="absolute inset-0 grid place-items-center px-6 pb-28 pt-8 md:px-12 md:pb-32 md:pt-10"
+            className="absolute inset-0 grid place-items-center px-5 pb-24 pt-6 md:px-10 md:pb-28 md:pt-8"
           >
             <Stage visual={beat.show} seconds={beat.seconds ?? 0} beatKey={index} />
           </motion.div>
         </AnimatePresence>
 
-        {/* The line being spoken. Present for anybody who cannot hear it, and
-            for the far more common case of somebody skimming with the sound
-            off in a library. */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[var(--study-bg)] via-[var(--study-bg)]/85 to-transparent px-6 pb-5 pt-14">
-          <p className="mx-auto max-w-3xl text-center text-[0.9rem] leading-relaxed text-[var(--study-soft)]">
+        {/* The line being spoken.
+            
+            Subtitles, in the shape everything else uses them: a plate sized to
+            the words rather than a gradient washing over the bottom third of
+            the picture. The gradient was covering content and reading as an
+            unfinished edge; a contained plate sits over it without eating it. */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center px-4 pb-4 md:pb-6">
+          <p className="max-w-3xl rounded-[0.7rem] bg-[var(--study-caption)] px-4 py-2.5 text-center text-[0.95rem] leading-relaxed text-[var(--study-text)] backdrop-blur-md md:text-[1rem]">
             {beat.say}
           </p>
         </div>
@@ -563,6 +572,23 @@ function CodeStage({
   const reduced = usePrefersReducedMotion()
   const lines = useMemo(() => visual.code.split(NEWLINE), [visual.code])
   const [typed, setTyped] = useState(0)
+  const box = useRef<HTMLPreElement | null>(null)
+
+  /*
+   * Follow the highlight.
+   *
+   * A group holds one listing and moves the highlight through it, which is
+   * the whole point — but a listing taller than the box would leave the line
+   * being discussed somewhere off screen, and the student watching has no way
+   * to know they should scroll. Bringing it into view is the difference
+   * between a walkthrough and a wall of code.
+   */
+  const firstLit = visual.highlight?.length ? Math.min(...visual.highlight) : null
+  useEffect(() => {
+    if (!firstLit || !box.current) return
+    const row = box.current.children[firstLit - 1] as HTMLElement | undefined
+    row?.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' })
+  }, [firstLit, typed, reduced])
 
   useEffect(() => {
     if (reduced) {
@@ -594,7 +620,15 @@ function CodeStage({
           {visual.caption}
         </p>
       )}
-      <pre className="max-h-[54vh] overflow-auto rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-5 font-mono text-[0.95rem] leading-[1.8]">
+      {/* `data-lenis-prevent` or this does not scroll at all: the app's smooth
+          scrolling owns the wheel document-wide and swallows the gesture over
+          any nested scroller that has not opted out. Every other scrolling box
+          in the app carries it for the same reason. */}
+      <pre
+        ref={box}
+        data-lenis-prevent
+        className="max-h-[62vh] overflow-auto rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-5 font-mono text-[0.95rem] leading-[1.75] md:text-[1rem]"
+      >
         {lines.map((line, at) => {
           const lit = visual.highlight?.includes(at + 1)
           const shown = at < typed
