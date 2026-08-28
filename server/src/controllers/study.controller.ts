@@ -796,6 +796,54 @@ export async function submitProblem(req: Request, res: Response) {
   res.json({ verdict })
 }
 
+const reviewInput = z.object({
+  language: z.string().min(1),
+  code: z.string().min(1, 'There is nothing to review.').max(60_000),
+  verdict: z.object({
+    status: z.string(),
+    passedCount: z.number().int().min(0),
+    totalCount: z.number().int().min(0),
+    detail: z.string().nullable().default(null),
+    failure: z
+      .object({ input: z.string(), expected: z.string(), got: z.string() })
+      .nullable()
+      .default(null),
+  }),
+})
+
+/**
+ * Remarks on a submission that has already been run.
+ *
+ * The verdict is posted back rather than looked up, because a sample run is
+ * deliberately not recorded — pressing Run and then asking what went wrong is
+ * the most ordinary thing anybody does here, and it would be strange for that
+ * to be the one case with nothing to review.
+ *
+ * Trusting the client's copy of the verdict is fine: the worst a forged one
+ * can do is make the review discuss a failure that did not happen, to the
+ * person who forged it.
+ */
+export async function reviewSubmission(req: Request, res: Response) {
+  const roomId = await gate(req)
+  const input = reviewInput.parse(req.body)
+
+  const problem = await prisma.codingProblem.findFirst({
+    where: { id: req.params.problemId!, roomId },
+    select: { title: true, description: true },
+  })
+  if (!problem) throw HttpError.notFound('That problem is not here.')
+
+  res.json({
+    remarks: await generate.review({
+      title: problem.title,
+      description: problem.description,
+      language: input.language,
+      code: input.code,
+      verdict: input.verdict,
+    }),
+  })
+}
+
 export async function deleteProblem(req: Request, res: Response) {
   const roomId = await gate(req)
   const problem = await prisma.codingProblem.findFirst({

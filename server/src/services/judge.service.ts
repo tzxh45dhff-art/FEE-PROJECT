@@ -51,11 +51,26 @@ export type CaseResult = {
   message?: string
 }
 
+/**
+ * The case that failed, in three pieces rather than one paragraph.
+ *
+ * It used to be assembled into a single block of text here, which read fine
+ * in a terminal and badly in a panel: what you want to do with a wrong answer
+ * is put yours next to the right one and look for the difference, and that is
+ * hard when both are buried in the same scrolling <pre>.
+ *
+ * Only ever set for a visible case. A hidden case that reports its own input
+ * and expected output is not hidden.
+ */
+export type Failure = { input: string; expected: string; got: string }
+
 export type JudgeVerdict = {
   status: 'passed' | 'failed' | 'error'
   passedCount: number
   totalCount: number
+  /** Compiler or runtime output — about the code, not about any one case. */
   detail: string | null
+  failure: Failure | null
 }
 
 function headers() {
@@ -160,7 +175,6 @@ export async function run(input: {
   const deadline = setTimeout(() => controller.abort(), TOTAL_TIMEOUT_MS)
 
   let passed = 0
-  let detail: string | null = null
 
   try {
     for (const testCase of input.cases) {
@@ -181,6 +195,7 @@ export async function run(input: {
           /* Compile output is shown in full regardless of whether the case was
              hidden — it is about the submitted code, not about the case. */
           detail: compileError.slice(0, 2000),
+          failure: null,
         }
       }
 
@@ -192,6 +207,7 @@ export async function run(input: {
           passedCount: passed,
           totalCount: input.cases.length,
           detail: reason.slice(0, 2000),
+          failure: null,
         }
       }
 
@@ -209,20 +225,31 @@ export async function run(input: {
        * still tells you how far you got, which is the part that is safe to
        * know.
        */
-      detail = testCase.hidden
-        ? `Failed on a hidden case (${passed + 1} of ${input.cases.length}).`
-        : `Input:\n${testCase.input}\n\nExpected:\n${testCase.expected}\n\nGot:\n${got}`.slice(0, 2000)
-
       return {
         status: 'failed',
         passedCount: passed,
         totalCount: input.cases.length,
-        detail,
+        detail: testCase.hidden
+          ? `Failed on a hidden case (${passed + 1} of ${input.cases.length}).`
+          : null,
+        failure: testCase.hidden
+          ? null
+          : {
+              input: testCase.input.slice(0, 2000),
+              expected: testCase.expected.slice(0, 2000),
+              got: got.slice(0, 2000),
+            },
       }
     }
   } finally {
     clearTimeout(deadline)
   }
 
-  return { status: 'passed', passedCount: passed, totalCount: input.cases.length, detail: null }
+  return {
+    status: 'passed',
+    passedCount: passed,
+    totalCount: input.cases.length,
+    detail: null,
+    failure: null,
+  }
 }

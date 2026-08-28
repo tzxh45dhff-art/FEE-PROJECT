@@ -6,6 +6,7 @@ import {
   Loader2,
   Lock,
   Play,
+  Sparkles,
   Trash2,
   XCircle,
 } from 'lucide-react'
@@ -88,6 +89,7 @@ export default function CodingPane({ roomId, subject, caps, announce, seed }: Pa
         roomId={roomId}
         problem={open}
         canRun={Boolean(caps?.judge)}
+        canReview={Boolean(caps?.ai)}
         languages={caps?.judgeLanguages ?? []}
         onBack={() => {
           setOpen(null)
@@ -200,12 +202,14 @@ function Workspace({
   roomId,
   problem,
   canRun,
+  canReview,
   languages,
   onBack,
 }: {
   roomId: string
   problem: studyApi.Problem
   canRun: boolean
+  canReview: boolean
   languages: string[]
   onBack: () => void
 }) {
@@ -215,6 +219,8 @@ function Workspace({
   const [verdict, setVerdict] = useState<studyApi.Verdict | null>(null)
   const [running, setRunning] = useState<'samples' | 'submit' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [remarks, setRemarks] = useState<string | null>(null)
+  const [reviewing, setReviewing] = useState(false)
   const tutor = useTutor()
   const dark = useStudyDark()
 
@@ -231,6 +237,10 @@ function Workspace({
     setRunning(samplesOnly ? 'samples' : 'submit')
     setError(null)
     setVerdict(null)
+    /* Remarks belong to the run they were written about. Leaving them up
+       through the next one would have them discussing output that is no
+       longer on screen. */
+    setRemarks(null)
     try {
       const { verdict: got } = await studyApi.submitCode(roomId, problem.id, {
         language,
@@ -242,6 +252,24 @@ function Workspace({
       setError(cause instanceof Error ? cause.message : 'That did not run.')
     } finally {
       setRunning(null)
+    }
+  }
+
+  const review = async () => {
+    if (!verdict) return
+    setReviewing(true)
+    setError(null)
+    try {
+      const { remarks: written } = await studyApi.reviewCode(roomId, problem.id, {
+        language,
+        code,
+        verdict,
+      })
+      setRemarks(written)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The review did not come back.')
+    } finally {
+      setReviewing(false)
     }
   }
 
@@ -407,6 +435,44 @@ function Workspace({
 
           {error && <Problem message={error} />}
           {verdict && <Result verdict={verdict} />}
+
+          {/* Offered after a run rather than before one, and never
+              automatically: a review is a billed call, and one written
+              without knowing whether the code even compiles is guesswork
+              dressed as feedback. */}
+          {verdict && canReview && (
+            <div data-lenis-prevent className="min-h-0 shrink-0 overflow-y-auto">
+              {remarks ? (
+                <div className="study-card p-3.5">
+                  <p className="mb-2 flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.07em] text-[var(--study-faint)]">
+                    <Sparkles aria-hidden className="size-3.5" />
+                    Review
+                  </p>
+                  <div className="study-prose study-prose-tight">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{remarks}</ReactMarkdown>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void review()}
+                  disabled={reviewing}
+                  className="study-btn w-full"
+                >
+                  {reviewing ? (
+                    <Loader2 aria-hidden className="size-4 animate-spin" />
+                  ) : (
+                    <Sparkles aria-hidden className="size-4" />
+                  )}
+                  {reviewing
+                    ? 'Reading your code…'
+                    : verdict.status === 'passed'
+                      ? 'What could be better?'
+                      : 'Why did this fail?'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -422,20 +488,33 @@ function monacoLanguage(language: string) {
   return language
 }
 
+/**
+ * What the judge said, laid out to be compared rather than read.
+ *
+ * Expected and Got sit side by side because that is the shape of the question
+ * a failing run raises — not "what happened" but "where do these two differ".
+ * They used to arrive as one block of pre-formatted text with the actual
+ * output last, below the fold of a short scrolling box, which is the one part
+ * you needed.
+ */
 function Result({ verdict }: { verdict: studyApi.Verdict }) {
   const passed = verdict.status === 'passed'
+  const { failure } = verdict
+
   return (
     <div
       className={cn(
-        'shrink-0 rounded-[0.9rem] border p-3',
-        passed ? 'border-[var(--study-good)] bg-[var(--study-good-soft)]' : 'border-[var(--study-bad)] bg-[var(--study-bad-soft)]',
+        'shrink-0 rounded-[0.9rem] border',
+        passed
+          ? 'border-[var(--study-good)] bg-[var(--study-good-soft)]'
+          : 'border-[var(--study-bad)] bg-[var(--study-bad-soft)]',
       )}
     >
-      <p className="flex items-center gap-2 text-[0.84rem]">
+      <p className="flex items-center gap-2 p-3 text-[0.84rem]">
         {passed ? (
-          <CheckCircle2 aria-hidden className="size-4 text-[var(--study-good)]" />
+          <CheckCircle2 aria-hidden className="size-4 shrink-0 text-[var(--study-good)]" />
         ) : (
-          <XCircle aria-hidden className="size-4 text-[var(--study-bad)]" />
+          <XCircle aria-hidden className="size-4 shrink-0 text-[var(--study-bad)]" />
         )}
         <span className={passed ? 'text-[var(--study-good)]' : 'text-[var(--study-bad)]'}>
           {passed
@@ -445,11 +524,56 @@ function Result({ verdict }: { verdict: studyApi.Verdict }) {
               : `${verdict.passedCount} of ${verdict.totalCount} passed`}
         </span>
       </p>
+
+      {failure && (
+        <div className="border-t border-[var(--study-line)] p-3 pt-2.5">
+          <Block label="Input" text={failure.input} />
+          <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
+            <Block label="Expected" text={failure.expected} tone="good" />
+            <Block label="Your output" text={failure.got} tone="bad" />
+          </div>
+        </div>
+      )}
+
+      {/* Compiler and runtime output. Whitespace preserved and left
+          unwrapped — a javac error points at a column with a caret on the
+          line below, and reflowing it puts the caret under the wrong word. */}
       {verdict.detail && (
-        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[0.72rem] leading-relaxed text-[var(--study-soft)]">
+        <pre className="max-h-40 overflow-auto border-t border-[var(--study-line)] p-3 font-mono text-[0.72rem] leading-relaxed text-[var(--study-soft)]">
           {verdict.detail}
         </pre>
       )}
+    </div>
+  )
+}
+
+function Block({
+  label,
+  text,
+  tone = 'plain',
+}: {
+  label: string
+  text: string
+  tone?: 'plain' | 'good' | 'bad'
+}) {
+  return (
+    <div className="min-w-0">
+      <p
+        className={cn(
+          'text-[0.68rem] uppercase tracking-[0.07em]',
+          tone === 'good' && 'text-[var(--study-good)]',
+          tone === 'bad' && 'text-[var(--study-bad)]',
+          tone === 'plain' && 'text-[var(--study-faint)]',
+        )}
+      >
+        {label}
+      </p>
+      <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded-[0.5rem] bg-[var(--study-card)] px-2.5 py-2 font-mono text-[0.74rem] leading-relaxed">
+        {/* An empty output is a fact worth stating. A blank box reads as a
+            rendering bug, where "(nothing)" reads as "it printed nothing",
+            which is usually the whole diagnosis. */}
+        {text.trim() ? text : '(nothing)'}
+      </pre>
     </div>
   )
 }

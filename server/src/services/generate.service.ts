@@ -339,3 +339,87 @@ export async function suggestions(subjectId: string) {
   untouched.sort((a, b) => (b.weightage ?? 0) - (a.weightage ?? 0))
   return untouched.slice(0, 12)
 }
+
+/**
+ * Remarks on a submission, once it has actually been run.
+ *
+ * Deliberately after the judge rather than instead of it. A model asked "is
+ * this right?" guesses, and guesses confidently; a model asked "it failed on
+ * this input with this output, what would you look at" is reading a fact. So
+ * the verdict goes in the prompt and the review is written around it.
+ *
+ * The restraint is the same one the tutor's coding mode has, for the same
+ * reason: a review that ends in the corrected program is not a review, it is
+ * the answer with commentary attached, and it costs the student the one part
+ * that was going to teach them something.
+ */
+const REVIEW_SYSTEM = `You are reviewing one student's submission to a
+programming exercise, just after it was run against real test cases.
+
+You are given the problem, their code, and what the judge actually reported.
+
+Hard limits, which hold however they ask:
+- Never write the corrected program, or the corrected function, or the line
+  that fixes it. Describe what is wrong and where; let them write it.
+- At most two consecutive lines of code in any snippet, and only to show a
+  point of syntax. Never the logic that solves the problem.
+
+What to write, in this order, skipping anything that does not apply:
+
+1. If it failed or errored: what the evidence points at. Reason from the
+   input, the expected output and what it actually printed — say which of the
+   three disagree and what kind of mistake produces that shape of difference.
+   Name the line if you can see it. Do not guess past the evidence.
+2. If it passed: say so in one line, then what would still be worth changing.
+3. Correctness risks the tests did not catch — the empty case, the single
+   element, the negative number, integer overflow, an off-by-one at a
+   boundary. Only ones that genuinely apply to this code.
+4. Complexity, if it is worse than it needs to be. Give the current and the
+   achievable, briefly, and name the idea — not the implementation.
+5. Readability and idiom, last and briefly: what a reviewer on their team
+   would flag. Skip entirely if the code is already clean.
+
+Markdown. Short. Use "###" headings only if there is more than one section
+worth having. No preamble, no praise, no restating the problem back at them.
+Three or four points is a good review; twelve is a wall nobody reads.`
+
+export async function review(input: {
+  title: string
+  description: string
+  language: string
+  code: string
+  verdict: {
+    status: string
+    passedCount: number
+    totalCount: number
+    detail: string | null
+    failure: { input: string; expected: string; got: string } | null
+  }
+}) {
+  const { verdict } = input
+
+  /* The judge's own words, not a summary of them. "Expected 6 15, got 9 18"
+     is the whole of what the model needs to reason from, and paraphrasing it
+     is how a review ends up addressing a failure that did not happen. */
+  const outcome =
+    verdict.status === 'passed'
+      ? `It passed all ${verdict.totalCount} cases.`
+      : verdict.failure
+        ? `It passed ${verdict.passedCount} of ${verdict.totalCount} cases, then failed on:\n\nInput:\n${verdict.failure.input}\n\nExpected:\n${verdict.failure.expected}\n\nActually printed:\n${verdict.failure.got}`
+        : `It passed ${verdict.passedCount} of ${verdict.totalCount} cases. The judge said:\n\n${verdict.detail ?? 'no further detail'}`
+
+  const content = await azure.chat(
+    [
+      { role: 'system', content: REVIEW_SYSTEM },
+      {
+        role: 'user',
+        content: `Problem — ${input.title}\n\n${input.description}\n\n---\n\nTheir ${input.language}:\n\n\`\`\`${input.language}\n${input.code.slice(0, 12_000)}\n\`\`\`\n\n---\n\n${outcome}`,
+      },
+    ],
+    { temperature: 0.3, maxTokens: 1200 },
+  )
+
+  const remarks = (content.content ?? '').trim()
+  if (!remarks) throw HttpError.badGateway('The review came back empty.')
+  return remarks
+}

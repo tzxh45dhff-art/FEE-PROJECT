@@ -141,11 +141,17 @@ export type Problem = {
   hiddenCount: number
 }
 
+/** The case that failed, in pieces, so yours can sit next to the right one. */
+export type Failure = { input: string; expected: string; got: string }
+
 export type Verdict = {
   status: 'passed' | 'failed' | 'error'
   passedCount: number
   totalCount: number
+  /** Compiler or runtime output — about the code, not about any one case. */
   detail: string | null
+  /** Null for a hidden case, which never reports its own input or output. */
+  failure: Failure | null
 }
 
 export type Suggestion = { unit: string; topic: string; weightage: number | null }
@@ -295,6 +301,19 @@ export const submitCode = (
   problemId: string,
   input: { language: string; code: string; samplesOnly: boolean },
 ) => api.post<{ verdict: Verdict }>(`${base(roomId)}/coding/${problemId}/submissions`, input)
+
+/**
+ * Remarks on a run that already happened.
+ *
+ * The verdict goes up with the code because the model reviewing it should be
+ * reading what the judge actually reported rather than guessing whether the
+ * program works.
+ */
+export const reviewCode = (
+  roomId: string,
+  problemId: string,
+  input: { language: string; code: string; verdict: Verdict },
+) => api.post<{ remarks: string }>(`${base(roomId)}/coding/${problemId}/review`, input)
 
 export const deleteProblem = (roomId: string, problemId: string) =>
   api.del<{ ok: true }>(`${base(roomId)}/coding/${problemId}`)
