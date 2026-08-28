@@ -319,6 +319,12 @@ export const reviewCode = (
   input: { language: string; code: string; verdict: Verdict },
 ) => api.post<{ remarks: string }>(`${base(roomId)}/coding/${problemId}/review`, input)
 
+/** Re-run the generator's own check over an existing problem's cases. */
+export const recheckCases = (roomId: string, problemId: string) =>
+  api.post<{ removed: number; remaining: number }>(
+    `${base(roomId)}/coding/${problemId}/recheck`,
+  )
+
 export const deleteProblem = (roomId: string, problemId: string) =>
   api.del<{ ok: true }>(`${base(roomId)}/coding/${problemId}`)
 

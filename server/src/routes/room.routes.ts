@@ -110,6 +110,10 @@ roomRoutes.post(
   '/:id/study/coding/:problemId/review',
   asyncHandler(studyController.reviewSubmission),
 )
+roomRoutes.post(
+  '/:id/study/coding/:problemId/recheck',
+  asyncHandler(studyController.recheckProblem),
+)
 roomRoutes.delete('/:id/study/coding/:problemId', asyncHandler(studyController.deleteProblem))
 
 roomRoutes.get('/:id/study/progress', asyncHandler(studyController.progress))

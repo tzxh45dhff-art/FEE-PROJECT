@@ -849,6 +849,62 @@ export async function reviewSubmission(req: Request, res: Response) {
   })
 }
 
+/**
+ * Check an existing problem's cases, and throw away the ones that are wrong.
+ *
+ * Cases are verified when a problem is generated, but that check did not
+ * always exist, and every problem written before it has cases nobody ever
+ * ran. They fail in a particular and confusing way: the examples on the page
+ * are fine, so the code looks right, and then a submission dies on a hidden
+ * case that declares a hundred rows and supplies none. The student goes
+ * looking for a bug in a program that does not have one.
+ *
+ * This is the repair. Same reference-solution check the generator does, run
+ * against what is already stored.
+ */
+export async function recheckProblem(req: Request, res: Response) {
+  const roomId = await gate(req)
+
+  const problem = await prisma.codingProblem.findFirst({
+    where: { id: req.params.problemId!, roomId },
+    include: { testCases: { orderBy: { position: 'asc' } } },
+  })
+  if (!problem) throw HttpError.notFound('That problem is not here.')
+  if (!judge.configured()) {
+    throw HttpError.unavailable('There is no judge configured, so the cases cannot be checked.')
+  }
+
+  const kept = await generate.verifyCases(
+    `${problem.title}\n\n${problem.description}`,
+    /* The hidden flag goes with them: `verifyCases` uses the visible cases as
+       its yardstick for whether to believe its own reference solution. */
+    problem.testCases.map((testCase) => ({
+      input: testCase.input,
+      expected: testCase.expected,
+      hidden: testCase.hidden,
+    })),
+  )
+
+  /* Matched on content rather than on index — `verifyCases` returns a subset
+     in the same order, and identifying survivors by what they contain is what
+     makes that assumption unnecessary. */
+  const survivors = new Set(kept.map((entry) => `${entry.input}\u0000${entry.expected}`))
+  const doomed = problem.testCases.filter(
+    (testCase) => !survivors.has(`${testCase.input}\u0000${testCase.expected}`),
+  )
+
+  if (doomed.length > 0) {
+    await prisma.codingTestCase.deleteMany({
+      where: { id: { in: doomed.map((testCase) => testCase.id) } },
+    })
+  }
+
+  res.json({
+    removed: doomed.length,
+    remaining: problem.testCases.length - doomed.length,
+  })
+}
+
 export async function deleteProblem(req: Request, res: Response) {
   const roomId = await gate(req)
   const problem = await prisma.codingProblem.findFirst({

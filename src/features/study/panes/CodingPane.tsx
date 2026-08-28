@@ -6,6 +6,7 @@ import {
   Loader2,
   Lock,
   Play,
+  ShieldQuestion,
   Sparkles,
   Trash2,
   XCircle,
@@ -95,6 +96,7 @@ export default function CodingPane({ roomId, subject, caps, announce, seed }: Pa
           setOpen(null)
           void load()
         }}
+        onRefresh={setOpen}
       />
     )
   }
@@ -205,6 +207,7 @@ function Workspace({
   canReview,
   languages,
   onBack,
+  onRefresh,
 }: {
   roomId: string
   problem: studyApi.Problem
@@ -212,6 +215,7 @@ function Workspace({
   canReview: boolean
   languages: string[]
   onBack: () => void
+  onRefresh: (problem: studyApi.Problem) => void
 }) {
   const offered = problem.languages.filter((entry) => languages.includes(entry))
   const [language, setLanguage] = useState(offered[0] ?? problem.languages[0] ?? 'python')
@@ -221,6 +225,8 @@ function Workspace({
   const [error, setError] = useState<string | null>(null)
   const [remarks, setRemarks] = useState<string | null>(null)
   const [reviewing, setReviewing] = useState(false)
+  const [rechecking, setRechecking] = useState(false)
+  const [recheck, setRecheck] = useState<string | null>(null)
   const tutor = useTutor()
   const dark = useStudyDark()
 
@@ -241,6 +247,7 @@ function Workspace({
        through the next one would have them discussing output that is no
        longer on screen. */
     setRemarks(null)
+    setRecheck(null)
     try {
       const { verdict: got } = await studyApi.submitCode(roomId, problem.id, {
         language,
@@ -252,6 +259,31 @@ function Workspace({
       setError(cause instanceof Error ? cause.message : 'That did not run.')
     } finally {
       setRunning(null)
+    }
+  }
+
+  const recheckCases = async () => {
+    setRechecking(true)
+    setError(null)
+    try {
+      const { removed, remaining } = await studyApi.recheckCases(roomId, problem.id)
+      setRecheck(
+        removed === 0
+          ? `All ${remaining} cases check out. The fault is in the code, not in them.`
+          : `Removed ${removed} case${removed === 1 ? '' : 's'} that a reference solution could not satisfy. ${remaining} left — run it again.`,
+      )
+      if (removed > 0) {
+        setVerdict(null)
+        /* The header counts hidden cases, and it has just changed. Refetched
+           rather than adjusted by hand so the count comes from the same place
+           it always does. */
+        const { problem: fresh } = await studyApi.problem(roomId, problem.id)
+        onRefresh(fresh)
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The cases could not be checked.')
+    } finally {
+      setRechecking(false)
     }
   }
 
@@ -431,7 +463,7 @@ function Workspace({
               its minimum, and the column had no overflow to catch the rest.
               Sharing the space and scrolling inside is what makes a review of
               any length readable without pushing the code off screen. */}
-          {(!canRun || error || verdict) && (
+          {(!canRun || error || verdict || recheck) && (
             <div
               data-lenis-prevent
               className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
@@ -449,6 +481,50 @@ function Workspace({
 
               {error && <Problem message={error} />}
               {verdict && <Result verdict={verdict} />}
+
+              {/*
+                * Offered when the evidence points at the cases rather than at
+                * the code: earlier cases ran, then one stopped the program.
+                * That is what a case declaring rows it never supplies looks
+                * like from in here — the examples pass, so the code looks
+                * right, and then a hidden case kills it.
+                *
+                * Offered, not asserted. A later case can also be bigger than
+                * the earlier ones and find a genuine bug, and this is the way
+                * to tell those two apart rather than a claim about which it
+                * is.
+                */}
+              {(recheck || (verdict?.status === 'error' && verdict.passedCount > 0 && canRun)) && (
+                <div className="study-card p-3">
+                  {verdict && (
+                    <p className="text-[0.78rem] leading-relaxed text-[var(--study-soft)]">
+                      It ran on {verdict.passedCount} case
+                      {verdict.passedCount === 1 ? '' : 's'} and then stopped. If a test case is
+                      itself faulty — one that asks for more input than it provides — this finds
+                      it.
+                    </p>
+                  )}
+                  {recheck ? (
+                    <p className="text-[0.8rem] leading-relaxed text-[var(--study-text)]">
+                      {recheck}
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void recheckCases()}
+                      disabled={rechecking}
+                      className="study-btn mt-2.5 w-full"
+                    >
+                      {rechecking ? (
+                        <Loader2 aria-hidden className="size-4 animate-spin" />
+                      ) : (
+                        <ShieldQuestion aria-hidden className="size-4" />
+                      )}
+                      {rechecking ? 'Checking the cases…' : 'Check the test cases'}
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Offered after a run rather than before one, and never
                   automatically: a review is a billed call, and one written
@@ -546,7 +622,24 @@ function Result({ verdict }: { verdict: studyApi.Verdict }) {
 
       {shown && (
         <div className="border-t border-[var(--study-line)] p-3 pt-2.5">
-          <Block label={shown.passed ? 'Input — first example' : 'Input'} text={shown.input} />
+          {/*
+            * Which case this is has to be said, not implied.
+            *
+            * When a run stops on a later case, the one shown here is an
+            * earlier one that went fine — and printing it under "It did not
+            * run" with no explanation reads as though this input caused the
+            * error, which sends people looking at the wrong three lines.
+            */}
+          <Block
+            label={
+              verdict.status === 'error' && shown.passed
+                ? `Ran fine on this — the error came after it`
+                : shown.passed
+                  ? 'Input — first example'
+                  : 'Input — the case that failed'
+            }
+            text={shown.input}
+          />
           <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
             <Block label="Expected" text={shown.expected} tone="good" />
             <Block

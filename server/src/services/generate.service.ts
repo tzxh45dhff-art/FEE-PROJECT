@@ -290,10 +290,34 @@ Rules:
  * can be checked and everything is kept — unverified, and not pretending
  * otherwise.
  */
-const TRUSTED_AGREEMENT = 0.6
 const MAX_VERIFIED = 12
 
-async function verify(topic: string, cases: { input: string; expected: string }[]) {
+/**
+ * How much of the reference has to be right before it is allowed to condemn
+ * a case.
+ *
+ * The visible cases are the yardstick, not a percentage of the whole. They
+ * are the worked examples printed in the problem statement — the ones a human
+ * reads, checks by hand, and would notice were wrong — so a reference that
+ * reproduces every one of them is almost certainly correct, and anything it
+ * then disagrees with is the disagreement's fault.
+ *
+ * A share of all cases was the first rule here and it was the wrong one. On
+ * the problem that prompted this, three of six cases were fabricated: the
+ * reference agreed with exactly half, fell under a 60% bar, and was thrown
+ * out as broken — leaving every bad case in place. The proportion of cases
+ * that are wrong is precisely what is unknown, so it cannot be the thing the
+ * test depends on.
+ *
+ * With no visible case to check against there is no yardstick, and a bare
+ * majority is the most that can be claimed.
+ */
+const FALLBACK_AGREEMENT = 0.6
+
+export async function verifyCases(
+  statement: string,
+  cases: { input: string; expected: string; hidden?: boolean }[],
+) {
   if (!judge.configured()) return cases
 
   /* Bounded because every case is a round trip to the judge, and a problem
@@ -310,7 +334,7 @@ async function verify(topic: string, cases: { input: string; expected: string }[
         },
         {
           role: 'user',
-          content: `Problem: ${topic}\n\nIt must turn each of these inputs into exactly its output:\n\n${subject
+          content: `Problem: ${statement}\n\nIt must turn each of these inputs into exactly its output:\n\n${subject
             .map((c, i) => `Case ${i + 1}\nstdin:\n${c.input}\nstdout:\n${c.expected}`)
             .join('\n\n')}`,
         },
@@ -329,8 +353,20 @@ async function verify(topic: string, cases: { input: string; expected: string }[
   const results = await judge.check({ language: 'python', code: solution, cases: subject })
   if (!results) return cases
 
-  const agreed = results.filter(Boolean).length
-  if (agreed < Math.ceil(subject.length * TRUSTED_AGREEMENT)) return cases
+  /* Where the split is already decided, the visible ones are the yardstick.
+     Where it is not — during generation, before this function's own result
+     decides it — the model's leading cases are its examples, and those are
+     the same rows. */
+  const vetted = subject.some((entry) => entry.hidden !== undefined)
+    ? subject.map((entry, index) => (entry.hidden === false ? index : -1)).filter((i) => i >= 0)
+    : subject.slice(0, 3).map((_, index) => index)
+
+  const trusted =
+    vetted.length > 0
+      ? vetted.every((index) => results[index])
+      : results.filter(Boolean).length >= Math.ceil(subject.length * FALLBACK_AGREEMENT)
+
+  if (!trusted) return cases
 
   const kept = cases.filter((_, index) => index >= subject.length || results[index])
   /* Never strip a problem down to nothing on the word of one program. */
@@ -401,7 +437,12 @@ export async function coding(input: {
     throw HttpError.badGateway('The model returned no usable test cases. Try again.')
   }
 
-  const checked = await verify(input.topic, collected)
+  const checked = await verifyCases(
+    `${typeof parsed.title === 'string' ? parsed.title : input.topic}\n\n${
+      typeof parsed.description === 'string' ? parsed.description : ''
+    }`,
+    collected,
+  )
 
   const VISIBLE = 3
   const cases: GeneratedCase[] = checked.map((entry, index) => ({
