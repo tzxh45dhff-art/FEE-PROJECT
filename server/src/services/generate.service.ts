@@ -1,5 +1,6 @@
 import { prisma } from '../models/prisma.js'
 import * as azure from './azure.service.js'
+import * as judge from './judge.service.js'
 import * as retrieval from './retrieval.service.js'
 import * as syllabus from './syllabus.service.js'
 import { HttpError } from '../utils/HttpError.js'
@@ -229,12 +230,112 @@ Rules:
   answer is checked by comparing output text.
 - \`input\` is what goes on stdin; \`expected\` is the exact stdout, no trailing
   blank line.
-- Give 3 visible cases (hidden: false) and 6 hidden ones (hidden: true). The
-  hidden ones must include the edges — smallest input, largest, and whatever
-  the obvious wrong solution gets wrong.
+
+- Every case must be written out in full. If the format says a header line of
+  \`n\` followed by \`n\` lines, then all \`n\` lines are present in \`input\`.
+  Never abbreviate, never elide with "...", and never write a header for rows
+  you are not going to supply — a case whose input is incomplete has no
+  correct output, so whatever you put in \`expected\` is invented.
+
+- That constrains how large "large" can be. A case you cannot write out
+  completely is one you must not use: pick the largest input you can actually
+  enumerate — a few dozen lines — rather than claiming a maximum you would
+  have to fake. Testing that a solution is fast enough is not this format's
+  job.
+
+- Compute each \`expected\` from the \`input\` you just wrote, by hand, digit by
+  digit. Do not pattern-match it from a neighbouring case.
+- Give 3 visible cases (hidden: false) and 6 to 8 hidden ones (hidden: true).
+
+- The hidden cases are where the marking actually happens, so they are a
+  checklist, not filler. Work through these and include every one that means
+  anything for this problem:
+    * the smallest input the constraints allow — n = 1, an empty collection,
+      a single character;
+    * the largest the constraints allow, or close to it, so a solution that
+      is too slow or overflows is caught;
+    * negative numbers and zero, wherever the constraints permit them;
+    * every element identical, and every element distinct;
+    * already-sorted and reverse-sorted input, if order can matter;
+    * the boundary itself — exactly at a limit, exactly one either side;
+    * the answer being absent, empty, or zero, so a solution that always
+      finds something is caught.
+  Then add one case for each way a plausible-but-wrong solution fails: the
+  off-by-one, the unhandled tie, the assumption that input is sorted, the
+  greedy choice that is locally right and globally wrong.
+
+- The visible cases stay ordinary. They are there to show the format and let
+  somebody check they have understood the question, and burying an edge case
+  in them turns "read the examples" into a trap.
 - Starter code declares nothing but the reading and writing scaffold, with a
   clearly marked place to write the solution. Never include the solution.
 - Return only the JSON object.`
+
+/**
+ * Throw away the cases a reference solution disagrees with.
+ *
+ * Generated test cases are the part of this feature most able to be quietly
+ * wrong. A model writing ten cases by hand will, sooner or later, write a
+ * header for rows it never supplies and then invent the answer — and a
+ * fabricated case is worse than a missing one, because it fails a correct
+ * submission and sends somebody looking for a bug they do not have.
+ *
+ * So the cases are checked the only way that actually settles it: write a
+ * solution, run it against them, and believe the run.
+ *
+ * The reference can be wrong too, which is why disagreement alone is not
+ * enough to delete anything. If it fails most of them, the reference is the
+ * broken one and everything is kept; only when it agrees with a clear
+ * majority is it trusted to condemn the rest. Without a judge, nothing here
+ * can be checked and everything is kept — unverified, and not pretending
+ * otherwise.
+ */
+const TRUSTED_AGREEMENT = 0.6
+const MAX_VERIFIED = 12
+
+async function verify(topic: string, cases: { input: string; expected: string }[]) {
+  if (!judge.configured()) return cases
+
+  /* Bounded because every case is a round trip to the judge, and a problem
+     with more than a dozen is not made better by a slower generation. */
+  const subject = cases.slice(0, MAX_VERIFIED)
+
+  let solution: string
+  try {
+    const written = await azure.chat(
+      [
+        {
+          role: 'system',
+          content: `Write a correct Python 3 solution. It reads from standard input and writes to standard output. Output only the program — no markdown fence, no commentary, no explanation.`,
+        },
+        {
+          role: 'user',
+          content: `Problem: ${topic}\n\nIt must turn each of these inputs into exactly its output:\n\n${subject
+            .map((c, i) => `Case ${i + 1}\nstdin:\n${c.input}\nstdout:\n${c.expected}`)
+            .join('\n\n')}`,
+        },
+      ],
+      { temperature: 0, maxTokens: 1200 },
+    )
+    solution = (written.content ?? '').replace(/^```[a-z]*\n?|```$/gm, '').trim()
+  } catch {
+    /* No reference, no verdict. The cases go through unchecked rather than
+       the whole generation failing over a step that is an improvement, not a
+       requirement. */
+    return cases
+  }
+  if (!solution) return cases
+
+  const results = await judge.check({ language: 'python', code: solution, cases: subject })
+  if (!results) return cases
+
+  const agreed = results.filter(Boolean).length
+  if (agreed < Math.ceil(subject.length * TRUSTED_AGREEMENT)) return cases
+
+  const kept = cases.filter((_, index) => index >= subject.length || results[index])
+  /* Never strip a problem down to nothing on the word of one program. */
+  return kept.length > 0 ? kept : cases
+}
 
 export async function coding(input: {
   subjectId: string
@@ -267,21 +368,48 @@ export async function coding(input: {
     { temperature: 0.7, maxTokens: 8000 },
   )
 
-  const cases: GeneratedCase[] = []
+  /*
+   * The split is decided here, not taken from the model.
+   *
+   * Asked for three visible and the rest hidden, it has cheerfully returned
+   * one hidden case and marked the two largest as examples — which puts the
+   * hardest input on the page as the thing to read first, and leaves almost
+   * nothing behind to mark against. Ordering is the model's to choose; which
+   * end of that order is visible is not.
+   */
+  const seen = new Set<string>()
+  const collected: { input: string; expected: string }[] = []
   for (const raw of parsed.cases ?? []) {
     const c = raw as Partial<GeneratedCase>
     if (typeof c.input !== 'string' || typeof c.expected !== 'string') continue
-    cases.push({ input: c.input, expected: c.expected, hidden: c.hidden === true })
+    /* An empty input or an empty expected output is not a test, and a
+       duplicate is a test already being run. */
+    if (!c.input.trim() || !c.expected.trim()) continue
+    const key = `${c.input}\u0000${c.expected}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    collected.push({ input: c.input, expected: c.expected })
   }
 
-  const visible = cases.filter((entry) => !entry.hidden).length
   /*
    * A problem with nothing to show is not usable.
    *
    * Hidden cases alone would mean submitting blind — no way to check your
    * understanding of the format before spending an attempt on it.
    */
-  if (visible === 0) throw HttpError.badGateway('The model returned no example cases. Try again.')
+  if (collected.length === 0) {
+    throw HttpError.badGateway('The model returned no usable test cases. Try again.')
+  }
+
+  const checked = await verify(input.topic, collected)
+
+  const VISIBLE = 3
+  const cases: GeneratedCase[] = checked.map((entry, index) => ({
+    ...entry,
+    /* The last case stays visible when that is all there is, so a problem
+       never arrives with nothing to read. */
+    hidden: checked.length > 1 && index >= Math.min(VISIBLE, checked.length - 1),
+  }))
 
   const description = typeof parsed.description === 'string' ? parsed.description.trim() : ''
   if (!description) throw HttpError.badGateway('The model returned an empty problem. Try again.')
@@ -393,7 +521,7 @@ export async function review(input: {
     passedCount: number
     totalCount: number
     detail: string | null
-    failure: { input: string; expected: string; got: string } | null
+    shown: { input: string; expected: string; got: string; passed: boolean } | null
   }
 }) {
   const { verdict } = input
@@ -401,11 +529,13 @@ export async function review(input: {
   /* The judge's own words, not a summary of them. "Expected 6 15, got 9 18"
      is the whole of what the model needs to reason from, and paraphrasing it
      is how a review ends up addressing a failure that did not happen. */
+  const failing = verdict.shown && !verdict.shown.passed ? verdict.shown : null
+
   const outcome =
     verdict.status === 'passed'
       ? `It passed all ${verdict.totalCount} cases.`
-      : verdict.failure
-        ? `It passed ${verdict.passedCount} of ${verdict.totalCount} cases, then failed on:\n\nInput:\n${verdict.failure.input}\n\nExpected:\n${verdict.failure.expected}\n\nActually printed:\n${verdict.failure.got}`
+      : failing
+        ? `It passed ${verdict.passedCount} of ${verdict.totalCount} cases, then failed on:\n\nInput:\n${failing.input}\n\nExpected:\n${failing.expected}\n\nActually printed:\n${failing.got}`
         : `It passed ${verdict.passedCount} of ${verdict.totalCount} cases. The judge said:\n\n${verdict.detail ?? 'no further detail'}`
 
   const content = await azure.chat(

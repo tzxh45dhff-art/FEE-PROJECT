@@ -141,8 +141,8 @@ export type Problem = {
   hiddenCount: number
 }
 
-/** The case that failed, in pieces, so yours can sit next to the right one. */
-export type Failure = { input: string; expected: string; got: string }
+/** One case, in pieces, so your output can sit next to the right one. */
+export type CaseView = { input: string; expected: string; got: string; passed: boolean }
 
 export type Verdict = {
   status: 'passed' | 'failed' | 'error'
@@ -150,8 +150,12 @@ export type Verdict = {
   totalCount: number
   /** Compiler or runtime output — about the code, not about any one case. */
   detail: string | null
-  /** Null for a hidden case, which never reports its own input or output. */
-  failure: Failure | null
+  /**
+   * A case to look at, whichever way the run went — the failing one when
+   * there is one, the first visible one otherwise. Null only when nothing
+   * visible ran.
+   */
+  shown: CaseView | null
 }
 
 export type Suggestion = { unit: string; topic: string; weightage: number | null }

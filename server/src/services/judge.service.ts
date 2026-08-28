@@ -52,17 +52,17 @@ export type CaseResult = {
 }
 
 /**
- * The case that failed, in three pieces rather than one paragraph.
+ * One case, in three pieces rather than one paragraph.
  *
  * It used to be assembled into a single block of text here, which read fine
  * in a terminal and badly in a panel: what you want to do with a wrong answer
  * is put yours next to the right one and look for the difference, and that is
  * hard when both are buried in the same scrolling <pre>.
  *
- * Only ever set for a visible case. A hidden case that reports its own input
- * and expected output is not hidden.
+ * Only ever a visible case. A hidden case that reports its own input and
+ * expected output is not hidden.
  */
-export type Failure = { input: string; expected: string; got: string }
+export type CaseView = { input: string; expected: string; got: string; passed: boolean }
 
 export type JudgeVerdict = {
   status: 'passed' | 'failed' | 'error'
@@ -70,7 +70,16 @@ export type JudgeVerdict = {
   totalCount: number
   /** Compiler or runtime output — about the code, not about any one case. */
   detail: string | null
-  failure: Failure | null
+  /**
+   * A case to look at, whatever the outcome.
+   *
+   * The failing one when something failed, and otherwise the first visible
+   * one — because "it passed" is not the same as being able to see what the
+   * program printed, and wanting to check that is not a strange thing to
+   * want. Null only when nothing visible ran: a compile error, or a failure
+   * that happened on a hidden case.
+   */
+  shown: CaseView | null
 }
 
 function headers() {
@@ -175,6 +184,10 @@ export async function run(input: {
   const deadline = setTimeout(() => controller.abort(), TOTAL_TIMEOUT_MS)
 
   let passed = 0
+  /* Kept so a run that passes can still show its output. Overwritten by the
+     failing case below when there is one, since that is the more useful of
+     the two to be looking at. */
+  let shown: CaseView | null = null
 
   try {
     for (const testCase of input.cases) {
@@ -195,7 +208,7 @@ export async function run(input: {
           /* Compile output is shown in full regardless of whether the case was
              hidden — it is about the submitted code, not about the case. */
           detail: compileError.slice(0, 2000),
-          failure: null,
+          shown,
         }
       }
 
@@ -207,13 +220,25 @@ export async function run(input: {
           passedCount: passed,
           totalCount: input.cases.length,
           detail: reason.slice(0, 2000),
-          failure: null,
+          shown,
         }
       }
 
       const got = result.stdout ?? ''
+      const view: CaseView | null = testCase.hidden
+        ? null
+        : {
+            input: testCase.input.slice(0, 2000),
+            expected: testCase.expected.slice(0, 2000),
+            got: got.slice(0, 2000),
+            passed: matches(got, testCase.expected),
+          }
+
       if (matches(got, testCase.expected)) {
         passed += 1
+        /* First visible case only — later ones would keep replacing it, and
+           the first is the one the examples on screen are showing. */
+        if (view && !shown) shown = view
         continue
       }
 
@@ -232,13 +257,9 @@ export async function run(input: {
         detail: testCase.hidden
           ? `Failed on a hidden case (${passed + 1} of ${input.cases.length}).`
           : null,
-        failure: testCase.hidden
-          ? null
-          : {
-              input: testCase.input.slice(0, 2000),
-              expected: testCase.expected.slice(0, 2000),
-              got: got.slice(0, 2000),
-            },
+        /* The failure replaces whatever passed before it. A case that went
+           wrong is worth more of the panel than one that went right. */
+        shown: view ?? shown,
       }
     }
   } finally {
@@ -250,6 +271,56 @@ export async function run(input: {
     passedCount: passed,
     totalCount: input.cases.length,
     detail: null,
-    failure: null,
+    shown,
+  }
+}
+
+/**
+ * Run one program against every case and report each one separately.
+ *
+ * `run` above stops at the first failure, which is right for a submission —
+ * the student wants the first thing that went wrong, not a list. This is for
+ * checking a freshly generated problem against a reference solution, where
+ * what matters is exactly which cases disagree.
+ *
+ * Returns null when there is no judge to ask, which the caller must treat as
+ * "unknown" rather than "fine".
+ */
+export async function check(input: {
+  language: string
+  code: string
+  cases: { input: string; expected: string }[]
+}): Promise<boolean[] | null> {
+  if (!configured()) return null
+
+  const languageId = LANGUAGE_IDS[input.language]
+  if (!languageId) return null
+
+  const controller = new AbortController()
+  const deadline = setTimeout(() => controller.abort(), TOTAL_TIMEOUT_MS)
+
+  try {
+    const results: boolean[] = []
+    for (const testCase of input.cases) {
+      try {
+        const result = await runOne(languageId, input.code, testCase.input, controller.signal)
+        /* A case the reference could not complete counts as a disagreement.
+           A reference that crashes on an input is evidence about that input
+           as much as about the reference. */
+        const ok =
+          result.status?.id === ACCEPTED &&
+          !(result.compile_output ?? '').trim() &&
+          !(result.stderr ?? '').trim() &&
+          matches(result.stdout ?? '', testCase.expected)
+        results.push(ok)
+      } catch {
+        /* The judge itself failed. Unknown, not wrong — reported as agreement
+           so a flaky judge cannot delete a room's test cases. */
+        results.push(true)
+      }
+    }
+    return results
+  } finally {
+    clearTimeout(deadline)
   }
 }

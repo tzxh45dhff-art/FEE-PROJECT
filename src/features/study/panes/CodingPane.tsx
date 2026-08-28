@@ -393,7 +393,8 @@ function Workspace({
         </div>
 
         <div className="flex min-h-0 flex-col gap-3">
-          <div className="min-h-[16rem] flex-1 overflow-hidden rounded-[0.9rem] border border-[var(--study-line)]">
+          {/* Keeps a workable minimum however much output there is below. */}
+          <div className="min-h-[12rem] flex-1 overflow-hidden rounded-[0.9rem] border border-[var(--study-line)]">
             <Suspense
               fallback={
                 <div className="grid h-full place-items-center">
@@ -422,54 +423,67 @@ function Workspace({
             </Suspense>
           </div>
 
-          {/* Said here, not only as a tooltip on a greyed button. A disabled
-              control with no visible reason reads as broken, and the reason
-              is one a person can act on. */}
-          {!canRun && (
-            <p className="shrink-0 rounded-[0.9rem] border border-[var(--study-line)] px-3 py-2.5 text-[0.76rem] leading-relaxed text-[var(--study-soft)]">
-              No judge is configured on this server, so this cannot be run. Set{' '}
-              <code className="text-[var(--study-text)]">JUDGE_URL</code> to a Judge0-compatible
-              API and the buttons above come alive.
-            </p>
-          )}
+          {/* One scroller for everything the run produces.
+              
+              These used to be loose siblings of the editor with no height of
+              their own, so a long review simply grew past the bottom of the
+              window with nothing to scroll: the editor could only shrink to
+              its minimum, and the column had no overflow to catch the rest.
+              Sharing the space and scrolling inside is what makes a review of
+              any length readable without pushing the code off screen. */}
+          {(!canRun || error || verdict) && (
+            <div
+              data-lenis-prevent
+              className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
+            >
+              {!canRun && (
+                /* Said here, not only as a tooltip on a greyed button. A
+                   disabled control with no visible reason reads as broken,
+                   and the reason is one a person can act on. */
+                <p className="rounded-[0.9rem] border border-[var(--study-line)] px-3 py-2.5 text-[0.76rem] leading-relaxed text-[var(--study-soft)]">
+                  No judge is configured on this server, so this cannot be run. Set{' '}
+                  <code className="text-[var(--study-text)]">JUDGE_URL</code> to a
+                  Judge0-compatible API and the buttons above come alive.
+                </p>
+              )}
 
-          {error && <Problem message={error} />}
-          {verdict && <Result verdict={verdict} />}
+              {error && <Problem message={error} />}
+              {verdict && <Result verdict={verdict} />}
 
-          {/* Offered after a run rather than before one, and never
-              automatically: a review is a billed call, and one written
-              without knowing whether the code even compiles is guesswork
-              dressed as feedback. */}
-          {verdict && canReview && (
-            <div data-lenis-prevent className="min-h-0 shrink-0 overflow-y-auto">
-              {remarks ? (
-                <div className="study-card p-3.5">
-                  <p className="mb-2 flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.07em] text-[var(--study-faint)]">
-                    <Sparkles aria-hidden className="size-3.5" />
-                    Review
-                  </p>
-                  <div className="study-prose study-prose-tight">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{remarks}</ReactMarkdown>
+              {/* Offered after a run rather than before one, and never
+                  automatically: a review is a billed call, and one written
+                  without knowing whether the code even compiles is guesswork
+                  dressed as feedback. */}
+              {verdict && canReview && (
+                remarks ? (
+                  <div className="study-card p-3.5">
+                    <p className="mb-2 flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.07em] text-[var(--study-faint)]">
+                      <Sparkles aria-hidden className="size-3.5" />
+                      Review
+                    </p>
+                    <div className="study-prose study-prose-tight">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{remarks}</ReactMarkdown>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void review()}
-                  disabled={reviewing}
-                  className="study-btn w-full"
-                >
-                  {reviewing ? (
-                    <Loader2 aria-hidden className="size-4 animate-spin" />
-                  ) : (
-                    <Sparkles aria-hidden className="size-4" />
-                  )}
-                  {reviewing
-                    ? 'Reading your code…'
-                    : verdict.status === 'passed'
-                      ? 'What could be better?'
-                      : 'Why did this fail?'}
-                </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void review()}
+                    disabled={reviewing}
+                    className="study-btn w-full"
+                  >
+                    {reviewing ? (
+                      <Loader2 aria-hidden className="size-4 animate-spin" />
+                    ) : (
+                      <Sparkles aria-hidden className="size-4" />
+                    )}
+                    {reviewing
+                      ? 'Reading your code…'
+                      : verdict.status === 'passed'
+                        ? 'What could be better?'
+                        : 'Why did this fail?'}
+                  </button>
+                )
               )}
             </div>
           )}
@@ -491,20 +505,25 @@ function monacoLanguage(language: string) {
 /**
  * What the judge said, laid out to be compared rather than read.
  *
- * Expected and Got sit side by side because that is the shape of the question
- * a failing run raises — not "what happened" but "where do these two differ".
- * They used to arrive as one block of pre-formatted text with the actual
- * output last, below the fold of a short scrolling box, which is the one part
- * you needed.
+ * Expected and Your output sit side by side because that is the shape of the
+ * question a run raises — not "what happened" but "where do these two
+ * differ". They used to arrive as one block of pre-formatted text with the
+ * actual output last, below the fold of a short scrolling box, which is the
+ * one part you needed.
+ *
+ * Shown on a pass as well as a failure. "All 3 cases passed" is a verdict,
+ * not a look at what the program printed, and wanting to see that is not a
+ * strange thing to want — it is how you notice the trailing space that
+ * happens not to have been tested.
  */
 function Result({ verdict }: { verdict: studyApi.Verdict }) {
   const passed = verdict.status === 'passed'
-  const { failure } = verdict
+  const shown = verdict.shown
 
   return (
     <div
       className={cn(
-        'shrink-0 rounded-[0.9rem] border',
+        'rounded-[0.9rem] border',
         passed
           ? 'border-[var(--study-good)] bg-[var(--study-good-soft)]'
           : 'border-[var(--study-bad)] bg-[var(--study-bad-soft)]',
@@ -525,12 +544,18 @@ function Result({ verdict }: { verdict: studyApi.Verdict }) {
         </span>
       </p>
 
-      {failure && (
+      {shown && (
         <div className="border-t border-[var(--study-line)] p-3 pt-2.5">
-          <Block label="Input" text={failure.input} />
+          <Block label={shown.passed ? 'Input — first example' : 'Input'} text={shown.input} />
           <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
-            <Block label="Expected" text={failure.expected} tone="good" />
-            <Block label="Your output" text={failure.got} tone="bad" />
+            <Block label="Expected" text={shown.expected} tone="good" />
+            <Block
+              label="Your output"
+              text={shown.got}
+              /* Green when it matched. Painting it red on a pass would say
+                 something went wrong when nothing did. */
+              tone={shown.passed ? 'good' : 'bad'}
+            />
           </div>
         </div>
       )}

@@ -804,8 +804,13 @@ const reviewInput = z.object({
     passedCount: z.number().int().min(0),
     totalCount: z.number().int().min(0),
     detail: z.string().nullable().default(null),
-    failure: z
-      .object({ input: z.string(), expected: z.string(), got: z.string() })
+    shown: z
+      .object({
+        input: z.string(),
+        expected: z.string(),
+        got: z.string(),
+        passed: z.boolean(),
+      })
       .nullable()
       .default(null),
   }),
