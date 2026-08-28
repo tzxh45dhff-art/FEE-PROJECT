@@ -289,9 +289,30 @@ export async function nextUp(req: Request, res: Response) {
 
 // ─── Questions ────────────────────────────────────────────────────────────────
 
+/**
+ * Keep only the ids that really belong to this subject and can be searched.
+ *
+ * A resource still processing has no chunks yet, so asking to draw from it
+ * would silently ground nothing — dropping it here means the caller falls
+ * back to the whole shelf instead of getting an empty answer.
+ */
+async function pickable(subjectId: string, ids: string[] | undefined) {
+  if (!ids?.length) return undefined
+  const rows = await prisma.resource.findMany({
+    where: { id: { in: ids }, subjectId, status: 'ready' },
+    select: { id: true },
+  })
+  return rows.length > 0 ? rows.map((row) => row.id) : undefined
+}
+
 const mcqInput = z.object({
   subjectId: z.string(),
   topic: z.string().trim().min(1, 'What should the questions be about?').max(300),
+  /* Which documents to draw on. Absent means everything on the shelf, which
+     is what almost everybody wants; naming them is for "just from these
+     slides". Validated against the subject rather than trusted, so an id from
+     another room cannot be read through this. */
+  resourceIds: z.array(z.string()).max(50).optional(),
   count: z.number().int().min(1).max(20).default(8),
   difficulty: z.enum(['easy', 'medium', 'hard', 'mixed']).default('mixed'),
 })
@@ -341,6 +362,7 @@ export async function createMcq(req: Request, res: Response) {
     topic: input.topic,
     count: input.count,
     difficulty: input.difficulty,
+    resourceIds: await pickable(subject.id, input.resourceIds),
   })
 
   const set = await prisma.mcqSet.create({
@@ -568,6 +590,11 @@ export async function deleteMcq(req: Request, res: Response) {
 const notesInput = z.object({
   subjectId: z.string(),
   topic: z.string().trim().min(1, 'What should the notes cover?').max(300),
+  /* Which documents to draw on. Absent means everything on the shelf, which
+     is what almost everybody wants; naming them is for "just from these
+     slides". Validated against the subject rather than trusted, so an id from
+     another room cannot be read through this. */
+  resourceIds: z.array(z.string()).max(50).optional(),
   depth: z.enum(['brief', 'standard', 'thorough']).default('standard'),
 })
 
@@ -613,6 +640,7 @@ export async function createNote(req: Request, res: Response) {
     subjectId: subject.id,
     topic: input.topic,
     depth: input.depth,
+    resourceIds: await pickable(subject.id, input.resourceIds),
   })
 
   const note = await prisma.note.create({
@@ -644,6 +672,11 @@ export async function deleteNote(req: Request, res: Response) {
 const codingInput = z.object({
   subjectId: z.string(),
   topic: z.string().trim().min(1, 'What should the problem be about?').max(300),
+  /* Which documents to draw on. Absent means everything on the shelf, which
+     is what almost everybody wants; naming them is for "just from these
+     slides". Validated against the subject rather than trusted, so an id from
+     another room cannot be read through this. */
+  resourceIds: z.array(z.string()).max(50).optional(),
   difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
 })
 
@@ -686,6 +719,7 @@ export async function createProblem(req: Request, res: Response) {
     subjectId: subject.id,
     topic: input.topic,
     difficulty: input.difficulty,
+    resourceIds: await pickable(subject.id, input.resourceIds),
   })
 
   const problem = await prisma.codingProblem.create({

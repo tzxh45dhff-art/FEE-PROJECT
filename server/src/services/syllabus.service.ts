@@ -213,3 +213,19 @@ export async function asPromptContext(subjectId: string): Promise<string | null>
 
   return `Course: ${outline.title}\n\n${units}${outcomes}`
 }
+
+/**
+ * Which uploaded document the syllabus was read out of, if it is still there.
+ *
+ * Used to keep the handout out of content retrieval — see the note in
+ * `generate.gather` for why an index makes such poor material. Null when the
+ * outline was read from a file since deleted, which is fine: there are then
+ * no chunks of it to exclude either.
+ */
+export async function sourceResourceId(subjectId: string) {
+  const row = await prisma.syllabus.findUnique({
+    where: { subjectId },
+    select: { resourceId: true },
+  })
+  return row?.resourceId ?? null
+}

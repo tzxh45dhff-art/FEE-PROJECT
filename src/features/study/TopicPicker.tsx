@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import * as studyApi from '@/features/study/api'
 import { GenerateButton } from '@/features/study/panes/shared'
+import { cn } from '@/lib/utils'
 
 /**
  * What to write about, with the syllabus offering answers.
@@ -31,7 +32,10 @@ export function TopicPicker({
   disabled: boolean
   reason?: string
   busy: boolean
-  onSubmit: (topic: string, options: { count: number; difficulty: string; depth: string }) => void
+  onSubmit: (
+    topic: string,
+    options: { count: number; difficulty: string; depth: string; resourceIds?: string[] },
+  ) => void
   showCount?: boolean
   showDifficulty?: boolean
   showDepth?: boolean
@@ -44,6 +48,10 @@ export function TopicPicker({
   const [difficulty, setDifficulty] = useState('mixed')
   const [depth, setDepth] = useState('standard')
   const [suggestions, setSuggestions] = useState<studyApi.Suggestion[]>([])
+  const [shelf, setShelf] = useState<studyApi.StudyResource[]>([])
+  const [syllabusId, setSyllabusId] = useState<string | null>(null)
+  /* Empty means the whole shelf, which is what almost everybody wants. */
+  const [picked, setPicked] = useState<string[]>([])
 
   /* Only when a new one arrives — this must not fight with typing. */
   useEffect(() => {
@@ -64,10 +72,34 @@ export function TopicPicker({
     }
   }, [roomId, subjectId])
 
+  /* The shelf, so it can be narrowed to one document. Reset on every subject
+     change — a choice of documents means nothing in a different course. */
+  useEffect(() => {
+    if (!subjectId) return
+    let cancelled = false
+    setPicked([])
+    void Promise.all([
+      studyApi.resources(roomId, subjectId).catch(() => ({ resources: [] })),
+      studyApi.syllabus(roomId, subjectId).catch(() => ({ syllabus: null })),
+    ]).then(([{ resources }, { syllabus }]) => {
+      if (cancelled) return
+      setShelf(resources.filter((row) => row.status === 'ready'))
+      setSyllabusId(syllabus?.resourceId ?? null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [roomId, subjectId])
+
+  /* The syllabus is excluded from the choice: it is always in the prompt as
+     the outline, and offering it as a source to write *from* invites picking
+     an index instead of the material. */
+  const content = shelf.filter((row) => row.id !== syllabusId)
+
   const go = () => {
     const trimmed = topic.trim()
     if (!trimmed) return
-    onSubmit(trimmed, { count, difficulty, depth })
+    onSubmit(trimmed, { count, difficulty, depth, resourceIds: picked.length ? picked : undefined })
   }
 
   return (
@@ -136,6 +168,67 @@ export function TopicPicker({
           onClick={go}
         />
       </div>
+
+      {/*
+        * Which documents to write from.
+        *
+        * Only worth showing when there is a choice to make — with one
+        * document on the shelf this is a control with a single option, and
+        * the syllabus is not among them because it is always used, as the
+        * outline rather than as material.
+        */}
+      {content.length > 1 && (
+        <div className="mt-3 border-t border-[var(--study-line)] pt-3">
+          <p className="text-[0.72rem] text-[var(--study-faint)]">
+            Written from{' '}
+            {picked.length === 0
+              ? 'everything on the shelf'
+              : `${picked.length} of ${content.length} documents`}
+            {syllabusId && ' — the syllabus decides the topics either way'}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setPicked([])}
+              aria-pressed={picked.length === 0}
+              className={cn(
+                'rounded-full border px-3 py-1 text-[0.74rem] outline-none transition-colors',
+                picked.length === 0
+                  ? 'border-[var(--study-accent)] bg-[var(--study-accent-soft)] text-[var(--study-text)]'
+                  : 'border-[var(--study-line)] text-[var(--study-soft)] hover:bg-[var(--study-card)]',
+              )}
+            >
+              Everything
+            </button>
+            {content.map((row) => {
+              const on = picked.includes(row.id)
+              return (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() =>
+                    setPicked((current) =>
+                      current.includes(row.id)
+                        ? current.filter((id) => id !== row.id)
+                        : [...current, row.id],
+                    )
+                  }
+                  aria-pressed={on}
+                  title={row.title}
+                  className={cn(
+                    'max-w-[16rem] truncate rounded-full border px-3 py-1 text-[0.74rem] outline-none transition-colors',
+                    on
+                      ? 'border-[var(--study-accent)] bg-[var(--study-accent-soft)] text-[var(--study-text)]'
+                      : 'border-[var(--study-line)] text-[var(--study-soft)] hover:bg-[var(--study-card)]',
+                  )}
+                >
+                  {row.title}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {suggestions.length > 0 && (
         <div className="mt-3 border-t border-[var(--study-line)] pt-3">

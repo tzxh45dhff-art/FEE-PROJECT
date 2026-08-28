@@ -61,12 +61,17 @@ export default function McqPane({ roomId, subject, caps, announce, seed }: PaneP
     void load()
   }, [load])
 
-  const generate = async (topic: string, count: number, difficulty: string) => {
+  const generate = async (
+    topic: string,
+    count: number,
+    difficulty: string,
+    resourceIds?: string[],
+  ) => {
     if (!subjectId) return
     setBusy(true)
     setError(null)
     try {
-      await studyApi.createMcq(roomId, { subjectId, topic, count, difficulty })
+      await studyApi.createMcq(roomId, { subjectId, topic, count, difficulty, resourceIds })
       await load()
       announce('mcq', subjectId)
     } catch (cause) {
@@ -124,7 +129,9 @@ export default function McqPane({ roomId, subject, caps, announce, seed }: PaneP
         reason="This server has no AI key configured."
         busy={busy}
         seed={seed}
-        onSubmit={(topic, options) => void generate(topic, options.count, options.difficulty)}
+        onSubmit={(topic, options) =>
+          void generate(topic, options.count, options.difficulty, options.resourceIds)
+        }
         showCount
         showDifficulty
       />

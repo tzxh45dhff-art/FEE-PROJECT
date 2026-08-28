@@ -36,12 +36,61 @@ export type Grounding = {
  * Both halves are optional and independent: a subject can have a syllabus and
  * no documents (the handout is uploaded first, which is the normal order), or
  * documents and no syllabus.
+ *
+ * The two halves do different jobs, which is why the syllabus is kept out of
+ * the second one. A course handout is an index: it names every topic in the
+ * course and says almost nothing about any of them. That makes its passages
+ * score well against any topic query — it does literally contain the word —
+ * while carrying course codes, outcome-mapping tables and enrolment links
+ * instead of anything to learn from.
+ *
+ * Measured on a real handout: a search for "Flexbox" returned one passage
+ * from the lecture notes and seven from the syllabus — a coupon code, a
+ * PO/CLO table, a list of project titles. All of it then went to the model
+ * under "prefer these over your general knowledge", which is worse than
+ * having retrieved nothing at all.
+ *
+ * So the outline goes in as the outline, and the passages come from
+ * everything else. Unless there is nothing else, in which case the handout is
+ * all the room has, and this course's own thin words beat writing from
+ * nowhere.
  */
-export async function gather(subjectId: string, topic: string): Promise<Grounding> {
-  const [outline, hits] = await Promise.all([
+export async function gather(
+  subjectId: string,
+  topic: string,
+  options: { only?: string[] } = {},
+): Promise<Grounding> {
+  const [outline, syllabusResourceId] = await Promise.all([
     syllabus.asPromptContext(subjectId).catch(() => null),
-    retrieval.search(subjectId, topic, { limit: 8 }).catch(() => []),
+    syllabus.sourceResourceId(subjectId).catch(() => null),
   ])
+
+  /* A document chosen by hand is never second-guessed. Somebody who picked
+     the handout on purpose is asking for the handout. */
+  const picked = options.only?.length ? options.only : null
+  const exclude = !picked && syllabusResourceId ? [syllabusResourceId] : []
+
+  let hits = await retrieval
+    .search(subjectId, topic, { limit: 8, only: picked ?? undefined, exclude })
+    .catch(() => [] as retrieval.Hit[])
+
+  /*
+   * Fall back to the handout only when it is the whole shelf.
+   *
+   * Not when nothing matched — that is the opposite case. A subject with real
+   * lecture notes that say nothing about this topic should report exactly
+   * that, and reaching for the syllabus instead fills the prompt with the
+   * course codes and enrolment links this function just finished excluding,
+   * under a badge claiming the answer came from the student's own material.
+   */
+  if (hits.length === 0 && exclude.length > 0) {
+    const others = await prisma.resource.count({
+      where: { subjectId, status: 'ready', id: { notIn: exclude } },
+    })
+    if (others === 0) {
+      hits = await retrieval.search(subjectId, topic, { limit: 8 }).catch(() => [])
+    }
+  }
 
   return {
     hits,
@@ -57,13 +106,13 @@ function context(grounding: Grounding) {
 
   if (grounding.outline) {
     parts.push(
-      `This is the course being studied. Use its own words for topic names, and respect what it says each unit covers.\n\n${grounding.outline}`,
+      `This is the course being studied — its syllabus, which is what the student is examined on. Use it to decide what belongs in the answer and what does not, and use its own words for topic names. It is an index, not the material: never quote it as though it explained anything.\n\n${grounding.outline}`,
     )
   }
 
   if (grounding.hits.length > 0) {
     parts.push(
-      `These passages are from the student's own uploaded material. Prefer them over your general knowledge wherever they say anything relevant, and cite them by their bracketed number when you use them.\n\n${retrieval.asContext(grounding.hits)}`,
+      `These passages are the course material itself — the student's own lecture notes, slides and readings. This is what to write from: follow their definitions, their notation and their worked examples in preference to your own wherever they say anything relevant, and cite them by their bracketed number when you use them.\n\n${retrieval.asContext(grounding.hits)}`,
     )
   } else {
     parts.push(
@@ -103,10 +152,12 @@ Rules:
 export async function mcq(input: {
   subjectId: string
   topic: string
+  /** Draw only from these documents. Empty means the whole shelf. */
+  resourceIds?: string[]
   count: number
   difficulty: string
 }): Promise<{ title: string; questions: GeneratedMcq[]; grounding: Grounding }> {
-  const grounding = await gather(input.subjectId, input.topic)
+  const grounding = await gather(input.subjectId, input.topic, { only: input.resourceIds })
 
   const parsed = await azure.chatJson<{ title?: string; questions?: unknown[] }>(
     [
@@ -184,9 +235,11 @@ Return only the JSON object.`
 export async function notes(input: {
   subjectId: string
   topic: string
+  /** Draw only from these documents. Empty means the whole shelf. */
+  resourceIds?: string[]
   depth: string
 }): Promise<{ title: string; content: string; grounding: Grounding }> {
-  const grounding = await gather(input.subjectId, input.topic)
+  const grounding = await gather(input.subjectId, input.topic, { only: input.resourceIds })
 
   const parsed = await azure.chatJson<{ title?: string; content?: string }>(
     [
@@ -376,6 +429,8 @@ export async function verifyCases(
 export async function coding(input: {
   subjectId: string
   topic: string
+  /** Draw only from these documents. Empty means the whole shelf. */
+  resourceIds?: string[]
   difficulty: string
 }): Promise<{
   title: string
@@ -385,7 +440,7 @@ export async function coding(input: {
   cases: GeneratedCase[]
   grounding: Grounding
 }> {
-  const grounding = await gather(input.subjectId, input.topic)
+  const grounding = await gather(input.subjectId, input.topic, { only: input.resourceIds })
 
   const parsed = await azure.chatJson<{
     title?: string

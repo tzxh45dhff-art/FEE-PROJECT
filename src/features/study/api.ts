@@ -254,7 +254,14 @@ export const mcqSets = (roomId: string, subjectId: string) =>
 
 export const createMcq = (
   roomId: string,
-  input: { subjectId: string; topic: string; count: number; difficulty: string },
+  input: {
+    subjectId: string
+    topic: string
+    count: number
+    difficulty: string
+    /** Draw only from these documents. Absent means the whole shelf. */
+    resourceIds?: string[]
+  },
 ) => api.post<{ set: McqSetSummary }>(`${base(roomId)}/mcq`, input)
 
 export const mcqSet = (roomId: string, setId: string) =>
@@ -283,7 +290,7 @@ export const note = (roomId: string, noteId: string) =>
 
 export const createNote = (
   roomId: string,
-  input: { subjectId: string; topic: string; depth: string },
+  input: { subjectId: string; topic: string; depth: string; resourceIds?: string[] },
 ) => api.post<{ note: Note }>(`${base(roomId)}/notes`, input)
 
 export const deleteNote = (roomId: string, noteId: string) =>
@@ -294,7 +301,7 @@ export const problems = (roomId: string, subjectId: string) =>
 
 export const createProblem = (
   roomId: string,
-  input: { subjectId: string; topic: string; difficulty: string },
+  input: { subjectId: string; topic: string; difficulty: string; resourceIds?: string[] },
 ) => api.post<{ problem: { id: string; title: string; difficulty: string } }>(`${base(roomId)}/coding`, input)
 
 export const problem = (roomId: string, problemId: string) =>

@@ -65,12 +65,17 @@ export default function CodingPane({ roomId, subject, caps, announce, seed }: Pa
     void load()
   }, [load])
 
-  const generate = async (topic: string, difficulty: string) => {
+  const generate = async (topic: string, difficulty: string, resourceIds?: string[]) => {
     if (!subjectId) return
     setBusy(true)
     setError(null)
     try {
-      const { problem } = await studyApi.createProblem(roomId, { subjectId, topic, difficulty })
+      const { problem } = await studyApi.createProblem(roomId, {
+        subjectId,
+        topic,
+        difficulty,
+        resourceIds,
+      })
       await load()
       announce('coding', subjectId)
       const { problem: full } = await studyApi.problem(roomId, problem.id)
@@ -115,7 +120,7 @@ export default function CodingPane({ roomId, subject, caps, announce, seed }: Pa
         seed={seed}
         label="Write a problem"
         showDifficulty
-        onSubmit={(topic, options) => void generate(topic, options.difficulty)}
+        onSubmit={(topic, options) => void generate(topic, options.difficulty, options.resourceIds)}
       />
 
       {caps && caps.ai && !caps.judge && (

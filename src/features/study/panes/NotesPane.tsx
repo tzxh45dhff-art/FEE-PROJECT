@@ -50,12 +50,12 @@ export default function NotesPane({ roomId, subject, caps, announce, seed }: Pan
      one would offer to explain a passage that is no longer on screen. */
   useEffect(() => setSelected(''), [open?.id])
 
-  const generate = async (topic: string, depth: string) => {
+  const generate = async (topic: string, depth: string, resourceIds?: string[]) => {
     if (!subjectId) return
     setBusy(true)
     setError(null)
     try {
-      const { note } = await studyApi.createNote(roomId, { subjectId, topic, depth })
+      const { note } = await studyApi.createNote(roomId, { subjectId, topic, depth, resourceIds })
       await load()
       announce('notes', subjectId)
       setOpen(note)
@@ -178,7 +178,7 @@ export default function NotesPane({ roomId, subject, caps, announce, seed }: Pan
         seed={seed}
         label="Write notes"
         showDepth
-        onSubmit={(topic, options) => void generate(topic, options.depth)}
+        onSubmit={(topic, options) => void generate(topic, options.depth, options.resourceIds)}
       />
 
       {error && (

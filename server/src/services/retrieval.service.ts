@@ -98,20 +98,39 @@ function cosine(a: number[], b: number[]) {
  * Both were measured against a real course handout rather than assumed —
  * relevant queries against irrelevant ones, looking for a gap between them.
  *
- *   Gemini  relevant 0.585-0.665, irrelevant 0.476-0.500 -> floor 0.54
+ *   Gemini  relevant 0.585-0.665, irrelevant 0.476-0.500
  *   Azure   the OpenAI scale, where unrelated prose sits far higher
+ *
+ * A later measurement found the harder case the first one had missed. A query
+ * from the same field but a different topic — "React hooks" against a handout
+ * about Flexbox, both front-end web — scored 0.547, comfortably above where
+ * genuinely unrelated text lands (0.463 for photosynthesis, 0.471 for the
+ * French Revolution) and above a floor of 0.54. So notes on one topic could
+ * cite the handout for another and call themselves grounded, which is the
+ * exact failure the floor exists to prevent, in the one case most likely to
+ * come up: a shelf of documents from the same course.
+ *
+ *   same field, wrong topic  0.547  -> must be rejected
+ *   right topic              0.713-0.748
+ *
+ * Hence 0.57: above that false positive, and still under the 0.585 where
+ * genuinely relevant passages began in the first measurement.
  *
  * If a third provider is ever added, measure it the same way rather than
  * guessing; the cost of guessing is a feature that looks like it works.
  */
 const FLOOR: Record<NonNullable<EmbeddingProvider>, number> = {
-  gemini: 0.54,
+  gemini: 0.57,
   azure: 0.78,
 }
 
 export type SearchOptions = {
   /** How many passages to return at most. */
   limit?: number
+  /** Only these documents. Empty or absent means the whole shelf. */
+  only?: string[]
+  /** Never these documents — see the note on the syllabus in `gather`. */
+  exclude?: string[]
   /** Override the relevance floor — the syllabus reader wants everything. */
   floor?: number
 }
@@ -132,8 +151,16 @@ export async function search(
   const provider = await embeddings.provider()
   const floor = options.floor ?? (provider ? FLOOR[provider] : 1)
 
+  const only = options.only?.length ? options.only : null
+  const exclude = options.exclude?.length ? options.exclude : null
+
   const rows = await prisma.resourceChunk.findMany({
-    where: { subjectId, resource: { status: 'ready' } },
+    where: {
+      subjectId,
+      resource: { status: 'ready' },
+      ...(only ? { resourceId: { in: only } } : {}),
+      ...(exclude ? { resourceId: { notIn: exclude } } : {}),
+    },
     select: {
       id: true,
       text: true,
