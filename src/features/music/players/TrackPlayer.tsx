@@ -119,9 +119,18 @@ export function TrackPlayer({
       seek: (seconds) => {
         element.currentTime = Math.max(0, seconds)
       },
+      setRate: (rate) => {
+        /* Explicit rather than assumed. It is the default on every current
+           engine, but it is the whole reason a nudge is inaudible here, so
+           it is not left to one. */
+        element.preservesPitch = true
+        element.playbackRate = rate
+      },
       getPosition: () => element.currentTime || 0,
       getDuration: () => (Number.isFinite(element.duration) ? element.duration : 0),
       isBuffering: () => buffering.current,
+      isPaused: () => element.paused,
+      supportsFineRate: true,
       setVolume: (level) => {
         element.volume = Math.min(1, Math.max(0, level))
       },

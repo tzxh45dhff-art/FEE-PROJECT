@@ -238,9 +238,16 @@ export function YouTubeTrackPlayer({
       play: () => instance.playVideo(),
       pause: () => instance.pauseVideo(),
       seek: (seconds) => instance.seekTo(Math.max(0, seconds), true),
+      /* Nothing to do. YouTube honours only its own list — 0.25, 0.5, 0.75,
+         1, 1.25 and up — so there is no such thing as a 2% nudge here, and
+         snapping to the nearest allowed rate would be a tempo change nobody
+         asked for. `supportsFineRate: false` routes this source to seeking. */
+      setRate: () => undefined,
       getPosition: () => instance.getCurrentTime() || 0,
       getDuration: () => instance.getDuration() || 0,
       isBuffering: () => buffering.current,
+      isPaused: () => instance.getPlayerState?.() === 2,
+      supportsFineRate: false,
       setVolume: (level) => instance.setVolume(Math.round(level * 100)),
       /* See the note at the top — there is nothing here to tap. */
       getAnalyserSource: () => null,

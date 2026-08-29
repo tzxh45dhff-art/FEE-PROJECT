@@ -109,9 +109,23 @@ export type AudioHandle = {
   play: () => void
   pause: () => void
   seek: (seconds: number) => void
+  /**
+   * Nudge playback speed to soak up small drift.
+   *
+   * Safe on audio, which is not obvious: `preservesPitch` is on by default
+   * everywhere, so a percent or two is time-stretched rather than transposed
+   * — the song keeps its key and simply arrives a fraction sooner. Without
+   * this the only way to correct was to seek, which is why Listen used to
+   * tolerate being a second and a half out.
+   */
+  setRate: (rate: number) => void
   getPosition: () => number
   getDuration: () => number
   isBuffering: () => boolean
+  /** True when this player is stopped, whatever the room believes. */
+  isPaused: () => boolean
+  /** False for YouTube, which honours only its own fixed list of rates. */
+  supportsFineRate: boolean
   setVolume: (level: number) => void
   /**
    * The live audio graph node for this source, when one can exist.

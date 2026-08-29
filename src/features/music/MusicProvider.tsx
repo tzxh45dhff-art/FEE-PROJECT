@@ -8,9 +8,34 @@ import { YouTubeTrackPlayer } from '@/features/music/players/YouTubeTrackPlayer'
 import type { AudioHandle, QueuedTrack } from '@/features/music/types'
 import { useMusicSession } from '@/features/music/useMusicSession'
 import { useSingalong } from '@/features/music/useSingalong'
+import { useDriftCorrection, type DriftTuning } from '@/features/sync/useDriftCorrection'
 
 /** Personal, and remembered between sessions. */
 const VOLUME_KEY = 'syncroom.musicVolume'
+
+/**
+ * How tightly to hold a song, as against a film.
+ *
+ * Every number here is tighter than the film's, and they are tighter for
+ * reasons that pull against each other:
+ *
+ * `nudge` is 2% where video runs 5%. Pitch is preserved either way, but a
+ * tempo shift is easier to feel than a frame shift, and 3% is where the
+ * original comment here reckoned a song starts sounding like a different one.
+ * Two is comfortably under that.
+ *
+ * `hard` is 0.7s where video allows 1.2, and it can be — because a seek in an
+ * already-decoded file is close to free, where a seek in video is a rebuffer.
+ * That matters more than it looks: a gentler nudge closes a gap more slowly,
+ * so without pulling the ceiling down as well, a room could sit most of a
+ * second apart for the best part of a minute while the rate quietly caught up.
+ * The cheap seek is what pays for the gentle nudge.
+ *
+ * `hardCoarse` stays wide because it is YouTube, where a seek is a refetched
+ * segment heard as a click, and none of the above applies. Wide — but no
+ * longer the four seconds it was, which is a different bar of the song.
+ */
+const MUSIC_DRIFT: DriftTuning = { hard: 0.7, hardCoarse: 2.5, soft: 0.25, nudge: 0.02 }
 
 /**
  * Owns the room's music, above every screen that shows it.
@@ -37,11 +62,6 @@ export function MusicProvider({
     roomId,
     Boolean(roomId) && enabled,
   )
-
-  /* Read by the drift interval below without being a dependency of it — see
-     the note there on why its identity cannot be trusted. */
-  const positionOf = useRef(targetPosition)
-  positionOf.current = targetPosition
 
   const [handle, setHandle] = useState<AudioHandle | null>(null)
   const [analyserSource, setAnalyserSource] = useState<MediaElementAudioSourceNode | null>(null)
@@ -130,47 +150,30 @@ export function MusicProvider({
   }, [handle, clockReady, snapshot?.seq, snapshot?.playing])
 
   /*
-   * Drift correction, by seeking only.
+   * Drift correction — the same engine the film uses.
    *
-   * The watch stage nudges playback rate to absorb small drift, which works
-   * because a frame arriving fractionally early is invisible. It is not an
-   * option here: a song played 3% fast is audibly a different song.
+   * This used to be its own loop: seek only, and only once the room was
+   * already 1.5 seconds out (four, on YouTube), checked every five seconds.
+   * That is up to four seconds of daylight between two people listening to
+   * the same song, which is a different bar of it — and the reason a room
+   * could be watching in step and listening plainly apart.
+   *
+   * The premise behind seeking-only was that speed cannot be touched because
+   * "a song played 3% fast is audibly a different song". True at three
+   * percent; not true at two, because `preservesPitch` time-stretches instead
+   * of transposing. Handing this the shared loop buys the whole apparatus the
+   * film already had — a cooldown after every correction, a measured estimate
+   * of what a seek costs so the next one aims past it, and standing down
+   * during a buffer — none of which the five-second timer had.
    */
-  useEffect(() => {
-    if (!handle || !snapshot?.playing || needsGesture) return
-
-    /*
-     * How far out of step is worth an audible correction.
-     *
-     * A seek on an uploaded file is a jump in a decoded buffer and costs
-     * nothing. A seek on YouTube tears down and refetches a media segment,
-     * which is heard as a stutter or a click — so on that source the bar for
-     * interrupting is much higher, and a second of drift is left alone rather
-     * than corrected into a glitch every few seconds.
-     */
-    const tolerance = track?.source === 'youtube' ? 4 : 1.5
-
-    const timer = setInterval(() => {
-      if (handle.isBuffering()) return
-      const target = positionOf.current()
-      const drift = Math.abs(handle.getPosition() - target)
-      if (drift > tolerance) handle.seek(target)
-    }, 5000)
-
-    return () => clearInterval(timer)
-    /*
-     * `targetPosition` is deliberately not a dependency, and is read from a ref
-     * instead.
-     *
-     * Its identity changes whenever the snapshot object does, and the snapshot
-     * is rebuilt for things that are not playback at all — `music:listeners`
-     * fires every time somebody joins, leaves, or picks up a microphone. Each
-     * of those tore this interval down and started it again, and since the
-     * interval is five seconds long, a room with any activity in it could reset
-     * the timer indefinitely and never once run the check.
-     */
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handle, snapshot?.playing, needsGesture, track?.source])
+  useDriftCorrection({
+    handle,
+    playing: snapshot?.playing ?? false,
+    seq: snapshot?.seq ?? -1,
+    targetPosition,
+    enabled: clockReady && !needsGesture,
+    tuning: MUSIC_DRIFT,
+  })
 
   useEffect(() => {
     const tick = () => {

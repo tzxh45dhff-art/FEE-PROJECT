@@ -1,9 +1,14 @@
 import { useEffect, useRef } from 'react'
 
-import type { PlayerHandle, WatchSnapshot } from '@/features/watch/types'
-
 /**
- * Holding everyone to the same frame.
+ * Holding everyone to the same moment.
+ *
+ * Shared by Watch and Listen rather than written twice. The two used to
+ * correct very differently — the film to a fifth of a second, the music only
+ * when it was already a second and a half out and only checked every five —
+ * which is why a room could be watching in step and listening plainly apart.
+ * A song is not more forgiving than a film; if anything two people humming
+ * along notice sooner. Same engine, different tuning.
  *
  * The naive version — "seek anyone more than 300ms out" — fights buffering. A
  * stalled client is behind by definition, gets yanked forward, stalls again on
@@ -19,7 +24,32 @@ import type { PlayerHandle, WatchSnapshot } from '@/features/watch/types'
  * - Where it does not — YouTube only accepts its own rate list — every
  *   correction costs a rebuffer, so small drift is simply tolerated and the
  *   threshold for a jump is wider.
+ *
+ * Audio can be nudged for the same reason video can, which is not obvious and
+ * was previously assumed otherwise: `preservesPitch` defaults to true on every
+ * current engine, so a couple of percent of speed is time-stretched rather
+ * than transposed. The song does not go sharp, it just arrives a hair sooner.
+ * Two percent is used there rather than five — a tempo shift is easier to feel
+ * than a frame shift, even when the pitch holds.
  */
+
+/** What the loop needs of a player. Both handles satisfy this structurally. */
+export type Correctable = {
+  seek: (seconds: number) => void
+  setRate: (rate: number) => void
+  getPosition: () => number
+  isBuffering: () => boolean
+  isPaused: () => boolean
+  supportsFineRate: boolean
+}
+
+/** Per-medium thresholds. Defaults are the video figures. */
+export type DriftTuning = {
+  hard?: number
+  hardCoarse?: number
+  soft?: number
+  nudge?: number
+}
 
 /** Past this, jump. A gap this size is already obvious to everyone. */
 const HARD_SECONDS = 1.2
@@ -68,15 +98,29 @@ const MAX_SEEK_COST = 1.5
 
 export function useDriftCorrection({
   handle,
-  snapshot,
+  playing,
+  rate = 1,
+  seq = 0,
   targetPosition,
   enabled,
+  tuning,
 }: {
-  handle: PlayerHandle | null
-  snapshot: WatchSnapshot | null
+  handle: Correctable | null
+  /** Whether the room says it is running. Not whether this player is. */
+  playing: boolean
+  /** The room's playback rate, for sources that have one. Audio has none. */
+  rate?: number
+  /** Bumped by any deliberate control, so the loop stands down after one. */
+  seq?: number
   targetPosition: () => number
   enabled: boolean
+  tuning?: DriftTuning
 }) {
+  const hard = tuning?.hard ?? HARD_SECONDS
+  const hardCoarse = tuning?.hardCoarse ?? HARD_SECONDS_COARSE
+  const soft = tuning?.soft ?? SOFT_SECONDS
+  const nudge = tuning?.nudge ?? NUDGE
+
   const nudged = useRef(false)
   /** Corrections are suppressed until this moment. See `SEEK_COOLDOWN_MS`. */
   const settleUntil = useRef(0)
@@ -84,10 +128,6 @@ export function useDriftCorrection({
   const seekCost = useRef(INITIAL_SEEK_COST)
   /** When the last corrective seek was issued, while it is still recovering. */
   const seekedAt = useRef<number | null>(null)
-
-  const rate = snapshot?.rate ?? 1
-  const playing = snapshot?.playing ?? false
-  const seq = snapshot?.seq ?? -1
 
   /*
    * Held in a ref rather than read from the closure.
@@ -179,7 +219,7 @@ export function useDriftCorrection({
       const drift = positionOf.current() - handle.getPosition()
       const size = Math.abs(drift)
 
-      if (size >= (coarse ? HARD_SECONDS_COARSE : HARD_SECONDS)) {
+      if (size >= (coarse ? hardCoarse : hard)) {
         correct()
         return
       }
@@ -191,10 +231,10 @@ export function useDriftCorrection({
        * fix something smaller than the fix — it makes both the sync and the
        * viewing worse. Below the coarse threshold, it is left alone.
        */
-      if (size >= SOFT_SECONDS && handle.supportsFineRate) {
+      if (size >= soft && handle.supportsFineRate) {
         /* Behind → speed up a touch; ahead → ease off. Imperceptible, and it
            converges without a single visible jump. */
-        handle.setRate(rate * (drift > 0 ? 1 + NUDGE : 1 - NUDGE))
+        handle.setRate(rate * (drift > 0 ? 1 + nudge : 1 - nudge))
         nudged.current = true
         return
       }
@@ -210,5 +250,5 @@ export function useDriftCorrection({
         nudged.current = false
       }
     }
-  }, [handle, enabled, playing, rate])
+  }, [handle, enabled, playing, rate, hard, hardCoarse, soft, nudge])
 }

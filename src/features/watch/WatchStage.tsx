@@ -13,7 +13,7 @@ import { type Queued } from '@/features/watch/SourcePicker'
 import { WatchBrowser } from '@/features/watch/WatchBrowser'
 import { CoverAmbience } from '@/features/music/CoverAmbience'
 import type { AudioTrackInfo, PlayerHandle, QueueItem } from '@/features/watch/types'
-import { useDriftCorrection } from '@/features/watch/useDriftCorrection'
+import { useDriftCorrection } from '@/features/sync/useDriftCorrection'
 import { useWatchSession } from '@/features/watch/useWatchSession'
 import { WatchControls } from '@/features/watch/WatchControls'
 import { WatchToasts } from '@/features/watch/WatchToasts'
@@ -308,7 +308,9 @@ export function WatchStage({
 
   useDriftCorrection({
     handle,
-    snapshot,
+    playing: snapshot?.playing ?? false,
+    rate: snapshot?.rate ?? 1,
+    seq: snapshot?.seq ?? -1,
     targetPosition,
     enabled: embeddable && !needsGesture,
   })
