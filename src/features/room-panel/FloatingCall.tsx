@@ -70,6 +70,44 @@ function nearestCorner(x: number, y: number, width: number, height: number): Cor
   return `${top ? 't' : 'b'}${left ? 'l' : 'r'}` as Corner
 }
 
+/**
+ * The element currently being rendered, which is not always `document.body`.
+ *
+ * Going fullscreen does not resize an element, it renders that element's
+ * subtree *and nothing else*. So a window portalled into the body is not
+ * merely sitting behind the film — it is not drawn at all, which is exactly
+ * why the face disappears the moment somebody expands the player and comes
+ * back untouched when they leave. Following the fullscreen element keeps this
+ * inside whichever subtree is actually on screen.
+ *
+ * Written against whatever stage happens to be fullscreen rather than against
+ * Watch specifically: the next section to grow a fullscreen button gets this
+ * for free instead of rediscovering the same disappearance.
+ */
+function fullscreenNode(): Element {
+  const doc = document as Document & { webkitFullscreenElement?: Element | null }
+  return document.fullscreenElement ?? doc.webkitFullscreenElement ?? document.body
+}
+
+function useFullscreenHost(): Element {
+  const [host, setHost] = useState<Element>(fullscreenNode)
+
+  useEffect(() => {
+    const settle = () => setHost(fullscreenNode())
+    /* Once on mount as well: this can be mounted while something is already
+       fullscreen, in which case no change event is ever coming. */
+    settle()
+    document.addEventListener('fullscreenchange', settle)
+    document.addEventListener('webkitfullscreenchange', settle)
+    return () => {
+      document.removeEventListener('fullscreenchange', settle)
+      document.removeEventListener('webkitfullscreenchange', settle)
+    }
+  }, [])
+
+  return host
+}
+
 export function FloatingCall({
   stream,
   name,
@@ -89,6 +127,10 @@ export function FloatingCall({
 }) {
   const shell = useRef<HTMLDivElement>(null)
   const video = useRef<HTMLVideoElement>(null)
+
+  /* Where this is allowed to be drawn right now. Changing it re-parents the
+     window, which is a remount — see the two effects that depend on it. */
+  const host = useFullscreenHost()
 
   const [stored, setStored] = useState<Stored>(readStored)
   const large = stored.large
@@ -125,7 +167,9 @@ export function FloatingCall({
       window.removeEventListener('resize', settle)
       window.removeEventListener('orientationchange', settle)
     }
-  }, [stored.corner, size.width, size.height, place])
+    /* `host` for the same reason as the stream below: the replacement node
+       carries no transform, so it would otherwise paint at the origin. */
+  }, [stored.corner, size.width, size.height, place, host])
 
   useEffect(() => {
     try {
@@ -135,11 +179,15 @@ export function FloatingCall({
     }
   }, [stored])
 
+  /* `host` is in here because re-parenting the portal throws the old <video>
+     away and mounts a fresh one. The stream has not changed, so without it
+     this never re-runs and the new element plays nothing — a black rectangle
+     with the camera plainly on. */
   useEffect(() => {
     if (video.current && video.current.srcObject !== stream) {
       video.current.srcObject = stream
     }
-  }, [stream])
+  }, [stream, host])
 
   /* Escape closes, matching every other dismissible layer in the app. */
   useEffect(() => {
@@ -301,6 +349,6 @@ export function FloatingCall({
         )}
       </div>
     </div>,
-    document.body,
+    host,
   )
 }
