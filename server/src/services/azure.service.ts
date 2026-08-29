@@ -83,7 +83,9 @@ async function post(target: string, body: unknown, timeoutMs: number): Promise<u
       /* No route to the host will not become one in a second and a half, and
          retrying past it costs the wait and then blames the connection for a
          problem that is the machine's own. */
-      if (unreachable(cause)) throw HttpError.unavailable(unreachableMessage('the model', target))
+      if (unreachable(cause)) {
+        throw HttpError.unavailable(unreachableMessage('the model', target, cause))
+      }
 
       /* A dropped connection and a genuine timeout arrive the same way. Both
          are worth another go; the timeout is generous enough that hitting it

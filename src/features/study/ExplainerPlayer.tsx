@@ -321,7 +321,7 @@ export function ExplainerPlayer({
                 })
               }}
               disabled={!tutor.available}
-              title={tutor.available ? undefined : 'No AI key on this server'}
+              title={tutor.available ? undefined : (tutor.reason ?? undefined)}
               className="study-btn h-9"
             >
               <Sparkles aria-hidden className="size-3.5" />

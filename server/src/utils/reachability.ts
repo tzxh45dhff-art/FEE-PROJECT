@@ -39,16 +39,59 @@ export function unreachable(cause: unknown) {
 /**
  * What to say about it.
  *
- * Names the host, because the useful next step is checking whether *this
- * machine* can reach *that address* — and says so, rather than leaving the
- * reader to conclude the service is down.
+ * Names the host, because the useful next step is checking whether the
+ * machine running this server can reach that address — and says so, rather
+ * than leaving the reader to conclude the service is down.
+ *
+ * It also says *whose* machine, which matters more than it looks. This text
+ * travels to a browser, and the person reading it is usually not sitting at
+ * the server: they are in someone else's room, on someone else's laptop's
+ * connection. "This machine has no route" reads, to them, as an accusation
+ * about their own computer — so they go looking for a setting they do not
+ * have, on a machine that was never the problem.
  */
-export function unreachableMessage(what: string, target: string) {
+export function unreachableMessage(what: string, target: string, cause?: unknown) {
   let host = target
   try {
     host = new URL(target).host
   } catch {
     /* Not a URL worth parsing — the caller's string will do. */
   }
-  return `Could not reach ${what}: this machine has no route to ${host}. Check the network connection.`
+
+  const where = `the server running this room has no network route to ${host}`
+  const whose = `That is the server's own connection, not yours.`
+
+  /*
+   * Name the IPv4 case when it is the IPv4 case.
+   *
+   * `ENETUNREACH` against a literal v4 address is not a vague network
+   * problem, it is one specific and very recoverable state: the machine is
+   * up, DNS resolved, IPv6 works — and the host it is trying to reach only
+   * publishes an A record. Every provider this server talks to is IPv4-only,
+   * so a laptop that has drifted onto an IPv6-only link loses all of them at
+   * once while every page in the browser keeps loading fine.
+   *
+   * Saying "no route" alone sends somebody to check whether the internet is
+   * on, which it is. Saying "no IPv4 route" points at the thing to fix.
+   */
+  const address = describe(cause)
+  if (address) {
+    return `Could not reach ${what}: the server running this room has no IPv4 route, and ${host} is reachable only over IPv4 (${address}). ${whose} Putting that machine back on a network that carries IPv4 fixes it.`
+  }
+
+  return `Could not reach ${what}: ${where}. ${whose}`
+}
+
+/** The IPv4 address a failed connection was aimed at, when it says so. */
+function describe(cause: unknown): string | null {
+  if (!(cause instanceof Error)) return null
+  const nested = (cause as { cause?: unknown }).cause
+  const text = [(nested as { message?: unknown })?.message, cause.message]
+    .filter((part): part is string => typeof part === 'string')
+    .join(' ')
+  /* e.g. "connect ENETUNREACH 20.62.58.5:443 - Local (0.0.0.0:52630)" — the
+     first dotted quad is the destination, the local end is the parenthesised
+     one and is not worth showing. */
+  const found = /ENETUNREACH\s+(\d{1,3}(?:\.\d{1,3}){3})/.exec(text)
+  return found?.[1] ?? null
 }

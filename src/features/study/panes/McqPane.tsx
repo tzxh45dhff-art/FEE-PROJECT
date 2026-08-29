@@ -19,6 +19,7 @@ import {
   Spinner,
   type PaneProps,
 } from '@/features/study/panes/shared'
+import { gateReason } from '@/features/study/useCapabilities'
 import { TopicPicker } from '@/features/study/TopicPicker'
 import { useTutor } from '@/features/study/tutorContext'
 import { cn } from '@/lib/utils'
@@ -36,7 +37,7 @@ type Open = {
 }
 
 /** Questions on the subject, written from its documents where there are any. */
-export default function McqPane({ roomId, subject, caps, announce, seed }: PaneProps) {
+export default function McqPane({ roomId, subject, caps, capsProblem, announce, seed }: PaneProps) {
   const [sets, setSets] = useState<studyApi.McqSetSummary[] | null>(null)
   const [open, setOpen] = useState<Open | null>(null)
   const [busy, setBusy] = useState(false)
@@ -126,7 +127,7 @@ export default function McqPane({ roomId, subject, caps, announce, seed }: PaneP
         roomId={roomId}
         subjectId={subjectId}
         disabled={!caps?.ai}
-        reason="This server has no AI key configured."
+        reason={gateReason(caps, capsProblem, 'ai') ?? undefined}
         busy={busy}
         seed={seed}
         onSubmit={(topic, options) =>
@@ -460,7 +461,7 @@ function Attempt({
               })
             }
             disabled={!tutor.available}
-            title={tutor.available ? undefined : 'No AI key on this server'}
+            title={tutor.available ? undefined : (tutor.reason ?? undefined)}
             className="study-btn h-9 border-transparent bg-transparent px-2 text-[var(--study-soft)]"
           >
             <Lightbulb aria-hidden className="size-4" />

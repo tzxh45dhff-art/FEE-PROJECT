@@ -25,6 +25,16 @@ export type Tutor = {
   open: (focus?: studyApi.Focus | null) => void
   /** False when the server has no model key — buttons disable rather than fail. */
   available: boolean
+  /**
+   * Why not, when it is not.
+   *
+   * Carried on the handle rather than worked out at each button, because
+   * "no key on this server" and "could not ask the server" look identical
+   * from here and are not the same thing to the person reading the tooltip —
+   * and half these buttons live in sub-components that were never handed the
+   * capabilities to tell them apart.
+   */
+  reason: string | null
 }
 
 export const TutorContext = createContext<Tutor | null>(null)

@@ -1069,6 +1069,47 @@ export async function createExplainer(req: Request, res: Response) {
   res.status(201).json({ explainer: shapeExplainer(row, false) })
 }
 
+/**
+ * Try a failed lesson again.
+ *
+ * Its own endpoint rather than "delete it and type it all in again", because
+ * the failure this exists for is almost never the request's fault — a tunnel
+ * that dropped, a rate limit, a laptop that slept mid-narration. Making
+ * somebody re-describe how they wanted to be taught in order to retry a
+ * network blip is a charge for someone else's connection.
+ */
+export async function retryExplainer(req: Request, res: Response) {
+  const roomId = await gate(req)
+  const row = await prisma.explainer.findFirst({
+    where: { id: req.params.explainerId!, roomId },
+    include: { createdBy: { select: { id: true, name: true } } },
+  })
+  if (!row) throw HttpError.notFound('That lesson is not here.')
+
+  /* Only a lesson that stopped. Retrying one that is mid-build would put two
+     writers on the same row and the same folder of clips. */
+  if (row.status !== 'failed') {
+    throw HttpError.badRequest('That lesson is not in a failed state.')
+  }
+
+  if (!azure.configured()) {
+    throw HttpError.unavailable('No AI key is configured on this server, so lessons cannot be written.')
+  }
+  if (!speech.configured()) {
+    throw HttpError.unavailable('Narration is not configured on this server, so lessons cannot be voiced.')
+  }
+
+  const queued = await prisma.explainer.update({
+    where: { id: row.id },
+    data: { status: 'pending', error: null },
+    include: { createdBy: { select: { id: true, name: true } } },
+  })
+
+  void explainer.retryInBackground(row.id)
+
+  res.json({ explainer: shapeExplainer(queued, false) })
+}
+
 export async function deleteExplainer(req: Request, res: Response) {
   const roomId = await gate(req)
   const row = await prisma.explainer.findFirst({

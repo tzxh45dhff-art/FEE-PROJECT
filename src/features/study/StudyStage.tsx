@@ -9,6 +9,7 @@ import {
   MessagesSquare,
   NotebookPen,
   PlayCircle,
+  RotateCw,
   Settings2,
   Sparkles,
   Terminal,
@@ -23,6 +24,7 @@ import { SubjectBar } from '@/features/study/SubjectBar'
 import { FocusTimer } from '@/features/study/FocusTimer'
 import { StudySettings } from '@/features/study/StudySettings'
 import { TutorContext, type Tutor as TutorHandle, type TutorAsk } from '@/features/study/tutorContext'
+import { gateReason, useCapabilities } from '@/features/study/useCapabilities'
 import { useStudyPreferences } from '@/features/study/useStudyPreferences'
 import { useStudySync, useStudyTimer } from '@/features/study/useStudyTimer'
 import { cn } from '@/lib/utils'
@@ -100,7 +102,6 @@ export function StudyStage({
   const [tab, setTab] = useState<StudyTab>('home')
   const [subjects, setSubjects] = useState<studyApi.Subject[] | null>(null)
   const [subjectId, setSubjectId] = useState<string | null>(null)
-  const [caps, setCaps] = useState<studyApi.Capabilities | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
@@ -129,21 +130,13 @@ export function StudyStage({
 
   useEffect(() => {
     void loadSubjects()
-    void studyApi
-      .capabilities(roomId)
-      .then(setCaps)
-      .catch(() =>
-        setCaps({
-          ai: false,
-          search: false,
-          judge: false,
-          judgeLanguages: [],
-          narration: false,
-          voices: [],
-          chatModel: null,
-        }),
-      )
-  }, [roomId, loadSubjects])
+  }, [loadSubjects])
+
+  /* Asked separately from the subjects, and asked again if it does not land.
+     What this server can do is what every generator here is gated on, so a
+     dropped request for it must not read as a server with no keys. */
+  const { caps, problem: capsProblem, checking: capsChecking, retry: retryCaps } =
+    useCapabilities(roomId)
 
   /* Somebody else added a subject; the list is the one thing every pane shares
      so it is refreshed here rather than in each of them. */
@@ -165,6 +158,7 @@ export function StudyStage({
   const tutor = useMemo<TutorHandle>(
     () => ({
       available: Boolean(caps?.ai),
+      reason: gateReason(caps, capsProblem, 'ai'),
       ask: (request) => {
         setTutorOpen(true)
         setHandover(request)
@@ -174,7 +168,7 @@ export function StudyStage({
         setHandover({ mode: 'ask', focus, message: '' })
       },
     }),
-    [caps?.ai],
+    [caps, capsProblem],
   )
 
   const go = useCallback((next: string, topic?: string) => {
@@ -185,7 +179,7 @@ export function StudyStage({
   const revealX = origin ? `${Math.round(origin.left + origin.width / 2)}px` : '50%'
   const revealY = origin ? `${Math.round(origin.top + origin.height / 2)}px` : '50%'
 
-  const paneProps = { roomId, subject, caps, announce, selfId, go, seed }
+  const paneProps = { roomId, subject, caps, capsProblem, announce, selfId, go, seed }
 
   return createPortal(
     <TutorContext.Provider value={tutor}>
@@ -239,7 +233,11 @@ export function StudyStage({
               disabled={!caps?.ai || !subject}
               aria-label="Tutor"
               aria-pressed={tutorOpen}
-              title={caps?.ai ? 'Ask about this subject' : 'No AI key on this server'}
+              title={
+                caps?.ai
+                  ? 'Ask about this subject'
+                  : (gateReason(caps, capsProblem, 'ai') ?? 'Ask about this subject')
+              }
               className={cn(
                 /* 44px on a touch screen, 40 on a pointer — the sizes the rest
                    of the app already uses for a control in a bar like this. */
@@ -342,6 +340,41 @@ export function StudyStage({
               <p role="alert" className="pb-3 text-[0.8rem] text-[var(--study-bad)]">
                 {error}
               </p>
+            )}
+
+            {/*
+              * Said once, here, rather than as a dead tooltip on six buttons.
+              *
+              * The person reading this is usually not the person running the
+              * server, so it says which machine the problem is on — otherwise
+              * the honest reading of a greyed-out tab is "my computer is not
+              * allowed to do this", and they go looking for a setting they do
+              * not have.
+              */}
+            {capsProblem && (
+              <div
+                role="alert"
+                className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[0.9rem] bg-[var(--study-bad-soft)] px-4 py-3 text-[0.8rem] text-[var(--study-bad)]"
+              >
+                <WifiOff aria-hidden className="size-4 shrink-0" />
+                <span className="min-w-0 flex-1">
+                  {capsProblem} Generating is paused until it answers — this is the room’s server,
+                  not your connection.
+                </span>
+                <button
+                  type="button"
+                  onClick={retryCaps}
+                  disabled={capsChecking}
+                  className="study-btn h-8 shrink-0 px-3 text-[0.76rem]"
+                >
+                  {capsChecking ? (
+                    <Loader2 aria-hidden className="size-3.5 animate-spin" />
+                  ) : (
+                    <RotateCw aria-hidden className="size-3.5" />
+                  )}
+                  {capsChecking ? 'Checking…' : 'Try again'}
+                </button>
+              </div>
             )}
 
             {/* A subject is the unit everything else hangs off, so the panes are

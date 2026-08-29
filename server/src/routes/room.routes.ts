@@ -119,6 +119,10 @@ roomRoutes.delete('/:id/study/coding/:problemId', asyncHandler(studyController.d
 roomRoutes.get('/:id/study/explainers', asyncHandler(studyController.listExplainers))
 roomRoutes.post('/:id/study/explainers', asyncHandler(studyController.createExplainer))
 roomRoutes.get('/:id/study/explainers/:explainerId', asyncHandler(studyController.getExplainer))
+roomRoutes.post(
+  '/:id/study/explainers/:explainerId/retry',
+  asyncHandler(studyController.retryExplainer),
+)
 roomRoutes.delete(
   '/:id/study/explainers/:explainerId',
   asyncHandler(studyController.deleteExplainer),

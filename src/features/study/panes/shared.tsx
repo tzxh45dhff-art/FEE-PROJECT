@@ -8,6 +8,9 @@ export type PaneProps = {
   roomId: string
   subject: studyApi.Subject | null
   caps: studyApi.Capabilities | null
+  /** Why `caps` is null, when the reason was the connection rather than a
+      pending request. Never a claim about how the server is configured. */
+  capsProblem?: string | null
   announce: (kind: string, subjectId?: string | null) => void
   selfId: string | undefined
   /** Jump to another pane — the home dashboard is mostly made of these. */

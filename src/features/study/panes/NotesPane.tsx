@@ -14,10 +14,11 @@ import {
   Spinner,
   type PaneProps,
 } from '@/features/study/panes/shared'
+import { gateReason } from '@/features/study/useCapabilities'
 import { TopicPicker } from '@/features/study/TopicPicker'
 
 /** Notes on the subject, written from its documents where there are any. */
-export default function NotesPane({ roomId, subject, caps, announce, seed }: PaneProps) {
+export default function NotesPane({ roomId, subject, caps, capsProblem, announce, seed }: PaneProps) {
   const [rows, setRows] = useState<studyApi.NoteSummary[] | null>(null)
   const [open, setOpen] = useState<studyApi.Note | null>(null)
   const [busy, setBusy] = useState(false)
@@ -118,7 +119,7 @@ export default function NotesPane({ roomId, subject, caps, announce, seed }: Pan
                 type="button"
                 onClick={explain}
                 disabled={!tutor.available}
-                title={tutor.available ? undefined : 'No AI key on this server'}
+                title={tutor.available ? undefined : (tutor.reason ?? undefined)}
                 className="flex h-8 items-center gap-1.5 rounded-full border border-[var(--study-line)] bg-[var(--study-card)] px-3 text-[0.76rem] text-[var(--study-text)] outline-none transition-colors hover:bg-[var(--study-card-strong)] disabled:opacity-40"
               >
                 <Sparkles aria-hidden className="size-3.5" />
@@ -173,7 +174,7 @@ export default function NotesPane({ roomId, subject, caps, announce, seed }: Pan
         roomId={roomId}
         subjectId={subjectId}
         disabled={!caps?.ai}
-        reason="This server has no AI key configured."
+        reason={gateReason(caps, capsProblem, 'ai') ?? undefined}
         busy={busy}
         seed={seed}
         label="Write notes"

@@ -108,7 +108,7 @@ export async function speak(text: string, voice: string): Promise<Buffer> {
       })
     } catch (cause) {
       if (unreachable(cause)) {
-        throw HttpError.unavailable(unreachableMessage('the speech service', target))
+        throw HttpError.unavailable(unreachableMessage('the speech service', target, cause))
       }
       if (attempt < MAX_ATTEMPTS) {
         await wait(RETRY_DELAY_MS * attempt)

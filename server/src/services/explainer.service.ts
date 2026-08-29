@@ -703,6 +703,64 @@ async function build(explainerId: string) {
   }
 }
 
+/**
+ * Try a failed lesson again, without redoing what already worked.
+ *
+ * Worth separating from a fresh build because the two halves fail for very
+ * different reasons and cost very different amounts. The script is one large
+ * completion; the narration is a couple of dozen small ones, which makes it
+ * far likelier to be the half that met a dropped connection — and it is
+ * already saved by then, because the row is updated with it on the way into
+ * narrating. Re-scripting at that point would spend the expensive call to
+ * throw away a perfectly good lesson and write a different one.
+ *
+ * So a retry after a narration failure narrates the same script again, and
+ * only a lesson that never got one starts over.
+ */
+export async function retryInBackground(explainerId: string) {
+  void retry(explainerId).catch(async (cause) => {
+    await fail(explainerId, cause instanceof Error ? cause.message : 'The lesson could not be built.')
+  })
+}
+
+async function retry(explainerId: string) {
+  const row = await prisma.explainer.findUnique({ where: { id: explainerId } })
+  if (!row) return
+
+  let existing: Beat[] = []
+  try {
+    const parsed: unknown = JSON.parse(row.beats)
+    if (Array.isArray(parsed)) existing = parsed as Beat[]
+  } catch {
+    /* Unreadable is the same as absent here — it gets written again below. */
+  }
+
+  /* Nothing survived the last attempt, so this is just a build. */
+  if (existing.length === 0) return build(explainerId)
+
+  try {
+    await prisma.explainer.update({
+      where: { id: explainerId },
+      data: { status: 'narrating', error: null },
+    })
+
+    const narrated = await narrate(explainerId, existing, row.voice)
+
+    await prisma.explainer.update({
+      where: { id: explainerId },
+      data: {
+        status: 'ready',
+        error: null,
+        beats: JSON.stringify(narrated.beats),
+        duration: narrated.duration,
+      },
+    })
+  } catch (cause) {
+    await rm(folderFor(explainerId), { recursive: true, force: true }).catch(() => undefined)
+    throw cause
+  }
+}
+
 /** Remove a lesson's narration from disk. The row is the caller's to delete. */
 export async function discardAudio(explainerId: string) {
   await rm(folderFor(explainerId), { recursive: true, force: true }).catch(() => undefined)

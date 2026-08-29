@@ -443,5 +443,12 @@ export const createExplainer = (
   input: { subjectId: string; topic: string; style: string; voice?: string },
 ) => api.post<{ explainer: ExplainerSummary }>(`${base(roomId)}/explainers`, input)
 
+/** Build a failed lesson again, keeping the topic and the script it got to. */
+export const retryExplainer = (roomId: string, explainerId: string) =>
+  api.post<{ explainer: ExplainerSummary }>(
+    `${base(roomId)}/explainers/${explainerId}/retry`,
+    {},
+  )
+
 export const deleteExplainer = (roomId: string, explainerId: string) =>
   api.del<{ ok: true }>(`${base(roomId)}/explainers/${explainerId}`)

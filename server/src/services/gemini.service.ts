@@ -59,7 +59,9 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     } catch (cause) {
       /* Same reasoning as the Azure client: a missing route is not a hiccup,
          and retrying past it hides what is actually wrong. */
-      if (unreachable(cause)) throw HttpError.unavailable(unreachableMessage('Gemini', BASE))
+      if (unreachable(cause)) {
+        throw HttpError.unavailable(unreachableMessage('Gemini', BASE, cause))
+      }
 
       if (attempt < MAX_ATTEMPTS) {
         await wait(RETRY_DELAY_MS * attempt)

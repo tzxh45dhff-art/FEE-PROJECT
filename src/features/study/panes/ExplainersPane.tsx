@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Clock, Loader2, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, Clock, Loader2, RotateCw, Sparkles, Trash2 } from 'lucide-react'
 
 import { ExplainerPlayer } from '@/features/study/ExplainerPlayer'
 import * as studyApi from '@/features/study/api'
@@ -11,6 +11,7 @@ import {
   Spinner,
   type PaneProps,
 } from '@/features/study/panes/shared'
+import { gateReason } from '@/features/study/useCapabilities'
 import { cn } from '@/lib/utils'
 
 /** Statuses that are still going somewhere, so the list keeps watching. */
@@ -24,7 +25,7 @@ const PROGRESS: Record<string, string> = {
 }
 
 /** Narrated, animated lessons on one topic, written from the subject's material. */
-export default function ExplainersPane({ roomId, subject, caps, announce, seed }: PaneProps) {
+export default function ExplainersPane({ roomId, subject, caps, capsProblem, announce, seed }: PaneProps) {
   const [rows, setRows] = useState<studyApi.ExplainerSummary[] | null>(null)
   const [open, setOpen] = useState<studyApi.Explainer | null>(null)
   const [topic, setTopic] = useState(seed ?? '')
@@ -32,6 +33,7 @@ export default function ExplainersPane({ roomId, subject, caps, announce, seed }
   const [voice, setVoice] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState<string | null>(null)
 
   const subjectId = subject?.id ?? null
 
@@ -100,6 +102,19 @@ export default function ExplainersPane({ roomId, subject, caps, announce, seed }
       setError(cause instanceof Error ? cause.message : 'That did not work.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const again = async (id: string) => {
+    setRetrying(id)
+    setError(null)
+    try {
+      await studyApi.retryExplainer(roomId, id)
+      await load()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'That did not work.')
+    } finally {
+      setRetrying(null)
     }
   }
 
@@ -206,11 +221,9 @@ export default function ExplainersPane({ roomId, subject, caps, announce, seed }
             onClick={() => void generate()}
             disabled={busy || unavailable || !topic.trim()}
             title={
-              !caps?.ai
-                ? 'This server has no AI key configured.'
-                : !caps?.narration
-                  ? 'Narration is not configured on this server.'
-                  : undefined
+              gateReason(caps, capsProblem, 'ai') ??
+              gateReason(caps, capsProblem, 'narration') ??
+              undefined
             }
             className="study-btn study-btn-primary ml-auto h-10 px-4"
           >
@@ -281,6 +294,25 @@ export default function ExplainersPane({ roomId, subject, caps, announce, seed }
                   </button>
 
                   {ready && <GroundedBadge grounded={row.grounded} sources={row.sources} />}
+
+                  {/* The topic and the way they asked for it to be taught are
+                      still on the row, and so is whatever script it managed to
+                      write — so this costs a click, not the typing again. */}
+                  {row.status === 'failed' && (
+                    <button
+                      type="button"
+                      onClick={() => void again(row.id)}
+                      disabled={retrying === row.id}
+                      className="study-btn h-8 shrink-0 px-3 text-[0.76rem]"
+                    >
+                      {retrying === row.id ? (
+                        <Loader2 aria-hidden className="size-3.5 animate-spin" />
+                      ) : (
+                        <RotateCw aria-hidden className="size-3.5" />
+                      )}
+                      Try again
+                    </button>
+                  )}
 
                   <button
                     type="button"

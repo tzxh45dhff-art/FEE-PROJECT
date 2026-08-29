@@ -24,6 +24,7 @@ import {
   Spinner,
   type PaneProps,
 } from '@/features/study/panes/shared'
+import { gateReason } from '@/features/study/useCapabilities'
 import { TopicPicker } from '@/features/study/TopicPicker'
 import { cn } from '@/lib/utils'
 
@@ -40,7 +41,7 @@ const DIFFICULTY: Record<string, string> = {
 }
 
 /** Problems for the subject, and the judge that marks them. */
-export default function CodingPane({ roomId, subject, caps, announce, seed }: PaneProps) {
+export default function CodingPane({ roomId, subject, caps, capsProblem, announce, seed }: PaneProps) {
   const [rows, setRows] = useState<studyApi.ProblemSummary[] | null>(null)
   const [open, setOpen] = useState<studyApi.Problem | null>(null)
   const [busy, setBusy] = useState(false)
@@ -115,7 +116,7 @@ export default function CodingPane({ roomId, subject, caps, announce, seed }: Pa
         roomId={roomId}
         subjectId={subjectId}
         disabled={!caps?.ai}
-        reason="This server has no AI key configured."
+        reason={gateReason(caps, capsProblem, 'ai') ?? undefined}
         busy={busy}
         seed={seed}
         label="Write a problem"
@@ -345,7 +346,7 @@ function Workspace({
                 })
               }
               disabled={!tutor.available}
-              title={tutor.available ? undefined : 'No AI key on this server'}
+              title={tutor.available ? undefined : (tutor.reason ?? undefined)}
               className="flex h-9 items-center gap-2 rounded-full border border-[var(--study-line)] bg-[var(--study-card)] px-3.5 text-[0.78rem] text-[var(--study-text)] outline-none transition-colors hover:bg-[var(--study-card-strong)] disabled:opacity-40"
             >
               <LifeBuoy aria-hidden className="size-3.5" />
