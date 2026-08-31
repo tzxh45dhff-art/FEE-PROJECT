@@ -27,6 +27,7 @@ import { CallInvite } from '@/features/room-panel/CallInvite'
 import { RoomPanel, PANEL_WIDTH_REM } from '@/features/room-panel/RoomPanel'
 import { useChat } from '@/features/room-panel/useChat'
 import { FloatingCall } from '@/features/room-panel/FloatingCall'
+import { ExtensionBridge } from '@/features/watch/ExtensionBridge'
 import { useMeshCall } from '@/features/room-panel/useMeshCall'
 import { useWatchPulse } from '@/features/watch/useWatchPulse'
 import { WatchInvite } from '@/features/watch/WatchInvite'
@@ -452,6 +453,10 @@ export function DashboardPage() {
          room, so the queue and everyone else's playback survive. */
       enabled={activity !== 'watch' && !leftMusic}
     >
+    {/* Not visible, and not optional: this is the only surface the browser
+        extension and this page can both see. See ExtensionBridge. */}
+    <ExtensionBridge roomId={activeRoom?.id ?? null} roomName={activeRoom?.name ?? null} />
+
     <motion.main
       className="fixed inset-0 overflow-hidden"
       initial={{ opacity: 0 }}

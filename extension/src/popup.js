@@ -12,8 +12,15 @@ async function paint() {
   const good = state.status === 'connected'
   $('status').innerHTML =
     `<span class="${good ? 'ok' : 'bad'}">${state.status}</span>` +
+    (state.config?.roomCode ? `<br />Room: ${state.config.roomCode}` : '') +
     (item ? `<br />On now: ${item.title}` : '<br />Nothing on in the room yet.') +
     (good ? `<br />Clock offset: ${Math.round(state.offset)}ms` : '')
+
+  /* Once it has configured itself there is nothing to hand-enter, so the
+     fallback stays folded away rather than sitting there implying there is
+     still a step outstanding. */
+  const auto = document.getElementById('auto')
+  if (auto) auto.style.display = good ? 'none' : 'block'
 }
 
 async function prefill() {

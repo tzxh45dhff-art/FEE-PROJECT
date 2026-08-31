@@ -18,7 +18,19 @@ import { HttpError } from '../utils/HttpError.js'
  * every unrelated query slower for the privilege.
  */
 
-export const UPLOAD_DIR = path.resolve(import.meta.dirname, '../../uploads')
+/**
+ * Where uploaded media lives.
+ *
+ * Beside the source by default, which is right for development — the folder
+ * is in the repo, and dropping a file into it is how the library gets
+ * populated by hand. Overridable because a deployed server usually cannot
+ * keep it there: containers rebuild their filesystem on every release, so
+ * anything worth keeping has to sit on a mounted volume somewhere else, and
+ * a path baked in at build time cannot point at one.
+ */
+export const UPLOAD_DIR = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.resolve(import.meta.dirname, '../../uploads')
 export const UPLOAD_ROUTE = '/uploads'
 
 if (!existsSync(UPLOAD_DIR)) mkdirSync(UPLOAD_DIR, { recursive: true })

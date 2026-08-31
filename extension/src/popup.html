@@ -25,6 +25,14 @@
   .status { margin-top: 12px; padding: 8px 10px; border-radius: 7px; background: #161619; font-size: 11.5px; }
   .bad { color: #ff9c9c; font-weight: 600; }
   .ok { color: #86e6a0; font-weight: 600; }
+  .auto {
+    margin-bottom: 14px; padding: 9px 11px; border-radius: 8px;
+    background: rgba(134,230,160,.08); border: 1px solid rgba(134,230,160,.18);
+    color: #a7d8b4; font-size: 11px; line-height: 1.45;
+  }
+  details { margin-top: 12px; }
+  summary { color: #9a9aa0; font-size: 11px; cursor: pointer; outline: none; }
+  summary::-webkit-details-marker { color: #6a6a70; }
   .origin { margin-top: 12px; font-size: 10.5px; color: #7a7a80; word-break: break-all; }
   code { background: #1c1c21; padding: 1px 4px; border-radius: 4px; }
 </style>
@@ -32,11 +40,18 @@
 <h1>Huddle — Netflix</h1>
 <p class="sub">Holds this tab to your room's clock.</p>
 
-<label>Server URL<input id="server" placeholder="https://your-api.example" /></label>
-<label>Room code<input id="code" placeholder="live-spsu" /></label>
-<label>Session token<input id="token" type="password" placeholder="open the Huddle tab to fill this" /></label>
+<div class="auto" id="auto">
+  Open your Huddle room in a tab and this fills itself in — the page already
+  knows the API, the room and your session, so there is nothing to copy.
+</div>
 
-<button id="save">Connect</button>
+<details id="manual">
+  <summary>Set it up by hand instead</summary>
+  <label>Server URL<input id="server" placeholder="https://your-api.example" /></label>
+  <label>Room code<input id="code" placeholder="live-spsu" /></label>
+  <label>Session token<input id="token" type="password" placeholder="from your Huddle tab" /></label>
+  <button id="save">Connect</button>
+</details>
 
 <div class="status" id="status">Not connected.</div>
 

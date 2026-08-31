@@ -220,6 +220,32 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
       return
     }
 
+    if (message?.kind === 'configure') {
+      /*
+       * Handed over by the Huddle tab, rather than typed into the popup.
+       *
+       * Reconnects only when something actually differs. The page that sends
+       * this re-renders for reasons that have nothing to do with the room —
+       * somebody walking in, a queue changing — and tearing a working socket
+       * down to rebuild the identical one would drop the stage membership
+       * that `watch:control` is gated on, mid-film.
+       */
+      const server = String(message.server ?? '').replace(/\/$/, '')
+      const roomId = String(message.roomId ?? '')
+      const token = String(message.token ?? '')
+      if (!server || !roomId || !token) {
+        respond({ ok: false, error: 'incomplete configuration' })
+        return
+      }
+
+      const same = server === config.server && roomId === config.roomId && token === config.token
+      config = { server, token, roomId, roomCode: String(message.roomName ?? config.roomCode) }
+      await chrome.storage.local.set(config)
+      if (!same || !socket?.connected) connect()
+      respond({ ok: true })
+      return
+    }
+
     if (message?.kind === 'state') {
       respond(state())
       return

@@ -3,6 +3,7 @@ import { Film, FolderOpen, Link2, Loader2, MonitorPlay, Search, Upload } from 'l
 
 import { Button } from '@/components/ui/button'
 import * as watchApi from '@/features/watch/api'
+import { useExtensionInstalled } from '@/features/watch/useExtensionInstalled'
 import type { LibraryEntry, QueueItem, ResolvedSource, SearchResult } from '@/features/watch/types'
 import { cn } from '@/lib/utils'
 
@@ -16,7 +17,7 @@ import { cn } from '@/lib/utils'
  * one explain its own constraints at the moment they matter.
  */
 
-type Source = 'library' | 'youtube' | 'upload' | 'link' | 'external'
+type Source = 'library' | 'youtube' | 'upload' | 'link' | 'external' | 'netflix'
 
 /** Rough and readable — a movie listing wants "3.1 GB", not a byte count. */
 function formatBytes(bytes: number) {
@@ -40,7 +41,8 @@ const SOURCES: {
   { id: 'youtube', label: 'YouTube', hint: 'Search or paste a link', icon: Film },
   { id: 'upload', label: 'Upload a video', hint: 'From this device', icon: Upload },
   { id: 'link', label: 'Direct link', hint: 'A .mp4 or .webm URL', icon: Link2 },
-  { id: 'external', label: 'Netflix, Prime, others', hint: 'Synced countdown', icon: MonitorPlay },
+  { id: 'netflix', label: 'Netflix', hint: 'Real sync, with the extension', icon: MonitorPlay },
+  { id: 'external', label: 'Prime, Hotstar, others', hint: 'Synced countdown', icon: MonitorPlay },
 ]
 
 /** What the picker hands back once the server has stored the addition. */
@@ -320,6 +322,8 @@ export function SourcePicker({
                 </p>
               )}
             </div>
+          ) : source === 'netflix' ? (
+            <NetflixPanel />
           ) : source === 'upload' ? (
             <div className="rounded-card border border-dashed border-white/15 bg-white/[0.02] px-5 py-6 text-center">
               {progress !== null ? (
@@ -439,6 +443,84 @@ export function SourcePicker({
         <p role="alert" className="mt-3 text-[0.78rem] leading-relaxed text-signal-bright">
           {error}
         </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The Netflix source, which is not a source so much as a handover.
+ *
+ * Nothing gets added to the queue here, and that is the point. Netflix will
+ * not embed and exposes no playback API, so the room cannot drive it from
+ * this page no matter what is typed in. What *can* drive it is a content
+ * script standing inside the Netflix tab — so the useful thing this screen
+ * can do is tell you honestly whether that piece is present, and get out of
+ * the way if it is.
+ *
+ * Prime and Hotstar stay under the old entry next to this one, because for
+ * them the honest answer is still a synced countdown. Naming Netflix
+ * separately is the difference between "this platform is a compromise" and
+ * "this platform actually works", which is worth not blurring.
+ */
+function NetflixPanel() {
+  const installed = useExtensionInstalled()
+
+  return (
+    <div className="rounded-card border border-white/12 bg-white/[0.03] px-5 py-5">
+      <p className="flex items-center gap-2 text-[0.8rem] font-semibold text-chalk">
+        <span
+          aria-hidden
+          className={cn(
+            'size-2 rounded-full',
+            installed ? 'bg-emerald-400' : 'bg-white/30',
+          )}
+        />
+        {installed ? 'Extension installed' : 'Extension not detected in this browser'}
+      </p>
+
+      {installed ? (
+        <>
+          <p className="mt-3 text-[0.85rem] leading-relaxed text-mist">
+            You are set up — there is nothing to add here. Open the title on{' '}
+            <a
+              href="https://www.netflix.com"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-chalk underline decoration-white/30 underline-offset-2 hover:decoration-white"
+            >
+              netflix.com
+            </a>{' '}
+            and press <strong className="font-semibold text-chalk">Start the room on this</strong>{' '}
+            in the panel that appears over the player. Everyone else in the room opens the same
+            title on their own account, and their tab falls in step on its own.
+          </p>
+          <p className="mt-3 text-[0.72rem] leading-relaxed text-dusk">
+            Play, pause and seek travel both ways. Nobody shares a stream or a login — the room
+            only ever agrees on a timestamp.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="mt-3 text-[0.85rem] leading-relaxed text-mist">
+            Netflix refuses to be embedded and offers no playback API, so this page cannot drive
+            it. A small browser extension can, because it runs inside the Netflix tab itself —
+            reading its clock and nudging play, pause and seek, exactly as your own keyboard
+            would.
+          </p>
+          <p className="mt-3 text-[0.85rem] leading-relaxed text-mist">
+            Install it from the{' '}
+            <code className="font-mono text-[0.78rem] text-chalk">extension/</code> folder of this
+            project — <code className="font-mono text-[0.78rem] text-chalk">chrome://extensions</code>{' '}
+            → Developer mode → Load unpacked. Then come back to this tab; it configures itself
+            from here, with nothing to type.
+          </p>
+          <p className="mt-3 text-[0.72rem] leading-relaxed text-dusk">
+            Everyone who wants to watch along needs it. Without it, use the{' '}
+            <strong className="font-semibold text-mist">Prime, Hotstar, others</strong> entry
+            instead — a shared countdown rather than real sync.
+          </p>
+        </>
       )}
     </div>
   )
