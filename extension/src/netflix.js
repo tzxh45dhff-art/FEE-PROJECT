@@ -186,6 +186,21 @@ function correct() {
 
 setInterval(correct, 1000)
 
+/*
+ * A manual resync, for the overlay's button.
+ *
+ * `overlay.js` runs in this same isolated world — content scripts from one
+ * extension on one frame share a single JS context, so this is a plain
+ * function call, not a message that could arrive late or not at all. Clearing
+ * the settle window is the whole trick: the loop above is already running
+ * every second, so the very next tick treats the gap as due rather than
+ * something still cooling down from the last correction.
+ */
+window.__huddleResync = () => {
+  settleUntil = 0
+  correct()
+}
+
 /* The worker pushes the room down as it changes, and pushes the clock offset
    with it — the offset is measured up there, where the socket is. */
 chrome.runtime.onMessage.addListener((message) => {

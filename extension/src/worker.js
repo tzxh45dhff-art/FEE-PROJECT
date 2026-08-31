@@ -135,6 +135,41 @@ function disconnect() {
   socket = null
 }
 
+/**
+ * Tell the room what is playing, from the tab that is actually watching it.
+ *
+ * The room already has a place for exactly this — the same "external" queue
+ * entry the app's own Watch tab writes when somebody picks "Netflix, Prime,
+ * others" and types a title by hand. This writes the identical shape, so
+ * everything downstream (the web app's synced-countdown view, anyone else's
+ * extension tab, the queue list) treats it exactly the same either way — the
+ * page just supplies a truer title than a person guessing from a bare URL.
+ */
+async function announce(title, url) {
+  if (!config.server || !config.token || !config.roomId) {
+    throw new Error('Not connected — set up the extension from its popup first.')
+  }
+
+  const response = await fetch(`${config.server}/api/rooms/${config.roomId}/watch/queue`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.token}`,
+      'ngrok-skip-browser-warning': 'true',
+    },
+    body: JSON.stringify({ source: 'external', ref: url, title }),
+  })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(body?.error ?? `Could not add that (${response.status})`)
+
+  const itemId = body?.item?.id
+  if (!itemId) throw new Error('The server did not say what it added.')
+
+  /* Same event the app's own "play now" sends — the room does not know or
+     care that this came from a tab instead of a click. */
+  socket?.emit('watch:load', { roomId: config.roomId, itemId })
+}
+
 /** Turn a room code into the id every socket event is keyed on. */
 async function resolveRoom(server, token, code) {
   const response = await fetch(`${server}/api/rooms/join`, {
@@ -155,6 +190,16 @@ async function resolveRoom(server, token, code) {
 
 chrome.runtime.onMessage.addListener((message, _sender, respond) => {
   ;(async () => {
+    if (message?.kind === 'announce') {
+      try {
+        await announce(String(message.title ?? '').trim() || 'Untitled', String(message.url ?? ''))
+        respond({ ok: true })
+      } catch (error) {
+        respond({ ok: false, error: error?.message ?? String(error) })
+      }
+      return
+    }
+
     if (message?.kind === 'control') {
       /* The room decides what happens; this only asks. The echo comes back as
          a `watch:state` like anybody else's, which is what keeps one tab from

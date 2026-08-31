@@ -17,10 +17,11 @@ stream, your login, or the content.
 
 | Piece | World | Job |
 |---|---|---|
-| `src/worker.js` | extension | The socket, and the clock offset |
+| `src/worker.js` | extension | The socket, the clock offset, and asking the API to start the room on a title |
 | `src/netflix.js` | isolated | Drift correction, and who moved the film |
+| `src/overlay.js` | isolated | The on-page panel — no second tab needed |
 | `src/bridge.js` | **main** | Netflix's own player API |
-| `src/handoff.js` | app origin | Offers your session token to the popup |
+| `src/handoff.js` | app origin | Gets a session token onto the popup, asking the server for one if nothing is already sitting there to read |
 | `src/popup.js` | popup | Server, room code, token |
 
 The socket lives in the worker on purpose. Opened from the content script it
@@ -45,13 +46,17 @@ element if the internal API is not where it used to be.
    CLIENT_ORIGIN=http://localhost:5173,https://your-app.vercel.app,chrome-extension://<id>
    ```
 
-4. **Sign in to Huddle** in a normal tab. The popup picks up your session
-   token from there and offers it — you can see it and clear it before use.
+4. **Sign in to Huddle** in a normal tab. The popup asks that tab for a
+   session token and offers it — you can see it and clear it before use.
 5. **Fill the popup**: the API's URL, and the room code shown in the room
    (e.g. `live-spsu`). Press Connect. Chrome will ask permission for that one
    server origin.
 6. **Open the title on Netflix.** Everyone in the room does this themselves,
-   on their own account.
+   on their own account. A small panel appears over the page — press
+   **Start the room on this** and everyone's Watch tab picks it up, no need
+   to visit the app at all. Once anyone has started it, later tabs just show
+   **Following: \<title\>**, with a manual **Resync now** if a tab wants to
+   check in sooner than the loop's own second-by-second pass.
 
 ## What it does and does not do
 
