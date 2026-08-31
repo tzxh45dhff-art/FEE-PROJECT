@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from '@/features/auth/AuthProvider'
 import { EntranceProvider } from '@/features/transition/EntranceProvider'
 import App from './App.tsx'
+import { clearChunkReloadGuard } from '@/lib/lazyChunk'
 import './index.css'
 
 /*
@@ -17,6 +18,11 @@ import './index.css'
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/ngrok-sw.js').catch(() => undefined)
 }
+
+/* The app got here, so whatever chunk failed last time is not failing now.
+   Releasing the single recovery attempt means a later deploy can use it too,
+   rather than it being spent for the life of the tab. See lib/lazyChunk.ts. */
+clearChunkReloadGuard()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

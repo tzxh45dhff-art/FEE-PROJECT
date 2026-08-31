@@ -1,11 +1,12 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
+import {Suspense, useEffect, useState} from 'react'
 import { Loader2 } from 'lucide-react'
 
 import { ROSTER } from '@/lib/characters'
 import { SCENES } from '@/lib/scenes'
 import type { InfiniteMenuItem } from '@/vendor/InfiniteMenu'
+import { lazyChunk } from '@/lib/lazyChunk'
 
-const InfiniteMenu = lazy(() => import('@/vendor/InfiniteMenu'))
+const InfiniteMenu = lazyChunk(() => import('@/vendor/InfiniteMenu'))
 
 export type PickerKind = 'character' | 'scene'
 

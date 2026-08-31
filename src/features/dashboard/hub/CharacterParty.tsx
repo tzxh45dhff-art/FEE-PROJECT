@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react'
+import {Suspense} from 'react'
 
 import { ModelBoundary } from '@/components/background/ModelBoundary'
 import { FlatCharacter } from '@/features/dashboard/hub/FlatCharacter'
@@ -8,8 +8,9 @@ import type { PointerTilt } from '@/hooks/usePointerTilt'
 import { usePageVisible } from '@/hooks/usePageVisible'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { hasRiggedCharacters, type Character } from '@/lib/characters'
+import { lazyChunk } from '@/lib/lazyChunk'
 
-const CharacterCanvas = lazy(() => import('@/features/dashboard/hub/CharacterCanvas'))
+const CharacterCanvas = lazyChunk(() => import('@/features/dashboard/hub/CharacterCanvas'))
 
 export type HubMember = {
   id: string

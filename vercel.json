@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "//": "Everything except built assets falls through to the SPA. The exclusion is the point: a catch-all answers a request for a hashed chunk that no longer exists with index.html at status 200, and a browser handed text/html for a module refuses to run it. The import then rejects with nothing useful, Suspense never resolves, and a pane simply never appears — which is what a deploy landing while somebody has the app open used to look like. Excluded, a stale chunk 404s honestly and the client can recognise it and reload. See src/lib/lazyChunk.ts.",
+      "source": "/((?!assets/).*)",
+      "destination": "/index.html"
+    }
+  ]
 }

@@ -1,7 +1,8 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
+import {Suspense, useEffect, useState} from 'react'
 
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { cn } from '@/lib/utils'
+import { lazyChunk } from '@/lib/lazyChunk'
 
 /**
  * The pit of spheres behind the hero.
@@ -11,7 +12,7 @@ import { cn } from '@/lib/utils'
  * paint of a page whose whole job is to be read — so the words arrive first
  * and the spheres drop in behind them a moment later.
  */
-const Ballpit = lazy(() => import('@/vendor/Ballpit'))
+const Ballpit = lazyChunk(() => import('@/vendor/Ballpit'))
 
 /**
  * How many spheres to simulate.

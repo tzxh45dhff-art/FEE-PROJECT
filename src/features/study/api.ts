@@ -231,12 +231,16 @@ export async function uploadResource(
     body,
   })
 
-  const payload = (await response.json().catch(() => ({}))) as {
+  /* Same trap as `api.ts`: a static host answers an unmatched /api path with
+     its index page and a 200, so "ok" is not enough to trust the body. */
+  const isJson = (response.headers.get('content-type') ?? '').includes('json')
+  const payload = (isJson ? await response.json().catch(() => ({})) : {}) as {
     resource?: StudyResource
     error?: string
   }
   if (!response.ok) throw new Error(payload.error ?? 'That upload did not work.')
-  return payload.resource!
+  if (!payload.resource) throw new Error('The API did not answer that upload — check the server address.')
+  return payload.resource
 }
 
 export const retryResource = (roomId: string, resourceId: string) =>

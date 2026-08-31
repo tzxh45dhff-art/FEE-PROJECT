@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -27,10 +27,11 @@ import {
 import { gateReason } from '@/features/study/useCapabilities'
 import { TopicPicker } from '@/features/study/TopicPicker'
 import { cn } from '@/lib/utils'
+import { lazyChunk } from '@/lib/lazyChunk'
 
 /* The editor is the heaviest thing in the app after the 3D scenes. Loaded when
    a problem is actually opened, never when the list is merely browsed. */
-const Editor = lazy(() =>
+const Editor = lazyChunk(() =>
   import('@monaco-editor/react').then((module) => ({ default: module.default })),
 )
 

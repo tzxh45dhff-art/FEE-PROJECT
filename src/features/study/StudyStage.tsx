@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
+import {Suspense, useCallback, useEffect, useMemo, useState} from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -28,19 +28,20 @@ import { gateReason, useCapabilities } from '@/features/study/useCapabilities'
 import { useStudyPreferences } from '@/features/study/useStudyPreferences'
 import { useStudySync, useStudyTimer } from '@/features/study/useStudyTimer'
 import { cn } from '@/lib/utils'
+import { lazyChunk } from '@/lib/lazyChunk'
 
 /* Each pane is its own chunk. The library pane pulls a PDF-shaped list, the
    notes pane pulls a markdown renderer and a diagram engine, and the coding
    pane pulls an entire editor — loading all of that to show a dashboard would
    make the cheapest thing here the slowest. */
-const HomePane = lazy(() => import('@/features/study/panes/HomePane'))
-const ResourcesPane = lazy(() => import('@/features/study/panes/ResourcesPane'))
-const McqPane = lazy(() => import('@/features/study/panes/McqPane'))
-const NotesPane = lazy(() => import('@/features/study/panes/NotesPane'))
-const CodingPane = lazy(() => import('@/features/study/panes/CodingPane'))
-const ExplainersPane = lazy(() => import('@/features/study/panes/ExplainersPane'))
-const ProgressPane = lazy(() => import('@/features/study/panes/ProgressPane'))
-const Tutor = lazy(() => import('@/features/study/Tutor'))
+const HomePane = lazyChunk(() => import('@/features/study/panes/HomePane'))
+const ResourcesPane = lazyChunk(() => import('@/features/study/panes/ResourcesPane'))
+const McqPane = lazyChunk(() => import('@/features/study/panes/McqPane'))
+const NotesPane = lazyChunk(() => import('@/features/study/panes/NotesPane'))
+const CodingPane = lazyChunk(() => import('@/features/study/panes/CodingPane'))
+const ExplainersPane = lazyChunk(() => import('@/features/study/panes/ExplainersPane'))
+const ProgressPane = lazyChunk(() => import('@/features/study/panes/ProgressPane'))
+const Tutor = lazyChunk(() => import('@/features/study/Tutor'))
 
 const EASE = [0.16, 1, 0.3, 1] as const
 

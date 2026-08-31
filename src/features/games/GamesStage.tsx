@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useMemo } from 'react'
+import {Suspense, useCallback, useMemo} from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Gamepad2, Loader2, MessagesSquare, Trophy, WifiOff, X } from 'lucide-react'
@@ -8,8 +8,9 @@ import { useGameSession } from '@/features/games/useGameSession'
 import type { GamePlayer, WirePen } from '@/features/games/types'
 import { usePageVisible } from '@/hooks/usePageVisible'
 import { cn } from '@/lib/utils'
+import { lazyChunk } from '@/lib/lazyChunk'
 
-const PenFightTable = lazy(() => import('@/features/games/penfight/PenFightTable'))
+const PenFightTable = lazyChunk(() => import('@/features/games/penfight/PenFightTable'))
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
