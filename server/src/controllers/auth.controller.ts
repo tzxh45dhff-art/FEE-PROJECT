@@ -48,6 +48,25 @@ export async function login(req: Request, res: Response) {
   res.json({ user, token })
 }
 
+/**
+ * A bearer token for the current session, minted on request.
+ *
+ * Every login already returns one of these in its body — same-origin clients
+ * simply have no reason to keep it, since the cookie does the same job and
+ * does it more safely. That leaves nothing for anything *outside* the page to
+ * borrow, which is exactly the gap a browser extension sits in: it can run
+ * inside a Huddle tab and read what that tab hands it, but it has no cookie of
+ * its own to send back.
+ *
+ * Minting a fresh one here rather than storing every login's token in
+ * `localStorage` is the deliberate half of this: it keeps the token out of
+ * script-readable storage for everyone who never asked for it, and only
+ * exists on a page that explicitly requested it for that purpose.
+ */
+export function extensionToken(req: Request, res: Response) {
+  res.json({ token: signSession(req.userId!) })
+}
+
 export function logout(_req: Request, res: Response) {
   clearSessionCookie(res)
   res.json({ ok: true })
