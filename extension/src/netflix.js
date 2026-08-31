@@ -1,0 +1,206 @@
+/**
+ * The Netflix tab, as a member of the room.
+ *
+ * Runs in the isolated world: it can talk to the extension, and it can talk to
+ * the MAIN-world bridge over `postMessage`, but it cannot see Netflix's own
+ * objects. That division is deliberate — the bridge is the only thing allowed
+ * near their internals, so when those change there is exactly one file to fix.
+ *
+ * The socket itself is not here. It lives in the service worker, because a
+ * WebSocket opened from this script would carry `Origin: https://www.netflix.com`
+ * — which would mean allowing netflix.com through the API's CORS list, and
+ * that is a wide door to open for one tab's convenience. From the worker the
+ * origin is `chrome-extension://<id>`: one stable value, allowlisted on
+ * purpose, that no web page can forge.
+ *
+ * What is here is the half that has to be close to the player: the mirror of
+ * where the film is, the correction loop, and the judgement about who moved
+ * it — the room, or the person sitting in front of it.
+ */
+
+const CHANNEL = 'huddle-netflix'
+
+/*
+ * Netflix is a coarse source, in the sense the app's own drift correction
+ * means: every correction is a seek, and every seek is a rebuffer. There is no
+ * fine playback-rate control to absorb small drift into, so the threshold has
+ * to be wide enough that it is not paying for a stall to fix something nobody
+ * would have noticed.
+ */
+const HARD_SECONDS = 2
+/** After a correction, leave it alone. See the app's `useDriftCorrection`. */
+const SEEK_COOLDOWN_MS = 5000
+/** Aim past the target by roughly what the rebuffer will cost. Then measure. */
+const INITIAL_SEEK_COST = 1
+const MAX_SEEK_COST = 1.8
+/** A position jump larger than this, unasked for, is somebody scrubbing. */
+const SCRUB_SECONDS = 1.5
+
+/** Last state pushed up by the bridge, and when it arrived. */
+let player = null
+/** The room's last known snapshot, and the clock offset to read it against. */
+let room = null
+let offset = 0
+/** Suppress both correction and local-intent reporting until this moment. */
+let settleUntil = 0
+let seekCost = INITIAL_SEEK_COST
+let seekedAt = null
+/** What we last told the room, so an echo is not reported as a new intent. */
+let reported = { paused: null, position: 0, at: 0 }
+
+const command = (command, extra = {}) =>
+  window.postMessage({ channel: CHANNEL, kind: 'command', command, ...extra }, '*')
+
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return
+  const data = event.data
+  if (!data || data.channel !== CHANNEL || data.kind !== 'state') return
+  onPlayerState(data)
+})
+
+/** Where the room says the film should be, right now. */
+function target() {
+  if (!room || !room.item) return null
+  if (!room.playing) return room.position
+  const nowOnServer = Date.now() + offset
+  const elapsed = (nowOnServer - room.serverTime) / 1000
+  return room.position + elapsed
+}
+
+/**
+ * Did the person in front of the tab just do something?
+ *
+ * This is the only genuinely hard judgement in the file. Our own corrections
+ * move the player too, and a correction reported back to the room as a fresh
+ * intent is a loop: everyone seeks, everyone reports the seek, everyone seeks
+ * again. So a change only counts as the person's when it happens outside the
+ * window in which we were moving things ourselves.
+ *
+ * A pause is read from the flag flipping. A scrub is read from the position
+ * having gone somewhere continuous playback could not have taken it — which is
+ * also why the previous reading is kept with its timestamp rather than just
+ * its value.
+ */
+function detectLocalIntent(next) {
+  if (performance.now() < settleUntil) return null
+  if (next.buffering) return null
+
+  if (reported.paused === null) return null
+
+  if (next.paused !== reported.paused) {
+    return next.paused
+      ? { action: 'pause', position: next.position }
+      : { action: 'play', position: next.position }
+  }
+
+  if (!next.paused) {
+    /*
+     * A scrub is a position playback could not have reached — which is not
+     * the same as a position that is merely behind where it ought to be.
+     *
+     * Comparing against the expected position alone gets this wrong in the
+     * one case that matters most: a player that has stalled reports the same
+     * timestamp twice, so after a few seconds it looks exactly like somebody
+     * dragged the bar backwards. Reporting that to the room makes everybody
+     * seek to a stalled player's position — which stalls them, which they
+     * report, and the room walks itself backwards. The stall has to be
+     * indistinguishable from nothing happening, because that is what it is.
+     *
+     * So: backwards is a scrub, and forwards faster than the wall clock is a
+     * scrub. Forwards but slow is a player having a hard time.
+     */
+    const elapsed = (next.at - reported.at) / 1000
+    const moved = next.position - reported.position
+    if (moved < -SCRUB_SECONDS || moved > elapsed + SCRUB_SECONDS) {
+      return { action: 'seek', position: next.position }
+    }
+  }
+
+  return null
+}
+
+function onPlayerState(next) {
+  const previous = player
+  player = next
+
+  if (!next.ready) return
+
+  const intent = previous ? detectLocalIntent(next) : null
+  if (intent) {
+    /* Ours now — do not read the room's echo of it back as another intent. */
+    settleUntil = performance.now() + 600
+    chrome.runtime.sendMessage({ kind: 'control', control: intent }).catch(() => undefined)
+  }
+
+  reported = { paused: next.paused, position: next.position, at: next.at }
+}
+
+/**
+ * Hold the film to the room.
+ *
+ * The same shape as the app's own correction loop, minus the rate nudging that
+ * Netflix has no way to accept: stand down while buffering, stand down while
+ * settling from the last correction, and when correcting, aim past the target
+ * by what a seek here has been measured to cost.
+ */
+function correct() {
+  if (!player || !player.ready || !room || !room.item) return
+  /* The room is paused, or nothing is on. Nothing to hold anyone to. */
+  if (!room.playing) {
+    if (!player.paused) {
+      settleUntil = performance.now() + SEEK_COOLDOWN_MS
+      command('pause')
+    }
+    return
+  }
+
+  if (player.buffering) return
+
+  /* Recovered from a correction — learn what it actually cost, so the next
+     one aims better. Eased, because one slow fetch is not the new normal. */
+  if (seekedAt !== null) {
+    const cost = (performance.now() - seekedAt) / 1000
+    seekCost = Math.min(MAX_SEEK_COST, seekCost * 0.7 + Math.max(0, cost) * 0.3)
+    seekedAt = null
+  }
+
+  if (performance.now() < settleUntil) return
+
+  const want = target()
+  if (want === null) return
+
+  /* The room is running and this player is not. Start it, but do not also
+     read the resulting change as the person having pressed play. */
+  if (player.paused) {
+    settleUntil = performance.now() + SEEK_COOLDOWN_MS
+    command('play')
+    return
+  }
+
+  if (Math.abs(want - player.position) >= HARD_SECONDS) {
+    settleUntil = performance.now() + SEEK_COOLDOWN_MS
+    seekedAt = performance.now()
+    command('seek', { seconds: want + seekCost })
+  }
+}
+
+setInterval(correct, 1000)
+
+/* The worker pushes the room down as it changes, and pushes the clock offset
+   with it — the offset is measured up there, where the socket is. */
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.kind === 'room') {
+    const changed = message.snapshot?.seq !== room?.seq
+    room = message.snapshot
+    offset = message.offset ?? 0
+    /* A deliberate control from anyone — including us — means the player is
+       about to move on purpose. Reading that as drift spends a second
+       correction on top of the one the room asked for. */
+    if (changed) settleUntil = performance.now() + SEEK_COOLDOWN_MS
+  }
+})
+
+/* Tell the worker this tab exists and what it is showing, so the popup can
+   say something true and the worker knows to push snapshots here. */
+const titleId = location.pathname.split('/').filter(Boolean).pop() ?? null
+chrome.runtime.sendMessage({ kind: 'hello', titleId }).catch(() => undefined)

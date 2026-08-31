@@ -15,6 +15,7 @@
     ]
   },
   "ignorePatterns": [
-    "src/vendor/**"
+    "src/vendor/**",
+    "extension/src/socket-lib.js"
   ]
 }

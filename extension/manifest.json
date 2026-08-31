@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Huddle — Netflix",
+  "version": "0.1.0",
+  "description": "Hold a Netflix tab to the same moment as everyone else in your Huddle room.",
+  "permissions": ["storage"],
+  "host_permissions": ["*://*.netflix.com/*"],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": { "service_worker": "src/worker.js", "type": "module" },
+  "action": { "default_popup": "src/popup.html", "default_title": "Huddle" },
+  "content_scripts": [
+    {
+      "matches": ["*://*.netflix.com/watch/*"],
+      "js": ["src/bridge.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.netflix.com/watch/*"],
+      "js": ["src/netflix.js"],
+      "world": "ISOLATED",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost:5173/*", "https://*.vercel.app/*"],
+      "js": ["src/handoff.js"],
+      "world": "ISOLATED",
+      "run_at": "document_idle"
+    }
+  ]
+}
