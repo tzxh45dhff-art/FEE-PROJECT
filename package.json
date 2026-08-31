@@ -15,7 +15,8 @@
     "server:install": "npm --prefix server install",
     "sync": "bash scripts/sync.sh",
     "db:push": "npm --prefix server run db:push",
-    "db:studio": "npm --prefix server run db:studio"
+    "db:studio": "npm --prefix server run db:studio",
+    "live": "node scripts/live.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
