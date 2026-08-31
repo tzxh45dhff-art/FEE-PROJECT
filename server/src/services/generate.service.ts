@@ -70,9 +70,20 @@ export async function gather(
   const picked = options.only?.length ? options.only : null
   const exclude = !picked && syllabusResourceId ? [syllabusResourceId] : []
 
-  let hits = await retrieval
-    .search(subjectId, topic, { limit: options.limit ?? 8, only: picked ?? undefined, exclude })
-    .catch(() => [] as retrieval.Hit[])
+  /*
+   * No topic, but documents were named: read them rather than search them.
+   *
+   * "Write notes from these two handouts" has nothing to rank passages by,
+   * and searching for the empty string embeds to a direction that means
+   * nothing — it would return an order that looks deliberate and is not.
+   */
+  let hits = !topic.trim() && picked
+    ? await retrieval
+        .passagesFrom(subjectId, picked, options.limit ?? 8)
+        .catch(() => [] as retrieval.Hit[])
+    : await retrieval
+        .search(subjectId, topic, { limit: options.limit ?? 8, only: picked ?? undefined, exclude })
+        .catch(() => [] as retrieval.Hit[])
 
   /*
    * Fall back to the handout only when it is the whole shelf.
@@ -98,6 +109,24 @@ export async function gather(
     grounded: hits.length > 0,
     sources: retrieval.sourceTitles(hits),
   }
+}
+
+/**
+ * How to name the subject matter in a prompt when nobody typed one.
+ *
+ * "Write 8 questions on: " is a broken sentence, and a model handed one
+ * invents a topic to fill the gap. When documents were chosen instead, the
+ * honest instruction is to cover what those documents actually say — the
+ * passages are already in the prompt above this line, so it has everything it
+ * needs without a phrase standing in for them.
+ */
+export function subjectMatter(topic: string, grounding: Grounding) {
+  const named = topic.trim()
+  if (named) return named
+  const sources = grounding.sources.length
+    ? grounding.sources.join(', ')
+    : 'the material above'
+  return `whatever the following material covers — ${sources}. Work from the passages above rather than picking one narrow theme, and cover the ground they actually set out.`
 }
 
 /**
@@ -170,7 +199,7 @@ export async function mcq(input: {
       { role: 'system', content: MCQ_SYSTEM },
       {
         role: 'user',
-        content: `${promptContext(grounding)}\n\n---\n\nWrite ${input.count} ${input.difficulty} questions on: ${input.topic}`,
+        content: `${promptContext(grounding)}\n\n---\n\nWrite ${input.count} ${input.difficulty} questions on: ${subjectMatter(input.topic, grounding)}`,
       },
     ],
     { temperature: 0.6, maxTokens: 6000 },
@@ -252,7 +281,7 @@ export async function notes(input: {
       { role: 'system', content: NOTES_SYSTEM },
       {
         role: 'user',
-        content: `${promptContext(grounding)}\n\n---\n\nWrite ${input.depth} notes on: ${input.topic}`,
+        content: `${promptContext(grounding)}\n\n---\n\nWrite ${input.depth} notes on: ${subjectMatter(input.topic, grounding)}`,
       },
     ],
     { temperature: 0.5, maxTokens: 8000 },
@@ -459,7 +488,7 @@ export async function coding(input: {
       { role: 'system', content: CODING_SYSTEM },
       {
         role: 'user',
-        content: `${promptContext(grounding)}\n\n---\n\nWrite one ${input.difficulty} problem on: ${input.topic}`,
+        content: `${promptContext(grounding)}\n\n---\n\nWrite one ${input.difficulty} problem on: ${subjectMatter(input.topic, grounding)}`,
       },
     ],
     { temperature: 0.7, maxTokens: 8000 },

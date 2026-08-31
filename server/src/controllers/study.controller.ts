@@ -312,9 +312,27 @@ async function pickable(subjectId: string, ids: string[] | undefined) {
   return rows.length > 0 ? rows.map((row) => row.id) : undefined
 }
 
+/*
+ * A topic, unless the documents already are the topic.
+ *
+ * Naming documents is itself an instruction — "from these two handouts" says
+ * what to write about as completely as a phrase does, and demanding both is
+ * asking somebody to summarise what they just pointed at. With nothing picked
+ * there is no such instruction, and a generator given neither would be writing
+ * about a whole subject at once, which is not a request anything answers well.
+ *
+ * Checked here as well as in the browser: the field going optional is a UI
+ * affordance, but "one or the other" is a rule about what can actually be
+ * generated.
+ */
+const NEEDS_SUBJECT_MATTER = 'Name a topic, or pick the documents to write from.'
+
+const hasSubjectMatter = (value: { topic: string; resourceIds?: string[] }) =>
+  value.topic.length > 0 || (value.resourceIds?.length ?? 0) > 0
+
 const mcqInput = z.object({
   subjectId: z.string(),
-  topic: z.string().trim().min(1, 'What should the questions be about?').max(300),
+  topic: z.string().trim().max(300).default(''),
   /* Which documents to draw on. Absent means everything on the shelf, which
      is what almost everybody wants; naming them is for "just from these
      slides". Validated against the subject rather than trusted, so an id from
@@ -322,7 +340,7 @@ const mcqInput = z.object({
   resourceIds: z.array(z.string()).max(50).optional(),
   count: z.number().int().min(1).max(20).default(8),
   difficulty: z.enum(['easy', 'medium', 'hard', 'mixed']).default('mixed'),
-})
+}).refine(hasSubjectMatter, { message: NEEDS_SUBJECT_MATTER, path: ['topic'] })
 
 export async function listMcq(req: Request, res: Response) {
   const roomId = await gate(req)
@@ -596,14 +614,14 @@ export async function deleteMcq(req: Request, res: Response) {
 
 const notesInput = z.object({
   subjectId: z.string(),
-  topic: z.string().trim().min(1, 'What should the notes cover?').max(300),
+  topic: z.string().trim().max(300).default(''),
   /* Which documents to draw on. Absent means everything on the shelf, which
      is what almost everybody wants; naming them is for "just from these
      slides". Validated against the subject rather than trusted, so an id from
      another room cannot be read through this. */
   resourceIds: z.array(z.string()).max(50).optional(),
   depth: z.enum(['brief', 'standard', 'thorough']).default('standard'),
-})
+}).refine(hasSubjectMatter, { message: NEEDS_SUBJECT_MATTER, path: ['topic'] })
 
 export async function listNotes(req: Request, res: Response) {
   const roomId = await gate(req)
@@ -678,14 +696,14 @@ export async function deleteNote(req: Request, res: Response) {
 
 const codingInput = z.object({
   subjectId: z.string(),
-  topic: z.string().trim().min(1, 'What should the problem be about?').max(300),
+  topic: z.string().trim().max(300).default(''),
   /* Which documents to draw on. Absent means everything on the shelf, which
      is what almost everybody wants; naming them is for "just from these
      slides". Validated against the subject rather than trusted, so an id from
      another room cannot be read through this. */
   resourceIds: z.array(z.string()).max(50).optional(),
   difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
-})
+}).refine(hasSubjectMatter, { message: NEEDS_SUBJECT_MATTER, path: ['topic'] })
 
 export async function listProblems(req: Request, res: Response) {
   const roomId = await gate(req)
@@ -960,13 +978,13 @@ export async function deleteProblem(req: Request, res: Response) {
 
 const explainerInput = z.object({
   subjectId: z.string(),
-  topic: z.string().trim().min(1, 'What should the lesson cover?').max(300),
+  topic: z.string().trim().max(300).default(''),
   /* The student's own description of how they want to be taught. Free text on
      purpose: a menu of "beginner / intermediate / advanced" cannot express "I
      keep losing marks on the derivation, go slowly there". */
   style: z.string().trim().max(1000).default(''),
   voice: z.string().trim().max(80).optional(),
-})
+}).refine(hasSubjectMatter, { message: NEEDS_SUBJECT_MATTER, path: ['topic'] })
 
 function shapeExplainer(row: {
   id: string
@@ -1054,8 +1072,10 @@ export async function createExplainer(req: Request, res: Response) {
       subjectId: subject.id,
       createdById: req.userId!,
       /* A placeholder until the script names it. Shown in the list while it
-         builds, so the row is not a blank line for two minutes. */
-      title: input.topic,
+         builds, so the row is not a blank line for two minutes — which is
+         also why it cannot be the empty topic somebody is allowed to leave
+         blank when they picked the documents instead. */
+      title: input.topic || 'Lesson from the chosen documents',
       topic: input.topic,
       style: input.style,
       voice,

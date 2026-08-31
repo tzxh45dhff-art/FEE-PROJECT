@@ -559,7 +559,7 @@ export async function script(input: {
       { role: 'system', content: SCRIPT_SYSTEM },
       {
         role: 'user',
-        content: `${generate.promptContext(grounding)}\n\n---\n\nWrite the lesson on: ${input.topic}${asked}`,
+        content: `${generate.promptContext(grounding)}\n\n---\n\nWrite the lesson on: ${generate.subjectMatter(input.topic, grounding)}${asked}`,
       },
     ],
     { temperature: 0.55, maxTokens: 8000 },

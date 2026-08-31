@@ -142,6 +142,65 @@ export type SearchOptions = {
  * nothing clears the floor. Both are ordinary and the caller must handle them
  * by saying so rather than by pretending it found something.
  */
+/**
+ * Whole documents, in their own order, with no query to rank them by.
+ *
+ * For "write notes from these two handouts", where the documents *are* the
+ * request. Similarity search needs something to be similar to, and an empty
+ * query embeds to a direction with no meaning — it would return passages in
+ * an order that looks considered and is actually arbitrary.
+ *
+ * So this does not pretend to rank. It reads from the start of each chosen
+ * document and takes an even share from each, because a person who picked two
+ * files meant both of them, and a straight cut at a global limit would spend
+ * the whole budget on whichever happened to be longer.
+ */
+export async function passagesFrom(
+  subjectId: string,
+  resourceIds: string[],
+  limit = 8,
+): Promise<Hit[]> {
+  if (resourceIds.length === 0) return []
+
+  const perDocument = Math.max(1, Math.ceil(limit / resourceIds.length))
+
+  const rows = await prisma.resourceChunk.findMany({
+    where: { subjectId, resourceId: { in: resourceIds }, resource: { status: 'ready' } },
+    orderBy: [{ resourceId: 'asc' }, { index: 'asc' }],
+    select: {
+      id: true,
+      text: true,
+      page: true,
+      resourceId: true,
+      resource: { select: { title: true, file: true, mimeType: true } },
+    },
+  })
+
+  const taken = new Map<string, number>()
+  const hits: Hit[] = []
+
+  for (const row of rows) {
+    const used = taken.get(row.resourceId) ?? 0
+    if (used >= perDocument) continue
+    taken.set(row.resourceId, used + 1)
+    hits.push({
+      chunkId: row.id,
+      resourceId: row.resourceId,
+      title: row.resource.title,
+      page: row.page,
+      unit: unitFor(row.resource.file, row.resource.mimeType),
+      text: row.text,
+      /* Not a similarity — nothing was compared. Reported as a full match
+         because these passages were chosen by hand, which is a stronger
+         signal than anything a cosine could have produced. */
+      score: 1,
+    })
+    if (hits.length >= limit) break
+  }
+
+  return hits
+}
+
 export async function search(
   subjectId: string,
   query: string,

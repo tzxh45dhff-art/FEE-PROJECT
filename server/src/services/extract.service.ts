@@ -205,6 +205,67 @@ function imageBytesIn(buffer: Buffer): number {
   }
 }
 
+/**
+ * The pictures themselves, not just how many bytes of them there are.
+ *
+ * `imageBytesIn` above answers "is this document mostly images", which is
+ * enough to warn somebody. It is not enough to do anything about it. A slide
+ * deck whose every code sample is a screenshot is not a broken upload — it is
+ * a completely ordinary way for course material to be written, and reading it
+ * requires actually looking at the pictures.
+ *
+ * Deliberately unopinionated about what happens next: this hands back bytes,
+ * and `vision.service.ts` decides what they say. Keeping the model out of the
+ * parser means the parser stays synchronous, offline and testable.
+ */
+export type EmbeddedImage = { name: string; bytes: Buffer; type: string }
+
+/**
+ * Below this, a picture is furniture.
+ *
+ * Bullets, logos, rules and spacer pixels all live in the same folder as the
+ * screenshots, and every one sent to a vision model costs a request to be told
+ * it contains nothing. 8 KB is comfortably under any real screenshot of code
+ * and comfortably over the decorations.
+ */
+const MEANINGFUL_IMAGE_BYTES = 8 * 1024
+
+/** What a vision model will actually accept — EMF/WMF are vector, and not it. */
+const READABLE_IMAGE = /\.(png|jpe?g|gif|bmp|webp)$/i
+
+const IMAGE_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  bmp: 'image/bmp',
+  webp: 'image/webp',
+}
+
+export function imagesIn(buffer: Buffer, limit = 40): EmbeddedImage[] {
+  try {
+    const found: EmbeddedImage[] = []
+    const files = unzipSync(new Uint8Array(buffer), {
+      filter: (entry) =>
+        /\/(media|images)\/[^/]+$/i.test(entry.name) &&
+        READABLE_IMAGE.test(entry.name) &&
+        entry.originalSize >= MEANINGFUL_IMAGE_BYTES,
+    })
+
+    for (const [name, bytes] of Object.entries(files)) {
+      const extension = name.split('.').pop()?.toLowerCase() ?? 'png'
+      found.push({ name, bytes: Buffer.from(bytes), type: IMAGE_TYPES[extension] ?? 'image/png' })
+    }
+
+    /* Largest first: if there is a cap to hit, the biggest pictures are the
+       ones most likely to be a page of code rather than a small diagram. */
+    found.sort((a, b) => b.bytes.length - a.bytes.length)
+    return found.slice(0, limit)
+  } catch {
+    return []
+  }
+}
+
 /** Read the named entries out of a ZIP, as UTF-8 text. */
 function openZip(buffer: Buffer, wanted: (name: string) => boolean): Map<string, string> {
   let budget = MAX_UNZIPPED_BYTES
@@ -544,6 +605,21 @@ export function familyOf(fileName: string, mimeType: string): Family {
  * upload, and the caller needs to tell that apart from a corrupt file so it
  * can say which one happened.
  */
+/**
+ * The embedded pictures in a file, for the formats that carry them plainly.
+ *
+ * Office formats are ZIPs, so their images are simply files inside and come
+ * out exactly as they went in. A PDF's are not: they live in the object graph
+ * behind filters, and getting at them means a renderer rather than an unzip —
+ * so a scanned PDF is still beyond this, and says so rather than quietly
+ * returning nothing as though it had looked.
+ */
+export async function imagesFrom(filePath: string, mimeType: string): Promise<EmbeddedImage[]> {
+  const family = familyOf(filePath, mimeType)
+  if (!['docx', 'pptx', 'xlsx', 'opendocument', 'epub'].includes(family)) return []
+  return imagesIn(await readFile(filePath))
+}
+
 export async function extract(filePath: string, mimeType: string): Promise<Extracted> {
   const buffer = await readFile(filePath)
 

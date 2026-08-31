@@ -138,8 +138,21 @@ async function post(target: string, body: unknown, timeoutMs: number): Promise<u
   )
 }
 
+/**
+ * One piece of a message, for the calls that carry pictures.
+ *
+ * The chat endpoint accepts either a plain string or an array of parts, and
+ * only the array form can hold an image. Kept as a separate shape rather than
+ * widening `content` everywhere, so the dozen call sites that only ever send
+ * prose are not made to think about it.
+ */
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'low' | 'high' | 'auto' } }
+
 export type ChatMessage =
   | { role: 'system' | 'user' | 'assistant'; content: string }
+  | { role: 'user'; content: ContentPart[] }
   | { role: 'assistant'; content: string | null; tool_calls: ToolCall[] }
   | { role: 'tool'; content: string; tool_call_id: string }
 

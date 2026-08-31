@@ -4,7 +4,8 @@ import { rm } from 'node:fs/promises'
 import { prisma } from '../models/prisma.js'
 import { UPLOAD_DIR } from './upload.service.js'
 import * as embeddings from './embeddings.service.js'
-import { chunk, extract } from './extract.service.js'
+import { chunk, extract, imagesFrom } from './extract.service.js'
+import * as vision from './vision.service.js'
 
 /**
  * Turning an uploaded document into something the shelf can answer from.
@@ -53,7 +54,32 @@ export async function ingest(resourceId: string): Promise<void> {
     })
 
     const extracted = await extract(filePath(resource.file), resource.mimeType)
-    const pieces = chunk(extracted)
+
+    /*
+     * Read the pictures too, when there are enough of them to matter.
+     *
+     * Gated on the same ratio that used to only produce a warning, because
+     * the cost is real — a request per few images against the shared quota —
+     * and a document with a logo and one diagram has nothing to gain. When it
+     * does fire, the transcription is folded into the text before chunking,
+     * so a screenshot of a `for` loop is indexed, retrieved and quoted
+     * exactly like a paragraph that happened to be typed.
+     */
+    const imageBytes = extracted.imageBytes ?? 0
+    const textBytes = Buffer.byteLength(extracted.text, 'utf8')
+    const pictureHeavy = imageBytes > 120_000 && imageBytes > textBytes * 4
+
+    let transcribed = ''
+    if (pictureHeavy && vision.configured()) {
+      const images = await imagesFrom(filePath(resource.file), resource.mimeType)
+      transcribed = await vision.transcribe(images)
+    }
+
+    const pieces = chunk(
+      transcribed
+        ? { ...extracted, text: `${extracted.text}\n\n${transcribed}`.trim() }
+        : extracted,
+    )
 
     /*
      * A file that parsed but said nothing is a scan, almost always.
@@ -83,9 +109,10 @@ export async function ingest(resourceId: string): Promise<void> {
      * diagram is normal; one where the pictures outweigh the text by this
      * much is a document whose meaning is in the pictures.
      */
-    const imageBytes = extracted.imageBytes ?? 0
-    const textBytes = Buffer.byteLength(extracted.text, 'utf8')
-    const mostlyPictures = imageBytes > 120_000 && imageBytes > textBytes * 20
+    /* Still mostly pictures *after* trying to read them — either the vision
+       pass was unavailable, or what it found was decoration rather than
+       content. Either way the caveat below is still the honest thing to say. */
+    const mostlyPictures = imageBytes > 120_000 && imageBytes > textBytes * 20 && !transcribed
 
     const vectors = await embeddings.embed(pieces.map((piece) => piece.text))
     if (vectors.length !== pieces.length) {

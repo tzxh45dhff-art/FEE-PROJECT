@@ -96,10 +96,27 @@ export function TopicPicker({
      an index instead of the material. */
   const content = shelf.filter((row) => row.id !== syllabusId)
 
+  /*
+   * A topic is only needed when nothing else says what to write about.
+   *
+   * Picking documents already answers the question — "write questions from
+   * these two handouts" is a complete instruction, and making somebody also
+   * name a topic is asking them to summarise in a phrase what they just
+   * pointed at. Across a whole shelf it is a different matter: without a
+   * topic that is "write about this entire subject", which is not a request
+   * anything can answer well.
+   */
+  const needsTopic = picked.length === 0
+  const ready = !needsTopic || topic.trim().length > 0
+
   const go = () => {
-    const trimmed = topic.trim()
-    if (!trimmed) return
-    onSubmit(trimmed, { count, difficulty, depth, resourceIds: picked.length ? picked : undefined })
+    if (!ready) return
+    onSubmit(topic.trim(), {
+      count,
+      difficulty,
+      depth,
+      resourceIds: picked.length ? picked : undefined,
+    })
   }
 
   return (
@@ -111,7 +128,11 @@ export function TopicPicker({
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !disabled) go()
           }}
-          placeholder="A topic — or pick one below"
+          placeholder={
+            needsTopic
+              ? 'A topic — or pick one below'
+              : 'A topic, if you want to narrow it — optional'
+          }
           maxLength={300}
           /* Its own line on a phone. Sharing a row with two selects leaves it
              about eight characters wide, which is not a field anybody can
@@ -162,7 +183,7 @@ export function TopicPicker({
 
         <GenerateButton
           busy={busy}
-          disabled={disabled || !topic.trim()}
+          disabled={disabled || !ready}
           reason={reason}
           label={label}
           onClick={go}
