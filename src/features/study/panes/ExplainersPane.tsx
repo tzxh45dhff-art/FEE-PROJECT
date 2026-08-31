@@ -12,6 +12,8 @@ import {
   type PaneProps,
 } from '@/features/study/panes/shared'
 import { gateReason } from '@/features/study/useCapabilities'
+import { DocumentPicker } from '@/features/study/DocumentPicker'
+import { useShelf } from '@/features/study/useShelf'
 import { cn } from '@/lib/utils'
 
 /** Statuses that are still going somewhere, so the list keeps watching. */
@@ -34,8 +36,11 @@ export default function ExplainersPane({ roomId, subject, caps, capsProblem, ann
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [retrying, setRetrying] = useState<string | null>(null)
+  /* Empty means the whole shelf — the same default every other generator has. */
+  const [picked, setPicked] = useState<string[]>([])
 
   const subjectId = subject?.id ?? null
+  const shelf = useShelf(roomId, subjectId)
 
   const load = useCallback(async () => {
     if (!subjectId) return
@@ -59,6 +64,9 @@ export default function ExplainersPane({ roomId, subject, caps, capsProblem, ann
   useEffect(() => {
     if (seed) setTopic(seed)
   }, [seed])
+
+  /* A choice of documents means nothing in a different course. */
+  useEffect(() => setPicked([]), [subjectId])
 
   /*
    * Watch while anything is still being built.
@@ -84,8 +92,12 @@ export default function ExplainersPane({ roomId, subject, caps, capsProblem, ann
     }
   }, [rows, load])
 
+  /* Picking documents already says what to teach — see DocumentPicker. */
+  const needsTopic = picked.length === 0
+  const ready = !needsTopic || topic.trim().length > 0
+
   const generate = async () => {
-    if (!subjectId || !topic.trim() || busy) return
+    if (!subjectId || !ready || busy) return
     setBusy(true)
     setError(null)
     try {
@@ -94,6 +106,7 @@ export default function ExplainersPane({ roomId, subject, caps, capsProblem, ann
         topic: topic.trim(),
         style: style.trim(),
         voice: voice || undefined,
+        resourceIds: picked.length ? picked : undefined,
       })
       setTopic('')
       await load()
@@ -170,9 +183,13 @@ export default function ExplainersPane({ roomId, subject, caps, capsProblem, ann
           value={topic}
           onChange={(event) => setTopic(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && !unavailable) void generate()
+            if (event.key === 'Enter' && !unavailable && ready) void generate()
           }}
-          placeholder="A topic — what should this lesson teach?"
+          placeholder={
+            needsTopic
+              ? 'A topic — what should this lesson teach?'
+              : 'A topic, if you want to narrow it — optional'
+          }
           maxLength={300}
           className="study-field h-10 w-full"
         />
@@ -219,7 +236,7 @@ export default function ExplainersPane({ roomId, subject, caps, capsProblem, ann
           <button
             type="button"
             onClick={() => void generate()}
-            disabled={busy || unavailable || !topic.trim()}
+            disabled={busy || unavailable || !ready}
             title={
               gateReason(caps, capsProblem, 'ai') ??
               gateReason(caps, capsProblem, 'narration') ??
@@ -235,6 +252,8 @@ export default function ExplainersPane({ roomId, subject, caps, capsProblem, ann
             {busy ? 'Starting…' : 'Make the lesson'}
           </button>
         </div>
+
+        <DocumentPicker shelf={shelf} picked={picked} onChange={setPicked} className="mt-3" />
 
         <p className="mt-2.5 text-[0.72rem] leading-relaxed text-[var(--study-faint)]">
           A lesson takes a minute or two to write and record. You can leave this tab while it does.

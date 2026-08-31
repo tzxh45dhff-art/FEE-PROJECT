@@ -984,6 +984,10 @@ const explainerInput = z.object({
      keep losing marks on the derivation, go slowly there". */
   style: z.string().trim().max(1000).default(''),
   voice: z.string().trim().max(80).optional(),
+  /* Which documents to teach from. Absent means the whole shelf. Validated
+     against the subject rather than trusted, so an id from another room
+     cannot be read through this. */
+  resourceIds: z.array(z.string()).max(50).optional(),
 }).refine(hasSubjectMatter, { message: NEEDS_SUBJECT_MATTER, path: ['topic'] })
 
 function shapeExplainer(row: {
@@ -1078,6 +1082,10 @@ export async function createExplainer(req: Request, res: Response) {
       title: input.topic || 'Lesson from the chosen documents',
       topic: input.topic,
       style: input.style,
+      /* Kept so a retry draws on the same documents. A retry that quietly
+         widened to the whole shelf would be a different lesson wearing the
+         same row. */
+      resources: JSON.stringify((await pickable(subject.id, input.resourceIds)) ?? []),
       voice,
       status: 'pending',
     },

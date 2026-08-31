@@ -636,6 +636,17 @@ async function narrate(explainerId: string, beats: Beat[], voice: string) {
   return { beats: done, duration: Math.round(total * 1000) / 1000 }
 }
 
+/** The document ids a lesson was narrowed to, or undefined for the shelf. */
+function readResources(raw: string): string[] | undefined {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed as string[]
+  } catch {
+    /* Unreadable is the same as unset: fall back to the whole shelf. */
+  }
+  return undefined
+}
+
 async function fail(explainerId: string, message: string) {
   await prisma.explainer
     .update({ where: { id: explainerId }, data: { status: 'failed', error: message.slice(0, 400) } })
@@ -670,7 +681,9 @@ async function build(explainerId: string) {
       subjectId: row.subjectId,
       topic: row.topic,
       style: row.style,
-      resourceIds: undefined,
+      /* What the student narrowed it to, if they did. Stored on the row so a
+         retry after a dropped connection draws on the same documents. */
+      resourceIds: readResources(row.resources),
     })
 
     await prisma.explainer.update({

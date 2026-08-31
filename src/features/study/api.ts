@@ -440,7 +440,13 @@ export const explainer = (roomId: string, explainerId: string) =>
 
 export const createExplainer = (
   roomId: string,
-  input: { subjectId: string; topic: string; style: string; voice?: string },
+  input: {
+    subjectId: string
+    topic: string
+    style: string
+    voice?: string
+    resourceIds?: string[]
+  },
 ) => api.post<{ explainer: ExplainerSummary }>(`${base(roomId)}/explainers`, input)
 
 /** Build a failed lesson again, keeping the topic and the script it got to. */

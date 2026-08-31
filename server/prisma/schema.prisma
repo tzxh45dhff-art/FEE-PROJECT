@@ -523,6 +523,10 @@ model Explainer {
   /// the notes and question generators follow.
   grounded Boolean @default(false)
   sources  String  @default("[]")
+  /// JSON array of resource ids the student narrowed this to, empty for the
+  /// whole shelf. Stored rather than used and forgotten, because a retry has
+  /// to draw on the same documents or it is not a retry of the same lesson.
+  resources String @default("[]")
 
   /// pending | scripting | narrating | ready | failed
   status    String   @default("pending")
