@@ -72,8 +72,13 @@ function buildPanel() {
       <div class="row"><div class="label">Status</div><div class="value" id="status">—</div></div>
       <div class="row" id="idleRow">
         <div class="label">Watch this together</div>
-        <div class="value" id="detectedTitle" style="margin-bottom:8px;"></div>
-        <button id="announce">Start the room on this</button>
+        <div id="onTitle">
+          <div class="value" id="detectedTitle" style="margin-bottom:8px;"></div>
+          <button id="announce">Start the room on this</button>
+        </div>
+        <div class="value" id="offTitleHint" style="display:none;">
+          Open a title on Netflix to start the room on it.
+        </div>
       </div>
       <div class="row" id="followingRow" style="display:none;">
         <div class="label">Following</div>
@@ -94,6 +99,8 @@ function buildPanel() {
     status: root.getElementById('status'),
     idleRow: root.getElementById('idleRow'),
     followingRow: root.getElementById('followingRow'),
+    onTitle: root.getElementById('onTitle'),
+    offTitleHint: root.getElementById('offTitleHint'),
     detectedTitle: root.getElementById('detectedTitle'),
     followingTitle: root.getElementById('followingTitle'),
     announce: root.getElementById('announce'),
@@ -140,6 +147,13 @@ function mount() {
     const { player, room, offset } = latest
 
     const connected = room !== null
+    /*
+     * Read fresh on every tick rather than watched separately. This already
+     * runs once a second regardless, so a dedicated route watcher here would
+     * just be a second timer arriving at the same fact.
+     */
+    const onWatchPage = location.pathname.startsWith('/watch/')
+
     el.dot.className = 'dot' + (connected ? ' on' : '')
     el.pillText.textContent = connected ? 'Huddle · in sync' : 'Huddle'
     el.status.textContent = connected
@@ -151,12 +165,21 @@ function mount() {
     el.followingRow.style.display = hasRoomItem ? 'block' : 'none'
 
     if (!hasRoomItem) {
-      if (document.activeElement !== el.detectedTitle) el.detectedTitle.textContent = cleanTitle()
-      el.announce.disabled = busy || !connected
-      el.announce.textContent = busy ? 'Starting…' : 'Start the room on this'
+      /* Nothing to announce from Browse, My List, or a search — there is no
+         single title on screen there, and offering the button anyway would
+         mean it announces whatever `document.title` happens to say. */
+      el.onTitle.style.display = onWatchPage ? 'block' : 'none'
+      el.offTitleHint.style.display = onWatchPage ? 'none' : 'block'
+      if (onWatchPage) {
+        if (document.activeElement !== el.detectedTitle) el.detectedTitle.textContent = cleanTitle()
+        el.announce.disabled = busy || !connected
+        el.announce.textContent = busy ? 'Starting…' : 'Start the room on this'
+      }
     } else {
+      /* Left visible off a title page on purpose — it is useful to see what
+         the room is on even from Browse, as the reason to go open it. */
       el.followingTitle.textContent = room.item.title
-      el.resync.disabled = !player || player.buffering
+      el.resync.disabled = !onWatchPage || !player || player.buffering
     }
   }
 

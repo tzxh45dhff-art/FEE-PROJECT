@@ -70,6 +70,12 @@ element if the internal API is not where it used to be.
   anybody is deliberately higher than the app's own player uses.
 - It will break when Netflix reorganises their player internals. That is the
   standing cost of this approach, not a bug that gets fixed once.
+- The content scripts match all of netflix.com, not only `/watch/*`. Netflix
+  is a single-page app — clicking Play routes there with `history.pushState`,
+  not a real navigation, and Chrome only injects a manifest-declared script on
+  an actual page load. Matching everything and watching the path from inside
+  the one script that's already running is what lets the panel actually show
+  up on the title you open, rather than staying behind on Browse forever.
 
 ## Tests
 

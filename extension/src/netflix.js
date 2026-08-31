@@ -184,7 +184,54 @@ function correct() {
   }
 }
 
-setInterval(correct, 1000)
+/**
+ * Watching for Netflix routing itself somewhere new.
+ *
+ * The manifest now matches all of netflix.com rather than only `/watch/*`,
+ * on purpose: Netflix is a single-page app, and pressing Play routes there
+ * with `history.pushState`, not a real navigation. Chrome only injects a
+ * manifest-declared content script on an actual page load — a soft route
+ * change is invisible to it — so a script that only matched `/watch/*` would
+ * sit on Browse forever and simply never exist on the page anyone is
+ * actually watching from. Matching everything and watching the path from
+ * inside the one script that's already running is what makes it show up.
+ *
+ * A poll, not a `popstate` listener, because Netflix's router does not
+ * necessarily fire one for every transition it makes — polling the one
+ * property that actually matters is cheaper to get right than listening for
+ * every event that might precede it changing.
+ */
+let lastPath = location.pathname
+
+function enteredWatchPage() {
+  /*
+   * A fresh title, not a continuation of the last one.
+   *
+   * `reported` still holds the previous title's last position — one entry
+   * to the next resembles a scrub of several thousand seconds, and without
+   * clearing it here that is exactly what the first tick on the new title
+   * would report to the room.
+   */
+  reported = { paused: null, position: 0, at: 0 }
+  settleUntil = performance.now() + SEEK_COOLDOWN_MS
+  seekCost = INITIAL_SEEK_COST
+  seekedAt = null
+
+  const titleId = location.pathname.split('/').filter(Boolean).pop() ?? null
+  chrome.runtime.sendMessage({ kind: 'hello', titleId }).catch(() => undefined)
+}
+
+setInterval(() => {
+  if (location.pathname !== lastPath) {
+    lastPath = location.pathname
+    if (lastPath.startsWith('/watch/')) enteredWatchPage()
+  }
+  correct()
+}, 1000)
+
+/* Already on one — the common case while iterating on the extension itself:
+   reload it, then refresh a tab that was on a title the whole time. */
+if (location.pathname.startsWith('/watch/')) enteredWatchPage()
 
 /*
  * A manual resync, for the overlay's button.
@@ -215,7 +262,3 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 })
 
-/* Tell the worker this tab exists and what it is showing, so the popup can
-   say something true and the worker knows to push snapshots here. */
-const titleId = location.pathname.split('/').filter(Boolean).pop() ?? null
-chrome.runtime.sendMessage({ kind: 'hello', titleId }).catch(() => undefined)

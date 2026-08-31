@@ -10,13 +10,13 @@
   "action": { "default_popup": "src/popup.html", "default_title": "Huddle" },
   "content_scripts": [
     {
-      "matches": ["*://*.netflix.com/watch/*"],
+      "matches": ["*://*.netflix.com/*"],
       "js": ["src/bridge.js"],
       "world": "MAIN",
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://*.netflix.com/watch/*"],
+      "matches": ["*://*.netflix.com/*"],
       "js": ["src/netflix.js", "src/overlay.js"],
       "world": "ISOLATED",
       "run_at": "document_idle"
