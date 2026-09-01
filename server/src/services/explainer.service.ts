@@ -181,6 +181,12 @@ an order. A callout only for the two or three points genuinely worth stopping
 on.
 
 MERMAID THAT ACTUALLY PARSES
+This is Mermaid, not Graphviz. The first line is graph TD or graph LR — never
+digraph, never dot, never a name in braces. Edges are --> and never ->. Those
+are the two habits that produce a diagram which renders as its own source code
+instead of a picture, and they come from Graphviz being what most graph source
+looks like.
+
 Every node label goes in double quotes, always, with no exceptions:
   RIGHT  A["Collection (I)"] --> B["ArrayList"]
   WRONG  A[Collection (I)] --> B[ArrayList]

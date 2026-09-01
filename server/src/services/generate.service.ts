@@ -271,7 +271,8 @@ The notes must also be genuinely visual, not a wall of prose:
   process, a graph for how ideas relate, a sequence diagram for an exchange
   over time, a mindmap for a topic's shape. Prefer \`flowchart TD\`, keep it
   simple, and put EVERY node label in double quotes: A["List (I)"], never
-  A[List (I)]. An unquoted bracket or parenthesis inside a label is a parse
+  A[List (I)]. This is Mermaid, not Graphviz — the first line is flowchart TD
+  or graph TD, never digraph, and edges are --> and never ->. An unquoted bracket or parenthesis inside a label is a parse
   error, and a diagram that does not parse shows the reader its own source
   code where the picture should be.
 - Do not draw a diagram for its own sake. A diagram of three bullet points is

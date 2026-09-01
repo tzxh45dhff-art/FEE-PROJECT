@@ -40,7 +40,7 @@ function quoted(body: string): string {
   return `"${body.replace(/"/g, '#quot;')}"`
 }
 
-export function safeMermaid(source: string): string {
+function quoteLabels(source: string): string {
   let out = ''
   let i = 0
 
@@ -118,4 +118,148 @@ export function safeMermaid(source: string): string {
   }
 
   return out
+}
+
+/*
+ * Everything above quotes labels. Everything below fixes the rest of what a
+ * language model reaches for when asked for a diagram.
+ *
+ * The failures are not random — they are the neighbouring syntaxes. Asked for
+ * a graph, a model that has read the whole internet will sometimes write
+ * Graphviz, because Graphviz is what most graph source on the internet is.
+ * `digraph TD` instead of `graph TD` is one token wrong and renders nothing.
+ * Each repair below was confirmed against Mermaid's own parser: the broken
+ * form fails, the repaired form parses, and the repair changes nothing else.
+ *
+ * What is deliberately NOT repaired: anything whose intent is ambiguous. A
+ * diagram that cannot be understood is left exactly as written, because a
+ * guessed repair produces a confident wrong picture, which is worse than the
+ * source text the reader currently gets.
+ */
+
+/** Diagram types Mermaid knows. A first line naming one of these is fine. */
+const KNOWN_TYPES =
+  /^\s*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(-v2)?|erDiagram|journey|gantt|pie|mindmap|timeline|gitGraph|quadrantChart|requirementDiagram|C4Context|sankey(-beta)?|xychart(-beta)?|block(-beta)?|packet(-beta)?|architecture(-beta)?|kanban|radar|treemap)\b/
+
+/** Directions Mermaid accepts after `graph`. */
+const DIRECTIONS = /^(TD|TB|BT|LR|RL)$/i
+
+/**
+ * Strip a code fence the model wrapped around its own answer.
+ *
+ * It is asked for the diagram source and sometimes returns the Markdown it
+ * would have been embedded in. The fence is not part of the diagram.
+ */
+function stripFence(source: string): string {
+  let text = source.trim()
+  if (text.startsWith('```')) {
+    text = text.replace(/^```[a-zA-Z]*\s*\n?/, '').replace(/\n?```\s*$/, '')
+  }
+  /* A bare "mermaid" on its own opening line, left behind by the same habit. */
+  return text.replace(/^\s*mermaid\s*\n/i, '')
+}
+
+/**
+ * Make the first line a diagram type Mermaid recognises.
+ *
+ * `digraph`/`graphviz`/`dot` are Graphviz; the direction after them is the
+ * same vocabulary, so only the type word has to change. Graphviz also wraps
+ * its body in braces, which Mermaid has no use for.
+ */
+function fixHeader(source: string): string {
+  const lines = source.split('\n')
+  const at = lines.findIndex((line) => line.trim().length > 0)
+  if (at === -1) return source
+
+  const first = lines[at]!.trim()
+
+  if (KNOWN_TYPES.test(first)) return source
+
+  const graphviz = /^(?:strict\s+)?(?:digraph|graphviz|graph|dot)\b(.*)$/i.exec(first)
+  if (graphviz) {
+    /* Whatever followed the type word: a direction, a graph name, or a brace. */
+    const rest = (graphviz[1] ?? '').replace(/\{\s*$/, '').trim()
+    const direction = DIRECTIONS.test(rest) ? rest.toUpperCase() : 'TD'
+    lines[at] = `graph ${direction}`
+    /* Graphviz closes with a brace on its own line. Mermaid would read it as
+       a node. */
+    for (let i = lines.length - 1; i > at; i -= 1) {
+      if (lines[i]!.trim() === '}') {
+        lines.splice(i, 1)
+        break
+      }
+      if (lines[i]!.trim().length > 0) break
+    }
+    return lines.join('\n')
+  }
+
+  /* No recognisable type at all, but it is drawing edges — so it meant a
+     flowchart and simply never said so. */
+  if (/(-->|---|->|=>)/.test(source)) return `graph TD\n${source}`
+  return source
+}
+
+/**
+ * Turn Graphviz edges into Mermaid ones.
+ *
+ * `->` is Graphviz; Mermaid needs at least two dashes. Written so the arrows
+ * that are already correct are left alone — `-->`, `<-->`, `-.->`, `==>` and
+ * the longer `<--->` forms all parse, and lengthening them again would break
+ * what already worked.
+ */
+function fixArrows(source: string): string {
+  return source
+    /* `<->` needs a second dash to become Mermaid's bidirectional arrow. */
+    .replace(/<->/g, '<-->')
+    /* A lone `->` not already part of a longer arrow. */
+    .replace(/(^|[^-<.=|])->(?!>)/g, '$1-->')
+    /* A lone `=>`; `==>` is Mermaid's thick arrow and is left alone. */
+    .replace(/(^|[^=])=>/g, '$1-->')
+}
+
+/**
+ * `end` is a keyword, and a node cannot be called it.
+ *
+ * It closes a `subgraph`, so a bare `end` on its own line is left exactly
+ * where it is. Only `end` used as one side of an edge is renamed — and it
+ * keeps its text through a label, so the picture still reads "end".
+ */
+function fixReservedIds(source: string): string {
+  return source
+    .split('\n')
+    .map((line) => {
+      if (line.trim().toLowerCase() === 'end') return line
+      if (!/\bend\b/.test(line)) return line
+      return line.replace(/(^|[\s>|-])end(?=\s|$|-|>)/g, '$1endNode["end"]')
+    })
+    .join('\n')
+}
+
+/**
+ * Everything, in the order the repairs depend on each other.
+ *
+ * Fences first, because nothing else can read a header through them, and the
+ * header next, because it decides whether any of the rest applies at all.
+ *
+ * That gate is not a nicety. Every repair below the header is written for the
+ * flowchart grammar and is damage anywhere else: `->` is a legitimate arrow in
+ * a sequence diagram and `->>` would be mangled into `-->>`; braces delimit a
+ * class body in a class diagram and quoting one would turn the members into a
+ * string. Both were caught by a test asserting that already-valid diagrams
+ * come back byte-identical — which is the property worth protecting here,
+ * because a repair pass that quietly breaks working input is worse than no
+ * repair pass at all.
+ *
+ * So: anything that is not a flowchart gets its fence removed and is handed
+ * back untouched.
+ */
+const FLOWCHART = /^\s*(graph|flowchart)\b/
+
+export function safeMermaid(source: string): string {
+  if (!source.trim()) return source
+
+  const text = fixHeader(stripFence(source))
+  if (!FLOWCHART.test(text)) return text
+
+  return quoteLabels(fixReservedIds(fixArrows(text)))
 }
