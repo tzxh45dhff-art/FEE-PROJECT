@@ -39,6 +39,15 @@ const PALETTE = {
   },
 }
 
+/**
+ * The one font both halves of a diagram agree on.
+ *
+ * Kept as a constant rather than written twice, because the entire bug it
+ * exists to prevent is the two copies disagreeing.
+ */
+const MERMAID_FONT =
+  'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+
 function loadMermaid(dark: boolean) {
   if (!mermaidPromise) {
     mermaidPromise = import('mermaid').then((module) => module.default)
@@ -53,7 +62,22 @@ function loadMermaid(dark: boolean) {
       securityLevel: 'strict',
       theme: dark ? 'dark' : 'neutral',
       darkMode: dark,
-      fontFamily: 'inherit',
+      /*
+       * Named, never inherited.
+       *
+       * Mermaid sizes every node box by measuring its label, and it measures
+       * in a container of its own before the SVG is ever put on the page.
+       * `inherit` resolves differently in those two places: in the notes a
+       * diagram arrives from a fenced code block, so it lands inside a `pre`
+       * and inherits monospace — which is wider than whatever was measured.
+       * The label then overflows a `foreignObject` sized for the narrower
+       * font and is clipped mid-word, which is why "Java Object" rendered as
+       * "Java Obje".
+       *
+       * Stating the family fixes the measurement half; `MERMAID_FONT` below
+       * puts the same stack on the host so the display half agrees with it.
+       */
+      fontFamily: MERMAID_FONT,
       themeVariables: { background: 'transparent', ...(dark ? PALETTE.dark : PALETTE.light) },
       flowchart: { curve: 'basis', useMaxWidth: true },
       sequence: { useMaxWidth: true },
@@ -151,6 +175,11 @@ export function Mermaid({ chart, draw = false }: { chart: string; draw?: boolean
     <div
       ref={host}
       className="my-4 overflow-x-auto rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-4 [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
+      /* Set on the host rather than left to whatever encloses it. A diagram
+         in the notes sits inside a `pre`, and inheriting that `pre`'s
+         monospace is exactly what made the labels wider than the boxes
+         Mermaid had measured for them. */
+      style={{ fontFamily: MERMAID_FONT }}
       /* The SVG comes from Mermaid's own renderer with `securityLevel: strict`,
          which strips script and event handlers from the graph it is given. */
       dangerouslySetInnerHTML={svg ? { __html: svg } : undefined}

@@ -412,35 +412,6 @@ export async function verifyCases(
      with more than a dozen is not made better by a slower generation. */
   const subject = cases.slice(0, MAX_VERIFIED)
 
-  let solution: string
-  try {
-    const written = await azure.chat(
-      [
-        {
-          role: 'system',
-          content: `Write a correct Python 3 solution. It reads from standard input and writes to standard output. Output only the program — no markdown fence, no commentary, no explanation.`,
-        },
-        {
-          role: 'user',
-          content: `Problem: ${statement}\n\nIt must turn each of these inputs into exactly its output:\n\n${subject
-            .map((c, i) => `Case ${i + 1}\nstdin:\n${c.input}\nstdout:\n${c.expected}`)
-            .join('\n\n')}`,
-        },
-      ],
-      { temperature: 0, maxTokens: 1200 },
-    )
-    solution = (written.content ?? '').replace(/^```[a-z]*\n?|```$/gm, '').trim()
-  } catch {
-    /* No reference, no verdict. The cases go through unchecked rather than
-       the whole generation failing over a step that is an improvement, not a
-       requirement. */
-    return cases
-  }
-  if (!solution) return cases
-
-  const results = await judge.check({ language: 'python', code: solution, cases: subject })
-  if (!results) return cases
-
   /* Where the split is already decided, the visible ones are the yardstick.
      Where it is not — during generation, before this function's own result
      decides it — the model's leading cases are its examples, and those are
@@ -449,12 +420,75 @@ export async function verifyCases(
     ? subject.map((entry, index) => (entry.hidden === false ? index : -1)).filter((i) => i >= 0)
     : subject.slice(0, 3).map((_, index) => index)
 
-  const trusted =
+  const isTrusted = (results: boolean[]) =>
     vetted.length > 0
       ? vetted.every((index) => results[index])
       : results.filter(Boolean).length >= Math.ceil(subject.length * FALLBACK_AGREEMENT)
 
-  if (!trusted) return cases
+  async function writeReference(previous?: { code: string; failed: number[] }) {
+    try {
+      const written = await azure.chat(
+        [
+          {
+            role: 'system',
+            content: `Write a correct Python 3 solution. It reads from standard input and writes to standard output. Output only the program — no markdown fence, no commentary, no explanation.`,
+          },
+          {
+            role: 'user',
+            content:
+              `Problem: ${statement}\n\nIt must turn each of these inputs into exactly its output:\n\n${subject
+                .map((c, i) => `Case ${i + 1}\nstdin:\n${c.input}\nstdout:\n${c.expected}`)
+                .join('\n\n')}` +
+              (previous
+                ? `\n\nYour previous attempt did not produce the stated output for case${
+                    previous.failed.length === 1 ? '' : 's'
+                  } ${previous.failed.map((i) => i + 1).join(', ')}. Read those cases again and write a version that handles them. If one of those cases looks impossible — its input does not contain the data the problem says it will — still write the solution the problem describes, and let that case fail.\n\nPrevious attempt:\n${previous.code}`
+                : ''),
+          },
+        ],
+        { temperature: 0, maxTokens: 1200 },
+      )
+      return (written.content ?? '').replace(/^```[a-z]*\n?|```$/gm, '').trim()
+    } catch {
+      return ''
+    }
+  }
+
+  /*
+   * Two attempts at a reference, not one.
+   *
+   * This used to give up the moment the first reference disagreed with a
+   * visible case, and "give up" meant returning every case unchecked —
+   * including any that were malformed. So whether a broken case survived came
+   * down to whether one model call got the problem right first time, which is
+   * a coin flip, and a lost toss ships a test nobody's code can pass.
+   *
+   * A second attempt is told which cases it missed, and told explicitly that a
+   * case whose input does not contain what the problem promises is allowed to
+   * fail — otherwise the obliging thing for it to do is contort the solution
+   * until the broken case passes, which is how a bad case gets ratified
+   * instead of caught.
+   */
+  let results: boolean[] | null = null
+  let solution = await writeReference()
+
+  for (let attempt = 0; attempt < 2 && solution; attempt += 1) {
+    const run = await judge.check({ language: 'python', code: solution, cases: subject })
+    if (!run) return cases
+    if (isTrusted(run)) {
+      results = run
+      break
+    }
+    if (attempt === 0) {
+      const failed = run.map((ok, index) => (ok ? -1 : index)).filter((i) => i >= 0)
+      solution = await writeReference({ code: solution, failed })
+    }
+  }
+
+  /* Both references disagreed with cases the problem itself presents as
+     correct. That is a statement about this function's confidence, not about
+     the cases, so nothing is removed on it. */
+  if (!results) return cases
 
   const kept = cases.filter((_, index) => index >= subject.length || results[index])
   /* Never strip a problem down to nothing on the word of one program. */
