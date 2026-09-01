@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { useStudyDark } from '@/features/study/useStudyDark'
+import { safeMermaid } from '@/features/study/mermaidSafe'
 
 /**
  * A diagram, from the text a model wrote.
@@ -100,7 +101,7 @@ export function Mermaid({ chart, draw = false }: { chart: string; draw?: boolean
     const id = `study-diagram-${counter}`
 
     void loadMermaid(dark)
-      .then((mermaid) => mermaid.render(id, chart))
+      .then((mermaid) => mermaid.render(id, safeMermaid(chart)))
       .then(({ svg: rendered }) => {
         if (!cancelled) {
           setSvg(rendered)

@@ -84,9 +84,12 @@ very large screen. The lesson was mostly empty space. Do not do that.
 Every beat must put something substantial on screen. Concretely:
   - At most THREE "callout" beats in the whole lesson. They are for the two or
     three things worth stopping on, not a default.
-  - At least TWO "diagram" beats. Almost anything worth teaching has a shape:
-    what contains what, what happens in which order, what inherits from what,
-    how data moves. Draw it.
+  - At least TWO "diagram" beats, and this is a floor rather than a
+    suggestion — the lessons that felt like a slideshow were the ones that
+    shipped with none. Almost anything worth teaching has a shape: what
+    contains what, what happens in which order, what inherits from what, how
+    data moves. Draw it. If you cannot see a shape in the topic, you have not
+    looked hard enough at it yet.
   - At least THREE "code" beats where the subject involves code. Each is a
     COMPLETE program somebody could paste into a file and run — imports, the
     class, main, and print statements that show the result. Ten to twenty
@@ -96,8 +99,8 @@ Every beat must put something substantial on screen. Concretely:
     The narration over a code beat walks it: what it does line by line where
     that matters, what it prints, and why that is the answer rather than the
     one the student expected. State the printed output out loud.
-  - At least one "steps" or "bullets" group of three or more beats, so
-    something is visibly built rather than stated.
+  - At least one "steps" group of three or more beats, so something is
+    visibly built rather than stated.
 
 THE BAR
 State the mechanism, not the label. "The box model defines how elements are
@@ -151,7 +154,6 @@ are not words. Say "n squared", not "n^2". Say "two hundred pixels", not
 
 "show" is exactly one of:
   { "kind": "title", "text": "...", "subtitle": "..." }
-  { "kind": "bullets", "heading": "...", "items": ["...","..."], "reveal": 1 }
   { "kind": "steps", "heading": "...", "items": ["...","..."], "active": 0 }
   { "kind": "diagram", "mermaid": "graph LR\n  A[...] --> B[...]", "caption": "..." }
   { "kind": "code", "language": "css", "code": "...", "highlight": [2], "caption": "..." }
@@ -159,6 +161,34 @@ are not words. Say "n squared", not "n^2". Say "two hundred pixels", not
     "left": { "title": "...", "points": ["..."] },
     "right": { "title": "...", "points": ["..."] } }
   { "kind": "callout", "tone": "exam" | "pitfall" | "insight", "text": "..." }
+
+THE SCREEN IS NOT THE SCRIPT
+There is no "bullets" kind on purpose. A list of sentences on screen while the
+same sentences are read aloud is the single thing that makes one of these feel
+like a slideshow with a voice over it rather than somebody teaching. The voice
+carries the explanation. The screen carries the thing being explained — the
+shape of it, the code, the comparison, the sequence.
+
+So on-screen text is LABELS, not prose:
+  BAD   "Combines data and methods into a single unit called a class"
+  GOOD  "data + methods -> one class"
+Three to six words per item. If an item reads as a sentence, it belongs in the
+narration and something else belongs on screen.
+
+Reach for, in this order: a diagram if the thing has a shape, code if it has
+behaviour, compare if it is two things held against each other, steps if it is
+an order. A callout only for the two or three points genuinely worth stopping
+on.
+
+MERMAID THAT ACTUALLY PARSES
+Every node label goes in double quotes, always, with no exceptions:
+  RIGHT  A["Collection (I)"] --> B["ArrayList"]
+  WRONG  A[Collection (I)] --> B[ArrayList]
+Unquoted brackets and parentheses inside a label are a parse error, and a
+diagram that does not parse shows the reader its own source code where the
+picture should be. Quote every label and this cannot happen. Keep to
+graph TD or graph LR, and keep labels short — a label is a name, not a
+sentence.
 
 NEVER TALK ABOUT SOMETHING THAT IS NOT ON SCREEN
 This is the rule most often broken and the most damaging when it is. If the
@@ -195,9 +225,9 @@ beats instead of being thrown away. The rule is mechanical:
   Every beat in a group MUST have the same "kind" AND byte-identical content,
   except for exactly one advancing field.
 
-  - "bullets": identical "heading" and identical "items". "reveal" starts at 1
+  - "steps": identical "heading" and identical "items". "active" starts at 0
     and goes up by one each beat. The narration of each beat must be about the
-    item that beat newly reveals — the last one now visible.
+    step that beat makes active.
   - "steps": identical "heading" and identical "items". "active" starts at 0
     and goes up by one each beat. The narration of each beat must explain the
     item at "active" — not introduce the next one, not recap the last. A beat
@@ -227,8 +257,15 @@ Four beats minimum on a named weakness. Everything else in the topic can be
 covered more briskly to make room; they asked for help with one thing.
 
 LENGTH AND SHAPE
-- 16 to 22 beats. "say" runs FOUR TO SIX sentences on any beat that is not a
-  title card. Two sentences is a caption, not teaching, and a lesson of
+- Length follows the topic, not a target. Count the distinct things the
+  student has to come away able to do, and give each one enough beats to be
+  taught: introduce it, show it working, and show where it stops working.
+  A single narrow mechanism might need twelve beats in total. Something with
+  four genuinely separate sub-ideas — four pillars, four collection types —
+  needs four times what one of them needs, and coming in at the same length
+  as the narrow topic means three of the four got a sentence each.
+  Never fewer than 14 beats. Up to 26 where the topic earns them.
+- "say" runs FOUR TO SIX sentences on any beat that is not a title card. Two sentences is a caption, not teaching, and a lesson of
   captions is the thing students describe as "I watched it and I still don't
   get it" — every beat asserts something and none of them explain it.
   This is the difference between a lesson somebody can follow and a list of
@@ -263,7 +300,16 @@ than sequence, say so in the labels — arrows read as "then", not "inside".
 Return only the JSON object.`
 
 /** Kept modest: eighteen beats of three sentences is not a long document. */
-const MAX_BEATS = 18
+/*
+ * The ceiling, not the target.
+ *
+ * Was 18, which combined with a narration pace of about 135 words a minute
+ * put every lesson in the same three-to-four-minute band regardless of how
+ * much there was to teach — a topic with four separate pillars came out the
+ * same length as one narrow mechanism. Raised so a big topic can be big; the
+ * prompt above decides what each one actually needs.
+ */
+const MAX_BEATS = 26
 
 type Raw = { title?: unknown; beats?: unknown }
 
@@ -554,26 +600,94 @@ export async function script(input: {
     ? `\n\n---\n\nThe student described how they want this taught, in their words. Honour it, so long as it does not conflict with the rules above:\n\n"${input.style.trim()}"`
     : ''
 
-  const parsed = await azure.chatJson<Raw>(
+  const ask = `${generate.promptContext(grounding)}\n\n---\n\nWrite the lesson on: ${generate.subjectMatter(input.topic, grounding)}${asked}`
+
+  const readBeats = (parsed: Raw) => {
+    const beats: Beat[] = []
+    for (const raw of Array.isArray(parsed.beats) ? parsed.beats : []) {
+      if (!raw || typeof raw !== 'object') continue
+      const r = raw as Record<string, unknown>
+      const say = typeof r.say === 'string' ? r.say.trim() : ''
+      const show = asVisual(r.show)
+      if (!say || !show) continue
+      beats.push({ say, show, group: typeof r.group === 'string' && r.group ? r.group : undefined })
+      if (beats.length >= MAX_BEATS) break
+    }
+    return beats
+  }
+
+  /**
+   * What is wrong with this script, in words it can act on.
+   *
+   * The prompt states these as requirements and they were still missed — of
+   * four real lessons checked, not one carried the two diagrams the prompt
+   * demands, and most ran short enough to land in the same three-minute band
+   * whatever the topic. Same lesson as the code highlights and the list
+   * pointers before it: something checkable should be checked rather than
+   * requested and hoped for. The difference here is that a diagram cannot be
+   * synthesised after the fact the way a highlight can be dropped, so the
+   * repair is to say precisely what is missing and ask once more.
+   */
+  const shortfall = (beats: Beat[]) => {
+    const faults: string[] = []
+    const diagrams = beats.filter((beat) => beat.show.kind === 'diagram').length
+    if (diagrams < 2) {
+      faults.push(
+        `it has ${diagrams === 0 ? 'no diagrams at all' : 'only one diagram'} where at least two are required — find the shapes in this topic and draw them`,
+      )
+    }
+    if (beats.length < 14) {
+      faults.push(
+        `it is only ${beats.length} beats, which is under the fourteen minimum — the topic has not been covered at that length`,
+      )
+    }
+    return faults
+  }
+
+  let parsed = await azure.chatJson<Raw>(
     [
       { role: 'system', content: SCRIPT_SYSTEM },
-      {
-        role: 'user',
-        content: `${generate.promptContext(grounding)}\n\n---\n\nWrite the lesson on: ${generate.subjectMatter(input.topic, grounding)}${asked}`,
-      },
+      { role: 'user', content: ask },
     ],
     { temperature: 0.55, maxTokens: 8000 },
   )
+  let beats = readBeats(parsed)
 
-  const beats: Beat[] = []
-  for (const raw of Array.isArray(parsed.beats) ? parsed.beats : []) {
-    if (!raw || typeof raw !== 'object') continue
-    const r = raw as Record<string, unknown>
-    const say = typeof r.say === 'string' ? r.say.trim() : ''
-    const show = asVisual(r.show)
-    if (!say || !show) continue
-    beats.push({ say, show, group: typeof r.group === 'string' && r.group ? r.group : undefined })
-    if (beats.length >= MAX_BEATS) break
+  /*
+   * One more attempt, told exactly what was short.
+   *
+   * Only one: a second failure means the model is not going to satisfy this
+   * for this topic, and a third round would spend another large completion
+   * and most of a minute to arrive at the same place. What comes back is used
+   * either way — a lesson with one diagram is still a lesson, and refusing to
+   * ship it would trade a real shortcoming for no lesson at all.
+   */
+  const faults = shortfall(beats)
+  if (faults.length > 0) {
+    try {
+      const retry = await azure.chatJson<Raw>(
+        [
+          { role: 'system', content: SCRIPT_SYSTEM },
+          { role: 'user', content: ask },
+          { role: 'assistant', content: JSON.stringify(parsed).slice(0, 6000) },
+          {
+            role: 'user',
+            content: `That script does not meet the requirements: ${faults.join('; and ')}. Write it again in full, keeping what was good and fixing those. Every mermaid node label must be in double quotes.`,
+          },
+        ],
+        { temperature: 0.55, maxTokens: 8000 },
+      )
+      const second = readBeats(retry)
+      /* Kept only if it is actually better — a retry that came back shorter or
+         no better shaped is a worse lesson, and asking twice is not a reason
+         to take it. */
+      if (shortfall(second).length < faults.length || second.length > beats.length) {
+        parsed = retry
+        beats = second
+      }
+    } catch {
+      /* The first script stands. It is short of the bar, not unusable. */
+    }
   }
 
   /* Six is a floor against a broken response, not the target — the prompt
