@@ -23,6 +23,29 @@ import { lazy, type ComponentType } from 'react'
  * exist. Guarded through `sessionStorage` so a chunk that is broken for any
  * other reason cannot put the tab in a reload loop — one attempt, then the
  * error is allowed through to the boundary above.
+ *
+ * The other half of this lives in `vercel.json`, whose rewrite excludes
+ * `/assets/` and `/api/` from the catch-all. It is written there without any
+ * explanation, so here is the one it needs:
+ *
+ * - **`/assets/`** is the case above. Excluded, a stale chunk 404s honestly,
+ *   and the code below can recognise that and reload. Caught by the rewrite it
+ *   comes back as HTML at 200 and there is nothing to recognise.
+ * - **`/api/`** is the same failure one layer up. The Express server does not
+ *   run on Vercel at all, so `/api/*` has no legitimate answer from this host —
+ *   it is only ever reached when a visitor's own `API_BASE` has resolved to
+ *   same-origin (a private window, cleared storage, a device that never opened
+ *   the one-time `?api=` link). Rewritten to the SPA it returned `index.html`
+ *   at 200, and every generator on the page failed at once with nothing to
+ *   point at why. Excluded, it 404s, and `src/lib/api.ts` turns a non-JSON
+ *   response into a clear "the API was not reached" instead of a null.
+ *
+ * That explanation used to sit inside `vercel.json` under a `"//"` key, the
+ * convention `package.json` tolerates. Vercel validates its schema strictly and
+ * rejects unknown properties, so the file was refused and **five consecutive
+ * production deploys failed** while the site went on serving old code. `npm run
+ * build` cannot catch it — nothing local reads `vercel.json`. Hence this,
+ * somewhere a comment is actually allowed to live.
  */
 
 /** Marks that a reload has already been spent on this. Per tab, not per site. */
