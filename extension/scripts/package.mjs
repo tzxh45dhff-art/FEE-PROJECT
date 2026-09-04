@@ -22,7 +22,7 @@ const root = join(here, '..')
 const manifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8'))
 
 const outDir = join(root, 'dist')
-const outFile = join(outDir, `huddle-netflix-${manifest.version}.zip`)
+const outFile = join(outDir, `huddle-watch-${manifest.version}.zip`)
 
 mkdirSync(outDir, { recursive: true })
 rmSync(outFile, { force: true })

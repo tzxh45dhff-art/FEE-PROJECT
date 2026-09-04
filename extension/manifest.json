@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Huddle — Netflix",
-  "version": "0.2.0",
-  "description": "Hold a Netflix tab to the same moment as everyone else in your Huddle room.",
+  "name": "Huddle — Watch Together",
+  "version": "0.3.0",
+  "description": "Hold a Netflix or Prime Video tab to the same moment as everyone else in your Huddle room.",
   "permissions": ["storage"],
   "host_permissions": ["*://*/*"],
   "background": { "service_worker": "src/worker.js", "type": "module" },
@@ -16,7 +16,33 @@
     },
     {
       "matches": ["*://*.netflix.com/*"],
-      "js": ["src/netflix.js", "src/overlay.js"],
+      "js": ["src/sync.js", "src/netflix.js", "src/overlay.js"],
+      "world": "ISOLATED",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://*.primevideo.com/*",
+        "*://*.amazon.com/gp/video/*",
+        "*://*.amazon.co.uk/gp/video/*",
+        "*://*.amazon.in/gp/video/*",
+        "*://*.amazon.de/gp/video/*",
+        "*://*.amazon.co.jp/gp/video/*"
+      ],
+      "js": ["src/bridge-prime.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://*.primevideo.com/*",
+        "*://*.amazon.com/gp/video/*",
+        "*://*.amazon.co.uk/gp/video/*",
+        "*://*.amazon.in/gp/video/*",
+        "*://*.amazon.de/gp/video/*",
+        "*://*.amazon.co.jp/gp/video/*"
+      ],
+      "js": ["src/sync.js", "src/prime.js", "src/overlay.js"],
       "world": "ISOLATED",
       "run_at": "document_idle"
     },

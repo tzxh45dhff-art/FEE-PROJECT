@@ -43,9 +43,29 @@ async function load() {
   }
 }
 
-/** Push the room to every Netflix tab. They own the correcting; we own this. */
+/**
+ * Every tab that can be held to the room.
+ *
+ * Netflix used to be matched at `/watch/*`, which was both too narrow and the
+ * wrong shape: it is a single-page app, so the tab that is playing a title was
+ * often loaded at a different path and never matched. Prime is worse for the
+ * same reason — it plays over its detail page and has no `/watch/` at all. So
+ * the query is by site, and each tab's own bridge decides whether a real title
+ * is on screen. A tab that is not watching anything simply ignores the push.
+ */
+const WATCHABLE = [
+  '*://*.netflix.com/*',
+  '*://*.primevideo.com/*',
+  '*://*.amazon.com/gp/video/*',
+  '*://*.amazon.co.uk/gp/video/*',
+  '*://*.amazon.in/gp/video/*',
+  '*://*.amazon.de/gp/video/*',
+  '*://*.amazon.co.jp/gp/video/*',
+]
+
+/** Push the room to every watchable tab. They own correcting; we own this. */
 async function broadcast() {
-  const tabs = await chrome.tabs.query({ url: '*://*.netflix.com/watch/*' })
+  const tabs = await chrome.tabs.query({ url: WATCHABLE })
   for (const tab of tabs) {
     if (tab.id === undefined) continue
     chrome.tabs.sendMessage(tab.id, { kind: 'room', snapshot, offset }).catch(() => undefined)

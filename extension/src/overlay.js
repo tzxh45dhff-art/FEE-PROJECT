@@ -8,11 +8,15 @@
  * bit of friction Teleparty doesn't have. Their whole pitch is that nothing
  * about watching together requires leaving the page you are already on.
  *
- * So this is that: a small panel, drawn over Netflix's own UI, that can
- * start the room watching *this* — the exact title on screen, not a title
- * typed into a form somewhere else — without ever tabbing away.
+ * So this is that: a small panel, drawn over the streaming site's own UI,
+ * that can start the room watching *this* — the exact title on screen, not a
+ * title typed into a form somewhere else — without ever tabbing away.
  *
- * A shadow root, not a plain `<div>`. Netflix's own styles are aggressive
+ * One file for both sites. Nothing in here is Netflix- or Prime-specific any
+ * more: what is on screen comes from whichever bridge is loaded, so this
+ * stops needing to know which site it is standing on.
+ *
+ * A shadow root, not a plain `<div>`. Both sites' styles are aggressive
  * (global resets, ids on everything) and reach into any element sharing the
  * page — a shadow root's closed style scope is what stops their CSS from
  * reaching in, and this panel's own styles from reaching out.
@@ -36,16 +40,22 @@
  * goes through `window.__huddle*`, which is explicit and searchable.
  */
 ;(() => {
-  const CHANNEL = 'huddle-netflix'
+  const CHANNEL = 'huddle'
 
   let latest = { player: null, room: null, offset: 0 }
 
   function cleanTitle() {
-    /* Netflix's own tab title, once the player has one, is reliably
-       "<title> - Netflix" or "<title> | Netflix". Reading it here rather than
-       asking the bridge for one keeps this overlay independent of whatever
-       internal metadata method that side happens to find working this month. */
-    return document.title.replace(/\s*[-|]\s*Netflix\s*$/i, '').trim() || 'This title'
+    /* Both sites put the title in the tab title, suffixed or prefixed with
+       their own name. Reading it here rather than asking the bridge for one
+       keeps this overlay independent of whatever internal metadata method
+       either site happens to find working this month. */
+    return (
+      document.title
+        /* Each site suffixes its own name; neither belongs in a room's queue. */
+        .replace(/\s*[-|]\s*(Netflix|Prime Video)\s*$/i, '')
+        .replace(/^\s*Prime Video\s*[-|:]\s*/i, '')
+        .trim() || 'This title'
+    )
   }
 
   function buildPanel() {
@@ -95,7 +105,7 @@
             <button id="announce">Start the room on this</button>
           </div>
           <div class="value" id="offTitleHint" style="display:none;">
-            Open a title on Netflix to start the room on it.
+            Open a title and start playing it to sync the room to it.
           </div>
         </div>
         <div class="row" id="followingRow" style="display:none;">
@@ -154,7 +164,7 @@
     })
 
     el.resync.addEventListener('click', () => {
-      /* Not a network call — the correction loop in netflix.js already knows
+      /* Not a network call — the correction loop in sync.js already knows
          where the room is, and shares this JS context (same extension, same
          frame, same isolated world). This just asks it to look now instead of
          on its own next tick, which is the whole point of pressing a button. */
@@ -166,11 +176,17 @@
 
       const connected = room !== null
       /*
-       * Read fresh on every tick rather than watched separately. This already
-       * runs once a second regardless, so a dedicated route watcher here would
-       * just be a second timer arriving at the same fact.
+       * Whether a real title is on screen, asked of the bridge rather than of
+       * the URL.
+       *
+       * This used to test `location.pathname.startsWith('/watch/')`, which is
+       * true of Netflix and true of nothing else — Prime plays over its detail
+       * page, so a path test would have said "not watching" through an entire
+       * film. The bridge already answers this properly for its own site,
+       * including withholding it during an advert, so the answer comes from
+       * there and this file stops needing to know which site it is on.
        */
-      const onWatchPage = location.pathname.startsWith('/watch/')
+      const onWatchPage = Boolean(player?.ready)
 
       el.dot.className = 'dot' + (connected ? ' on' : '')
       el.pillText.textContent = connected ? 'Huddle · in sync' : 'Huddle'
