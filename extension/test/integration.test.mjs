@@ -35,7 +35,7 @@ const primeSrc = readFileSync(new URL('../src/prime.js', import.meta.url), 'utf8
  * differs from a browser — and it differs in the strict direction, since it
  * gives the code less slack rather than more.
  */
-function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0 } = {}) {
+function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0, pauseLagMs = 0 } = {}) {
   let clock = 10_000
   const sent = [] // what the room was told
   const listeners = []
@@ -54,6 +54,7 @@ function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0 } = {}) {
    */
   let position = startAt
   let landing = null
+  let stopping = null
   /* What the worker is holding — what a `hello` would be answered with. */
   let held = null
 
@@ -61,6 +62,7 @@ function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0 } = {}) {
     duration,
     paused: false,
     readyState: 4,
+    playbackRate: 1,
     currentSrc: 'blob:https://www.primevideo.com/feature',
     get currentTime() {
       return position
@@ -79,12 +81,22 @@ function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0 } = {}) {
       return { catch: () => undefined }
     },
     pause() {
-      this.paused = true
+      /* A real player does not report itself stopped the instant it is asked.
+         That lag is what the re-issue guard exists for. */
+      if (pauseLagMs <= 0) {
+        this.paused = true
+        return
+      }
+      stopping = clock + pauseLagMs
     },
   }
 
+  const commands = []
   const window_ = {
     postMessage: (data) => {
+      /* Everything the engine asks the player to do, kept so a test can assert
+         on what was *not* asked for as much as on what was. */
+      if (data?.kind === 'command') commands.push(data)
       /* Both worlds hear everything posted on the page; each filters for what
          is addressed to it. That is exactly the real arrangement. */
       for (const fn of [...listeners]) fn({ source: window_, data })
@@ -134,6 +146,7 @@ function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0 } = {}) {
   const api = {
     video,
     sent,
+    commands,
     /**
      * Let time pass, with both timers firing at their real rates and playback
      * actually advancing — the bridge reports four times a second, the
@@ -145,7 +158,11 @@ function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0 } = {}) {
         clock += step
         /* Playback moves the playhead directly — going through the setter
            would model ordinary playing as a seek. */
-        if (!video.paused && !landing) position += step / 1000
+        if (!video.paused && !landing) position += (step / 1000) * video.playbackRate
+        if (stopping !== null && clock >= stopping) {
+          video.paused = true
+          stopping = null
+        }
         if (landing && clock >= landing.at) {
           position = landing.to
           video.readyState = 4
@@ -418,6 +435,182 @@ const check = (name, pass, detail = '') => R.push({ name, pass, detail })
   p.run(20_000)
   const after = p.sent.filter((m) => m.kind === 'hello').length
   check('an answered tab stops asking', after === before, `${before} -> ${after}`)
+}
+
+// ── pressing play right after the room paused you ───────────────────────────
+{
+  /*
+   * "Some issue with play pause."
+   *
+   * Every command we issue opens a quiet window, so the echo of our own action
+   * is not read back as the person doing it. That window was the seek cooldown
+   * — five seconds — applied to play and pause as well, and a pause echo is
+   * one flipped boolean that arrives in a single report. So the window spent
+   * four and a half seconds not guarding anything, and swallowing whatever the
+   * person did next.
+   *
+   * The result is the worst kind of unresponsive: the room pauses you, you
+   * press play a second later, and nothing happens — not even eventually,
+   * because the loop still thinks the room is paused and pauses you again.
+   */
+  const p = boot({ startAt: 100 })
+  p.run(4000)
+  p.room(p.snap({ position: 106 }))
+  p.run(2000)
+
+  /* The room pauses. Our player is told to stop. */
+  p.room(p.snap({ position: 112, playing: false, seq: 2 }))
+  p.run(1000)
+  check('the room pausing does pause the element', p.video.paused === true, `paused=${p.video.paused}`)
+
+  /* A second later the person presses play on Prime's own controls. */
+  p.sent.length = 0
+  p.video.paused = false
+  p.run(1000)
+  check(
+    'and pressing play a second later is reported',
+    p.sent.some((m) => m.kind === 'control' && m.control?.action === 'play'),
+    JSON.stringify(p.sent),
+  )
+}
+
+// ── how fast a room command reaches the element ─────────────────────────────
+{
+  const p = boot({ startAt: 100 })
+  p.run(4000)
+  p.room(p.snap({ position: 106 }))
+  p.run(2000)
+
+  p.room(p.snap({ position: 112, playing: false, seq: 2 }))
+  /* One bridge report plus one correction tick. If the loop only looks once a
+     second, half of this window is spent waiting for it. */
+  p.run(500)
+  check(
+    'a pause lands within half a second',
+    p.video.paused === true,
+    `paused=${p.video.paused} after 500ms`,
+  )
+}
+
+// ── small gaps are closed by speed, not by seeking ──────────────────────────
+{
+  /*
+   * The other half of "a lot of delay": not slow commands, but two films
+   * sitting visibly apart and staying there.
+   *
+   * A seek costs a rebuffer, so the threshold for one is deliberately high —
+   * 1.6s on Prime. That used to mean anything under 1.6s was simply tolerated
+   * forever. Playing six percent faster costs nothing and closes that gap in
+   * under twenty seconds, so the two actually converge instead of settling
+   * into a permanent lag.
+   */
+  const p = boot({ startAt: 100 })
+  p.run(4000)
+  /* Half a second behind: past the soft threshold, well under the hard one.
+     Run past the cooldown a room change sets, or nothing is corrected yet. */
+  p.room(p.snap({ position: p.video.currentTime + 0.8 }))
+  p.run(6000)
+
+  check('a small gap speeds the film up rather than seeking', p.video.playbackRate > 1, `rate=${p.video.playbackRate}`)
+  check('  and not by a speed anybody would notice', p.video.playbackRate <= 1.1, `rate=${p.video.playbackRate}`)
+  const seeks = p.commands.filter((c) => c.command === 'seek')
+  check('  without a single seek', seeks.length === 0, JSON.stringify(seeks))
+}
+
+{
+  /* And it must actually converge, then stop. */
+  const p = boot({ startAt: 100 })
+  p.run(4000)
+  const snapshot = p.snap({ position: p.video.currentTime + 0.9 })
+  p.room(snapshot)
+  p.run(40_000)
+
+  const gap = Math.abs(p.roomTarget(snapshot) - p.video.currentTime)
+  check('it converges on the room', gap < 0.35, `gap=${gap.toFixed(2)}s`)
+  check('  and returns to normal speed once there', p.video.playbackRate === 1, `rate=${p.video.playbackRate}`)
+}
+
+{
+  /* Ahead of the room, it has to slow down — not speed up further. */
+  const p = boot({ startAt: 100 })
+  p.run(4000)
+  p.room(p.snap({ position: p.video.currentTime - 0.8 }))
+  p.run(6000)
+  check('being ahead slows the film down', p.video.playbackRate < 1, `rate=${p.video.playbackRate}`)
+  check('  and never to a crawl', p.video.playbackRate >= 0.9, `rate=${p.video.playbackRate}`)
+}
+
+{
+  /* A gap too large to nudge away still seeks, at normal speed. */
+  const p = boot({ startAt: 100 })
+  p.run(4000)
+  p.room(p.snap({ position: 900 }))
+  p.run(8000)
+  check('a large gap still seeks', p.video.currentTime > 890, `currentTime=${p.video.currentTime}`)
+  check('  and leaves the speed alone', p.video.playbackRate === 1, `rate=${p.video.playbackRate}`)
+}
+
+{
+  /* The failure that would be worst: a paused room leaving the film fast. */
+  const p = boot({ startAt: 100 })
+  p.run(4000)
+  p.room(p.snap({ position: p.video.currentTime + 0.8 }))
+  p.run(6000)
+  p.room(p.snap({ position: 200, playing: false, seq: 2 }))
+  p.run(2000)
+  check('a paused room restores normal speed', p.video.playbackRate === 1, `rate=${p.video.playbackRate}`)
+}
+
+{
+  /* A player that resets the rate itself must be noticed, not assumed. */
+  const p = boot({ startAt: 100 })
+  p.run(4000)
+  p.room(p.snap({ position: p.video.currentTime + 0.8 }))
+  p.run(6000)
+  check('the nudge is applied', p.video.playbackRate > 1, `rate=${p.video.playbackRate}`)
+
+  /* Prime's own UI resets it. Nothing told us. */
+  p.video.playbackRate = 1
+  p.run(2000)
+  check(
+    'an override is noticed and the nudge re-applied',
+    p.video.playbackRate > 1,
+    `rate=${p.video.playbackRate}`,
+  )
+}
+
+// ── a player slow to report that it stopped ─────────────────────────────────
+{
+  /*
+   * The loop looks four times a second; a real player takes longer than that
+   * to admit it has stopped. Without a guard, a paused room fires `pause` at
+   * it over and over — and since every command pushes the quiet window
+   * forward, that stream of no-op pauses is what swallows the person's own
+   * next action. The spam is harmless; what it does to the quiet window is not.
+   */
+  const p = boot({ startAt: 100, pauseLagMs: 900 })
+  p.run(4000)
+  p.room(p.snap({ position: 106 }))
+  p.run(2000)
+
+  p.commands.length = 0
+  p.room(p.snap({ position: 112, playing: false, seq: 2 }))
+  /* Long enough for a player that takes 900ms to admit it stopped. */
+  p.run(1500)
+
+  const pauses = p.commands.filter((c) => c.command === 'pause')
+  check('a slow player is asked to pause once, not repeatedly', pauses.length === 1, `${pauses.length} pauses`)
+  check('  and it does stop', p.video.paused === true, `paused=${p.video.paused}`)
+
+  /* And the person can still act immediately afterwards. */
+  p.sent.length = 0
+  p.video.paused = false
+  p.run(1000)
+  check(
+    '  and pressing play straight after still reaches the room',
+    p.sent.some((m) => m.kind === 'control' && m.control?.action === 'play'),
+    JSON.stringify(p.sent),
+  )
 }
 
 let bad = 0

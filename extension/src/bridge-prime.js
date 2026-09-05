@@ -236,6 +236,27 @@
     pending = null
   }
 
+  /**
+   * Play a little off normal speed, to close a gap without seeking.
+   *
+   * Set on the element rather than through the SDK. `playbackRate` is an
+   * ordinary media property that DRM does not touch, and the element is the
+   * one thing here known to answer. A player that overrides it is handled by
+   * the other side noticing the rate it reports, not by anything here.
+   */
+  function setRate(rate) {
+    const el = element()
+    if (!el) return
+    /* Clamped: whatever arrives, this must never become a speed somebody
+       would notice, let alone a stall or a fast-forward. */
+    const safe = Math.min(1.25, Math.max(0.75, Number(rate) || 1))
+    try {
+      el.playbackRate = safe
+    } catch {
+      /* Some players refuse. The seek threshold still covers the gap. */
+    }
+  }
+
   function play() {
     const el = element()
     if (el) {
@@ -326,6 +347,9 @@
         position,
         duration,
         paused: el ? el.paused : true,
+        /* Reported so the other side can tell its request took, rather than
+           assuming it did — a player is free to reset this whenever it likes. */
+        rate: el && Number.isFinite(el.playbackRate) ? el.playbackRate : 1,
         /* Stalled, as opposed to paused. A player that is buffering is not
            paused, and correction has to stand down during one or it seeks a
            player that is already struggling and turns a slow moment into a
@@ -346,5 +370,6 @@
     if (data.command === 'seek') seek(Number(data.seconds) || 0)
     else if (data.command === 'play') play()
     else if (data.command === 'pause') pause()
+    else if (data.command === 'rate') setRate(data.rate)
   })
 })()

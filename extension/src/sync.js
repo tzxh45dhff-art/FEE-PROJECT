@@ -21,6 +21,9 @@
   /** One channel for every site — two of them never share a page. */
   const CHANNEL = 'huddle'
 
+  /** How often the room is compared against the player. Matches the bridge. */
+  const TICK_MS = 250
+
   /**
    * Defaults, tuned for a source that can only be corrected by seeking.
    *
@@ -33,13 +36,55 @@
   const DEFAULTS = {
     /** Past this gap, seek. */
     hardSeconds: 2,
-    /** After any correction, leave the player alone this long. */
+    /** After a *seek*, leave the player alone this long — a seek rebuffers. */
     cooldownMs: 5000,
+    /**
+     * After a play or pause, two much shorter windows.
+     *
+     * These used to borrow the seek cooldown, which was five seconds of
+     * ignoring the person in front of the tab to guard against an echo that is
+     * one flipped boolean arriving in a single report. The room would pause
+     * you, you would press play a second later, and nothing happened — the
+     * action was swallowed and the loop pushed you back to paused. Toggling a
+     * boolean costs nothing to undo, so there is no rebuffer to wait out here.
+     */
+    echoMs: 700,
+    toggleSettleMs: 1500,
+    /**
+     * Do not re-issue the same command while the last one is still landing.
+     *
+     * Longer than it looks like it needs to be, deliberately. A player can take
+     * the better part of a second to report that it stopped, and asking again
+     * inside that window does not make it stop sooner — on some players it
+     * restarts the transition and makes it slower.
+     */
+    reissueMs: 1500,
+    /** How long to keep waiting for a toggle we asked for before giving up. */
+    expectMs: 3000,
     /** First guess at what a seek costs here; measured and refined after. */
     initialSeekCost: 1,
     maxSeekCost: 1.8,
     /** A position jump larger than this, unasked for, is somebody scrubbing. */
     scrubSeconds: 1.5,
+    /**
+     * Below this gap, do nothing at all.
+     *
+     * Above it but below `hardSeconds`, the gap is closed by playing very
+     * slightly faster or slower instead of seeking. That is the difference
+     * between "everyone is within a second and a half and that is as good as
+     * it gets" and actually converging: a seek costs a rebuffer, so the
+     * threshold for one has to stay high, but a six percent rate change costs
+     * nothing, is inaudible, and closes a second of drift in under twenty.
+     *
+     * DRM does not prevent this any more than it prevents reading the clock —
+     * `playbackRate` is an ordinary property. If a site overrides it we are no
+     * worse off than before, because the seek threshold is still there behind
+     * it; the rate is reconciled against what the player reports, so being
+     * overridden means we simply try again rather than believing we succeeded.
+     */
+    softSeconds: 0.35,
+    /** How much faster or slower, at most. Kept small enough to be unnoticed. */
+    nudge: 0.06,
   }
 
   /**
@@ -82,6 +127,24 @@
     let titleKey = null
     /** When we last asked the worker what the room is doing. */
     let askedAt = 0
+    /** The last thing we told the player to do, so it is not told twice. */
+    let lastCommand = { name: null, at: 0 }
+    /** The playback rate we have asked for, so it is not asked for repeatedly. */
+    let wantedRate = 1
+    /**
+     * A paused-state we asked for and have not seen arrive yet.
+     *
+     * The precise form of what a time window was approximating. Our own pause
+     * comes back as a state push a moment later, and if that is read as the
+     * person pausing, the room hears an echo of itself. A window guessed at how
+     * long that takes and guessed wrong in both directions at once: too long,
+     * and it swallowed what the person actually did next; too short, and the
+     * echo got through anyway. Matching the flag we asked for needs no guess —
+     * it is right whether the player answers in fifty milliseconds or nine
+     * hundred. The timeout is only so a player that never complies does not
+     * silence the person forever.
+     */
+    let expecting = null
 
     /**
      * Move the player.
@@ -90,10 +153,46 @@
      * windows close together: the loop stops correcting while it lands, and
      * the detector stops treating the landing as the viewer's doing.
      */
-    const command = (command, extra = {}) => {
-      settleUntil = performance.now() + tuning.cooldownMs
-      quietUntil = performance.now() + tuning.cooldownMs
-      window.postMessage({ channel: CHANNEL, kind: 'command', command, ...extra }, '*')
+    const command = (name, extra = {}) => {
+      const now = performance.now()
+
+      /*
+       * Sending the same command again while the last one is still landing is
+       * worse than useless. The loop looks four times a second and a player
+       * takes longer than that to report that it stopped, so a paused room
+       * would fire `pause` at it repeatedly — and because every command pushes
+       * the quiet window forward, that stream of no-op pauses is exactly what
+       * would swallow the person's own next action.
+       */
+      if (lastCommand.name === name && now - lastCommand.at < tuning.reissueMs) return
+      lastCommand = { name, at: now }
+
+      /* What this command should make the player report, so its arrival is
+         recognised as ours rather than as the person's doing. */
+      if (name === 'pause') expecting = { paused: true, at: now }
+      else if (name === 'play') expecting = { paused: false, at: now }
+
+      /* A seek has to be waited out; a toggle does not. */
+      const seeking = name === 'seek'
+      settleUntil = now + (seeking ? tuning.cooldownMs : tuning.toggleSettleMs)
+      quietUntil = now + (seeking ? tuning.cooldownMs : tuning.echoMs)
+
+      window.postMessage({ channel: CHANNEL, kind: 'command', command: name, ...extra }, '*')
+    }
+
+    /**
+     * Play a little faster or slower, to close a gap without seeking.
+     *
+     * Deliberately not routed through `command`, because this is not something
+     * the person did and must not open a quiet window — gagging intent
+     * detection every time the film drifts a third of a second would swallow
+     * real play and pause presses constantly.
+     */
+    function setRate(next) {
+      const rounded = Math.round(next * 100) / 100
+      if (rounded === wantedRate) return
+      wantedRate = rounded
+      window.postMessage({ channel: CHANNEL, kind: 'command', command: 'rate', rate: rounded }, '*')
     }
 
     /** Where the room says the film should be, right now. */
@@ -155,11 +254,20 @@
      * which we were moving things ourselves.
      */
     function detectLocalIntent(next) {
+      /* Waited for long enough. A player that never did as it was asked must
+         not go on silencing the person sitting in front of it. */
+      if (expecting && performance.now() - expecting.at > tuning.expectMs) expecting = null
+
       if (performance.now() < quietUntil) return null
       if (next.buffering) return null
       if (reported.paused === null) return null
 
       if (next.paused !== reported.paused) {
+        /* Exactly the change we asked for, arriving. Ours, not theirs. */
+        if (expecting && expecting.paused === next.paused) {
+          expecting = null
+          return null
+        }
         return next.paused
           ? { action: 'pause', position: next.position }
           : { action: 'play', position: next.position }
@@ -207,6 +315,14 @@
          Stand down rather than hold the room to it. */
       if (!next.ready) return
 
+      /* The player can reset the rate on its own — a new source, its own UI,
+         an advert ending. Believing our last request would mean never asking
+         again; trusting what it reports means noticing and re-asking. */
+      if (typeof next.rate === 'number' && next.rate > 0) {
+        const seen = Math.round(next.rate * 100) / 100
+        if (seen !== wantedRate && performance.now() > quietUntil) wantedRate = seen
+      }
+
       const intent = previous && previous.ready ? detectLocalIntent(next) : null
       if (intent) {
         /* Ours now — do not read the room's echo of it back as another intent. */
@@ -238,6 +354,7 @@
 
       /* The room is paused, or nothing is on. */
       if (!room.playing) {
+        setRate(1)
         if (!player.paused) command('pause')
         return
       }
@@ -264,10 +381,25 @@
         return
       }
 
-      if (Math.abs(want - player.position) >= tuning.hardSeconds) {
+      const gap = want - player.position
+      const off = Math.abs(gap)
+
+      if (off >= tuning.hardSeconds) {
+        /* Too far to catch up by playing faster — it would take minutes. */
+        setRate(1)
         seekedAt = performance.now()
         command('seek', { seconds: want + seekCost })
+        return
       }
+
+      if (off > tuning.softSeconds) {
+        /* Behind the room plays a touch faster; ahead of it, a touch slower. */
+        setRate(gap > 0 ? 1 + tuning.nudge : 1 - tuning.nudge)
+        return
+      }
+
+      /* Close enough. Anything else is a speed nobody asked for. */
+      setRate(1)
     }
 
     window.addEventListener('message', (event) => {
@@ -277,7 +409,16 @@
       onPlayerState(data)
     })
 
-    setInterval(correct, 1000)
+    /*
+     * Looked at as often as the bridge reports, rather than once a second.
+     *
+     * The tick used to be a second, which on its own put up to a second
+     * between somebody pressing pause and the other tab hearing about it —
+     * more than the network and the bridge put together, and the one part of
+     * that chain entirely within reach. It is a handful of comparisons; there
+     * was never a reason for it to be the slowest link.
+     */
+    setInterval(correct, TICK_MS)
 
     /* Before anything is playing, and regardless of whether anything ever
        does — this is how a browse or detail page knows the room at all. */

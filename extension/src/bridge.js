@@ -130,6 +130,25 @@
     if (el) el.currentTime = target
   }
 
+  /**
+   * Play a little off normal speed, to close a gap without seeking.
+   *
+   * On the element, not through their player API. `playbackRate` is an
+   * ordinary media property their state machine does not guard the way it
+   * guards position, and if it ever does, the other side notices from the rate
+   * this reports back rather than assuming the request landed.
+   */
+  function setRate(rate) {
+    const el = element()
+    if (!el) return
+    const safe = Math.min(1.25, Math.max(0.75, Number(rate) || 1))
+    try {
+      el.playbackRate = safe
+    } catch {
+      /* Refused. The seek threshold still covers the gap. */
+    }
+  }
+
   function play() {
     const p = player()
     if (p && typeof p.play === 'function') {
@@ -184,6 +203,11 @@
         position: positionSeconds(),
         duration: durationSeconds(),
         paused: paused(),
+        /* Reported so the other side can tell its request took. */
+        rate: (() => {
+          const el = element()
+          return el && Number.isFinite(el.playbackRate) ? el.playbackRate : 1
+        })(),
         buffering: buffering(),
       },
       '*',
@@ -200,5 +224,6 @@
     if (data.command === 'seek') seek(Number(data.seconds) || 0)
     else if (data.command === 'play') play()
     else if (data.command === 'pause') pause()
+    else if (data.command === 'rate') setRate(data.rate)
   })
 })()
