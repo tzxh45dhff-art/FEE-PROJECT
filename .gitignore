@@ -45,3 +45,7 @@ server/prisma/*.db-journal
 # (that is what fixes the extension id); this private half is only needed to
 # produce a signed .crx with that same id. Never commit it.
 extension/*.pem
+
+# Generated from extension/ by scripts/pack-extension.mjs during the build,
+# so the download the app offers can never be a stale committed binary.
+public/huddle-extension.zip

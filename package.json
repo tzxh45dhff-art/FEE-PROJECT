@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/pack-extension.mjs && tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "posters": "node scripts/fetch-posters.mjs",
@@ -16,7 +16,8 @@
     "sync": "bash scripts/sync.sh",
     "db:push": "npm --prefix server run db:push",
     "db:studio": "npm --prefix server run db:studio",
-    "live": "node scripts/live.mjs"
+    "live": "node scripts/live.mjs",
+    "pack:extension": "node scripts/pack-extension.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

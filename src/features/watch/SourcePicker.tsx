@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Film, FolderOpen, Link2, Loader2, MonitorPlay, Search, Upload } from 'lucide-react'
+import {
+  Download,
+  Film,
+  FolderOpen,
+  Link2,
+  Loader2,
+  MonitorPlay,
+  Search,
+  Upload,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import * as watchApi from '@/features/watch/api'
@@ -41,8 +50,13 @@ const SOURCES: {
   { id: 'youtube', label: 'YouTube', hint: 'Search or paste a link', icon: Film },
   { id: 'upload', label: 'Upload a video', hint: 'From this device', icon: Upload },
   { id: 'link', label: 'Direct link', hint: 'A .mp4 or .webm URL', icon: Link2 },
-  { id: 'netflix', label: 'Netflix', hint: 'Real sync, with the extension', icon: MonitorPlay },
-  { id: 'external', label: 'Prime, Hotstar, others', hint: 'Synced countdown', icon: MonitorPlay },
+  {
+    id: 'netflix',
+    label: 'Netflix or Prime Video',
+    hint: 'Real sync, with the extension',
+    icon: MonitorPlay,
+  },
+  { id: 'external', label: 'Hotstar, others', hint: 'Synced countdown', icon: MonitorPlay },
 ]
 
 /** What the picker hands back once the server has stored the addition. */
@@ -465,6 +479,7 @@ export function SourcePicker({
  */
 function NetflixPanel() {
   const installed = useExtensionInstalled()
+  const outdated = installed !== null && installed !== __EXTENSION_VERSION__
 
   return (
     <div className="rounded-card border border-white/12 bg-white/[0.03] px-5 py-5">
@@ -473,13 +488,17 @@ function NetflixPanel() {
           aria-hidden
           className={cn(
             'size-2 rounded-full',
-            installed ? 'bg-emerald-400' : 'bg-white/30',
+            installed ? (outdated ? 'bg-amber-400' : 'bg-emerald-400') : 'bg-white/30',
           )}
         />
-        {installed ? 'Extension installed' : 'Extension not detected in this browser'}
+        {installed
+          ? outdated
+            ? `Extension v${installed} installed — v${__EXTENSION_VERSION__} is available`
+            : 'Extension installed'
+          : 'Extension not detected in this browser'}
       </p>
 
-      {installed ? (
+      {installed && !outdated ? (
         <>
           <p className="mt-3 text-[0.85rem] leading-relaxed text-mist">
             You are set up — there is nothing to add here. Open the title on{' '}
@@ -491,37 +510,106 @@ function NetflixPanel() {
             >
               netflix.com
             </a>{' '}
+            or{' '}
+            <a
+              href="https://www.primevideo.com"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-chalk underline decoration-white/30 underline-offset-2 hover:decoration-white"
+            >
+              primevideo.com
+            </a>{' '}
             and press <strong className="font-semibold text-chalk">Start the room on this</strong>{' '}
             in the panel that appears over the player. Everyone else in the room opens the same
             title on their own account, and their tab falls in step on its own.
           </p>
           <p className="mt-3 text-[0.72rem] leading-relaxed text-dusk">
             Play, pause and seek travel both ways. Nobody shares a stream or a login — the room
-            only ever agrees on a timestamp.
+            only ever agrees on a timestamp, and everyone watches on their own subscription.
           </p>
         </>
       ) : (
         <>
           <p className="mt-3 text-[0.85rem] leading-relaxed text-mist">
-            Netflix refuses to be embedded and offers no playback API, so this page cannot drive
-            it. A small browser extension can, because it runs inside the Netflix tab itself —
-            reading its clock and nudging play, pause and seek, exactly as your own keyboard
-            would.
+            {outdated ? (
+              <>
+                Your copy is older than this room&rsquo;s. A sideloaded extension has no update
+                channel, so nothing tells you but this — download it again and press{' '}
+                <strong className="font-semibold text-chalk">Reload</strong> on{' '}
+                <code className="font-mono text-[0.78rem] text-chalk">chrome://extensions</code>.
+              </>
+            ) : (
+              <>
+                Netflix and Prime Video both refuse to be embedded and offer no playback API, so
+                this page cannot drive them. A small browser extension can, because it runs inside
+                that tab itself — reading its clock and nudging play, pause and seek, exactly as
+                your own keyboard would.
+              </>
+            )}
           </p>
-          <p className="mt-3 text-[0.85rem] leading-relaxed text-mist">
-            Install it from the{' '}
-            <code className="font-mono text-[0.78rem] text-chalk">extension/</code> folder of this
-            project — <code className="font-mono text-[0.78rem] text-chalk">chrome://extensions</code>{' '}
-            → Developer mode → Load unpacked. Then come back to this tab; it configures itself
-            from here, with nothing to type.
-          </p>
+
+          <ExtensionDownload outdated={outdated} />
+
           <p className="mt-3 text-[0.72rem] leading-relaxed text-dusk">
-            Everyone who wants to watch along needs it. Without it, use the{' '}
-            <strong className="font-semibold text-mist">Prime, Hotstar, others</strong> entry
-            instead — a shared countdown rather than real sync.
+            Everyone watching along needs it, on their own machine. Without it, use the{' '}
+            <strong className="font-semibold text-mist">Hotstar, others</strong> entry instead — a
+            shared countdown rather than real sync.
           </p>
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * The download, and the four clicks after it.
+ *
+ * Worth being blunt about why this is a file and a list of steps rather than
+ * an install button. Chrome installs extensions from the Web Store or from a
+ * folder on disk, and nothing else — so an unlisted extension is a zip and a
+ * short ritual, for everyone, always. Pretending otherwise with a prettier
+ * button would just move the confusion to the moment the file lands in
+ * Downloads and nothing happens.
+ *
+ * Served from this origin rather than from the API on purpose: the API is a
+ * laptop behind a tunnel that is not always up, and this page is on a CDN that
+ * is. Somebody can fetch the extension before the room is even running.
+ */
+function ExtensionDownload({ outdated }: { outdated: boolean }) {
+  const steps = outdated
+    ? ['Unzip it over the folder you loaded before.', 'chrome://extensions → Reload.']
+    : [
+        'Unzip it somewhere you will keep — Chrome reads that folder every time it starts, so Downloads is a bad home for it.',
+        'Open chrome://extensions and turn on Developer mode, top right.',
+        'Load unpacked → pick the unzipped folder.',
+        'Come back to this tab. It configures itself from here, with nothing to type.',
+      ]
+
+  return (
+    <div className="mt-4 rounded-card border border-white/10 bg-white/[0.04] px-4 py-4">
+      <a
+        href="/huddle-extension.zip"
+        download
+        className="inline-flex items-center gap-2 rounded-full bg-chalk px-4 py-2 text-[0.8rem] font-semibold text-ink transition hover:opacity-90"
+      >
+        <Download aria-hidden className="size-4" />
+        {outdated ? 'Download the update' : 'Download the extension'}
+        <span className="font-normal opacity-60">v{__EXTENSION_VERSION__}</span>
+      </a>
+
+      <ol className="mt-3 space-y-1.5 text-[0.78rem] leading-relaxed text-mist">
+        {steps.map((step, index) => (
+          <li key={step} className="flex gap-2">
+            <span className="text-dusk tabular-nums">{index + 1}.</span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
+
+      <p className="mt-3 text-[0.7rem] leading-relaxed text-dusk">
+        Chrome asks about developer mode on every restart — that prompt is the cost of an
+        extension installed outside the Web Store, and <em>Keep</em> dismisses it.
+      </p>
     </div>
   )
 }
