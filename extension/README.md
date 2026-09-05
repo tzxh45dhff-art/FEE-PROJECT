@@ -36,6 +36,13 @@ than an impossibility.
 
 Load the extension and open the app. That is the whole thing.
 
+> Sideloading is temporary. It is what Chrome allows for an extension that is
+> not in its store, and it is why there is a folder that must not move, a
+> developer-mode prompt on every restart, and no way for an update to arrive on
+> its own. `node extension/scripts/package.mjs --store` builds the upload;
+> **[PUBLISHING.md](PUBLISHING.md)** is the rest of the way to one click and
+> automatic updates.
+
 1. **Load it.** `chrome://extensions` → Developer mode → *Load unpacked* → pick
    this `extension/` folder. (For someone else's machine, see **Other devices**.)
 2. **Open your Huddle room in a tab.** The extension configures itself from the
@@ -141,12 +148,16 @@ trailer, the feature. The longest one that has loaded is the feature.
 
 ## Other devices
 
+The app serves it: **Watch → Netflix or Prime Video** has a download and the
+steps, so there is nothing to send by hand. To build the zip yourself:
+
 ```bash
-node extension/scripts/package.mjs
+node extension/scripts/package.mjs           # the sideload build the app serves
+node extension/scripts/package.mjs --store   # the Web Store upload
 ```
 
-Writes `extension/dist/huddle-watch-<version>.zip`. Send it over; they unzip it
-and *Load unpacked* on that machine. Nothing else — no id to copy back, no
+The first writes `extension/dist/huddle-watch-<version>.zip`; they unzip it and
+*Load unpacked* on that machine. Nothing else — no id to copy back, no
 `CLIENT_ORIGIN` edit, no API restart, because the id is the same as yours.
 
 Two things that catch people out, neither specific to this extension:

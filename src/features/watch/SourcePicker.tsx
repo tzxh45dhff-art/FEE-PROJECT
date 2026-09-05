@@ -6,6 +6,7 @@ import {
   Link2,
   Loader2,
   MonitorPlay,
+  Puzzle,
   Search,
   Upload,
 } from 'lucide-react'
@@ -14,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import * as watchApi from '@/features/watch/api'
 import { useExtensionInstalled } from '@/features/watch/useExtensionInstalled'
 import type { LibraryEntry, QueueItem, ResolvedSource, SearchResult } from '@/features/watch/types'
+import { EXTENSION_STORE_URL } from '@/lib/config'
 import { cn } from '@/lib/utils'
 
 /**
@@ -532,12 +534,19 @@ function NetflixPanel() {
         <>
           <p className="mt-3 text-[0.85rem] leading-relaxed text-mist">
             {outdated ? (
-              <>
-                Your copy is older than this room&rsquo;s. A sideloaded extension has no update
-                channel, so nothing tells you but this — download it again and press{' '}
-                <strong className="font-semibold text-chalk">Reload</strong> on{' '}
-                <code className="font-mono text-[0.78rem] text-chalk">chrome://extensions</code>.
-              </>
+              EXTENSION_STORE_URL ? (
+                <>
+                  Your copy is older than this room&rsquo;s. Chrome updates store extensions on
+                  its own, so this usually resolves itself within a few hours.
+                </>
+              ) : (
+                <>
+                  Your copy is older than this room&rsquo;s. A sideloaded extension has no update
+                  channel, so nothing tells you but this — download it again and press{' '}
+                  <strong className="font-semibold text-chalk">Reload</strong> on{' '}
+                  <code className="font-mono text-[0.78rem] text-chalk">chrome://extensions</code>.
+                </>
+              )
             ) : (
               <>
                 Netflix and Prime Video both refuse to be embedded and offer no playback API, so
@@ -562,20 +571,44 @@ function NetflixPanel() {
 }
 
 /**
- * The download, and the four clicks after it.
+ * Getting the extension onto this machine.
  *
- * Worth being blunt about why this is a file and a list of steps rather than
- * an install button. Chrome installs extensions from the Web Store or from a
- * folder on disk, and nothing else — so an unlisted extension is a zip and a
- * short ritual, for everyone, always. Pretending otherwise with a prettier
- * button would just move the confusion to the moment the file lands in
- * Downloads and nothing happens.
+ * Two shapes, and which one appears is not a design choice — it is what Chrome
+ * allows. Published to the Web Store, this is one button and Chrome keeps the
+ * thing updated by itself. Unpublished, an extension can only be sideloaded: a
+ * folder on disk, developer mode, and a person who has to be told when there
+ * is a new version, because nothing else will tell them.
  *
- * Served from this origin rather than from the API on purpose: the API is a
- * laptop behind a tunnel that is not always up, and this page is on a CDN that
- * is. Somebody can fetch the extension before the room is even running.
+ * There is no third option worth offering. Self-hosted `.crx` auto-update was
+ * removed for Windows and macOS in 2014 and survives only through enterprise
+ * policy, which means editing the registry on every machine — further from
+ * "professional" than the zip, not closer.
+ *
+ * Served from this origin rather than the API, either way: the API is a laptop
+ * behind a tunnel that is not always up, and this page is on a CDN that is.
  */
 function ExtensionDownload({ outdated }: { outdated: boolean }) {
+  if (EXTENSION_STORE_URL) {
+    return (
+      <div className="mt-4 rounded-card border border-white/10 bg-white/[0.04] px-4 py-4">
+        <a
+          href={EXTENSION_STORE_URL}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center gap-2 rounded-full bg-chalk px-4 py-2 text-[0.8rem] font-semibold text-ink transition hover:opacity-90"
+        >
+          <Puzzle aria-hidden className="size-4" />
+          {outdated ? 'Open the store listing' : 'Add to Chrome'}
+        </a>
+        <p className="mt-3 text-[0.78rem] leading-relaxed text-mist">
+          {outdated
+            ? 'Chrome updates it on its own, usually within a few hours. This opens the listing if you would rather not wait.'
+            : 'One click, then come back to this tab — it configures itself from here, with nothing to type. Updates arrive on their own.'}
+        </p>
+      </div>
+    )
+  }
+
   const steps = outdated
     ? ['Unzip it over the folder you loaded before.', 'chrome://extensions → Reload.']
     : [

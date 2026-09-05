@@ -29,7 +29,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '..')
 
 /** What goes in. Everything else in `extension/` is tooling or secrets. */
-const INCLUDE = ['manifest.json', 'src', 'README.md']
+const INCLUDE = ['manifest.json', 'icons', 'src', 'README.md']
 
 const CRC_TABLE = (() => {
   const table = new Int32Array(256)
@@ -67,8 +67,26 @@ function collect(path, prefix = '') {
  * same source produce the same bytes. That is what stops every deploy from
  * shipping a "new" download that is identical to the last one.
  */
-export function buildZip() {
+export function buildZip({ forStore = false } = {}) {
   const files = INCLUDE.flatMap((entry) => collect(entry))
+
+  if (forStore) {
+    /*
+     * The Web Store assigns the extension its own identity, and `key` is how a
+     * sideloaded copy pins one for itself. Uploading with it still there is at
+     * best ignored and at worst rejected, so the store build has it removed —
+     * and only the store build, because the sideloaded copy shipped from the
+     * app depends on it to keep the id stable across machines.
+     *
+     * Which means the published extension will have a *different* id from the
+     * sideloaded one, and that id has to be added to CLIENT_ORIGIN once, after
+     * the listing exists. There is no way to choose it in advance.
+     */
+    const manifestFile = files.find((f) => f.name === 'manifest.json')
+    const parsed = JSON.parse(manifestFile.data.toString('utf8'))
+    delete parsed.key
+    manifestFile.data = Buffer.from(JSON.stringify(parsed, null, 2) + '\n', 'utf8')
+  }
 
   /* 1 Jan 2024, in the DOS date/time the format has always used. */
   const DOS_TIME = 0
@@ -130,10 +148,18 @@ export const manifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'ut
 
 /* Only when run directly — the app's build imports `buildZip` instead. */
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const forStore = process.argv.includes('--store')
   const outDir = join(root, 'dist')
-  const outFile = join(outDir, `huddle-watch-${manifest.version}.zip`)
+  const outFile = join(
+    outDir,
+    forStore
+      ? `huddle-store-${manifest.version}.zip`
+      : `huddle-watch-${manifest.version}.zip`,
+  )
   mkdirSync(outDir, { recursive: true })
-  writeFileSync(outFile, buildZip())
-  console.log(`packaged ${manifest.name} v${manifest.version}`)
+  writeFileSync(outFile, buildZip({ forStore }))
+  console.log(
+    `packaged ${manifest.name} v${manifest.version}${forStore ? ' for the Chrome Web Store' : ''}`,
+  )
   console.log(outFile)
 }

@@ -161,6 +161,24 @@ export const API_HEADERS: Record<string, string> = {
   'ngrok-skip-browser-warning': 'true',
 }
 
+/**
+ * The extension's Chrome Web Store listing, once there is one.
+ *
+ * Empty until the item is published, and the Watch tab reads that emptiness as
+ * "offer the zip and the sideloading steps instead". Set it and the same panel
+ * becomes a single Add to Chrome button — one click, and Chrome keeps it
+ * updated by itself, which is the only route to that on Chrome: self-hosted
+ * `.crx` auto-update was removed for Windows and macOS in 2014 and now needs
+ * enterprise policy on every machine.
+ *
+ * An environment variable rather than a constant because the listing is
+ * published on someone else's schedule, and the id it hands back is not
+ * knowable in advance. Set `VITE_EXTENSION_STORE_URL` on the deployment and
+ * this flips over with no code change.
+ */
+export const EXTENSION_STORE_URL: string =
+  import.meta.env.VITE_EXTENSION_STORE_URL?.trim() || ''
+
 /** Absolute URL for something the API serves, such as an uploaded video. */
 export function apiUrl(path: string) {
   if (/^https?:\/\//i.test(path)) return path
