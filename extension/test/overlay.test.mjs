@@ -24,14 +24,15 @@ const src = readFileSync(new URL('../src/overlay.js', import.meta.url), 'utf8')
 const IDS = [
   'pill', 'panel', 'dot', 'pillText', 'status', 'idleRow', 'followingRow',
   'onTitle', 'offTitleHint', 'detectedTitle', 'followingTitle', 'announce',
-  'resync', 'err',
+  'resync', 'err', 'statsToggle', 'stats',
 ]
 
-function mount() {
+function mount(options = {}) {
   const els = Object.fromEntries(
     IDS.map((id) => [id, {
-      id, textContent: '', className: '', disabled: false,
-      style: {}, classList: { toggle() {} }, addEventListener() {},
+      id, textContent: '', innerHTML: '', className: '', disabled: false,
+      style: {}, classList: { toggle() {} },
+      addEventListener(type, fn) { this._click = fn },
     }]),
   )
 
@@ -63,7 +64,11 @@ function mount() {
       },
     },
   }
-  sandbox.window = { addEventListener() {}, __huddleResync() {} }
+  sandbox.window = {
+    addEventListener() {},
+    __huddleResync() {},
+    __huddleStats: options.stats ? () => options.stats : undefined,
+  }
   sandbox.window.window = sandbox.window
 
   vm.createContext(sandbox)
@@ -74,6 +79,10 @@ function mount() {
     tell: (m) => {
       onRoom?.(m)
       repaint?.()
+    },
+    /* The person clicking "Show sync detail". */
+    openStats: () => {
+      els.statsToggle._click?.()
     },
   }
 }
@@ -133,6 +142,48 @@ const check = (n, p, d = '') => R.push({ n, p, d })
   })
   check('a room with an item shows what is on', o.els.followingTitle.textContent === 'The Bear', o.els.followingTitle.textContent)
   check('  and hides the start row', o.els.idleRow.style.display === 'none', o.els.idleRow.style.display)
+}
+
+// ── the numbers behind the panel ────────────────────────────────────────────
+{
+  /*
+   * The two readings this exists to tell apart. They feel identical from the
+   * sofa — "it is out of sync" — and they need opposite fixes, so the panel
+   * must not blur them.
+   */
+  const delivering = mount({
+    stats: {
+      gap: 2.4, rate: 1, rateHonoured: true, offsetMs: 40,
+      roomAgeMs: 300, playerAgeMs: 120, ready: true, buffering: false,
+      paused: false, playing: true, seeks: 3, nudgeWrites: 0, settlingMs: 0,
+    },
+  })
+  delivering.tell({ kind: 'room', snapshot: { item: { id: 'i', title: 'T' }, playing: true }, offset: 40, status: 'connected' })
+  delivering.openStats()
+  check('a big gap with a fresh update is shown as such', /\+2\.40s/.test(delivering.els.stats.innerHTML), delivering.els.stats.innerHTML)
+  check('  and the room age is not flagged', !/warn">300ms/.test(delivering.els.stats.innerHTML), delivering.els.stats.innerHTML)
+
+  const stalled = mount({
+    stats: {
+      gap: 0.1, rate: 1, rateHonoured: true, offsetMs: 40,
+      roomAgeMs: 9000, playerAgeMs: 120, ready: true, buffering: false,
+      paused: false, playing: true, seeks: 0, nudgeWrites: 0, settlingMs: 0,
+    },
+  })
+  stalled.tell({ kind: 'room', snapshot: { item: { id: 'i', title: 'T' }, playing: true }, offset: 40, status: 'connected' })
+  stalled.openStats()
+  check('a stale room update is flagged even with a small gap', /warn/.test(stalled.els.stats.innerHTML), stalled.els.stats.innerHTML)
+
+  const refused = mount({
+    stats: {
+      gap: 0.5, rate: 1, rateHonoured: false, offsetMs: 40,
+      roomAgeMs: 200, playerAgeMs: 120, ready: true, buffering: false,
+      paused: false, playing: true, seeks: 1, nudgeWrites: 3, settlingMs: 0,
+    },
+  })
+  refused.tell({ kind: 'room', snapshot: { item: { id: 'i', title: 'T' }, playing: true }, offset: 40, status: 'connected' })
+  refused.openStats()
+  check('a player refusing the rate says so', /refused/.test(refused.els.stats.innerHTML), refused.els.stats.innerHTML)
 }
 
 let bad = 0

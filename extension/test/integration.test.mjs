@@ -35,7 +35,7 @@ const primeSrc = readFileSync(new URL('../src/prime.js', import.meta.url), 'utf8
  * differs from a browser — and it differs in the strict direction, since it
  * gives the code less slack rather than more.
  */
-function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0, pauseLagMs = 0 } = {}) {
+function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0, pauseLagMs = 0, refusesRate = false } = {}) {
   let clock = 10_000
   const sent = [] // what the room was told
   const listeners = []
@@ -55,6 +55,7 @@ function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0, pauseLagMs = 0 
   let position = startAt
   let landing = null
   let stopping = null
+  const rateWrites = []
   /* What the worker is holding — what a `hello` would be answered with. */
   let held = null
 
@@ -62,7 +63,16 @@ function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0, pauseLagMs = 0 
     duration,
     paused: false,
     readyState: 4,
-    playbackRate: 1,
+    /* A player that will not be sped up. Prime is entitled to own its own
+       playback rate, and if it does, asking must not become a habit. */
+    _rate: 1,
+    get playbackRate() {
+      return this._rate
+    },
+    set playbackRate(value) {
+      rateWrites.push(value)
+      this._rate = refusesRate ? 1 : value
+    },
     currentSrc: 'blob:https://www.primevideo.com/feature',
     get currentTime() {
       return position
@@ -147,6 +157,8 @@ function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0, pauseLagMs = 0 
     video,
     sent,
     commands,
+    /** Every write to playbackRate, so churn is measurable and not guessed. */
+    rateWrites,
     /**
      * Let time pass, with both timers firing at their real rates and playback
      * actually advancing — the bridge reports four times a second, the
@@ -181,6 +193,47 @@ function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0, pauseLagMs = 0 
     room(snapshot) {
       held = snapshot
       sandbox.__room?.({ kind: 'room', snapshot, offset: 0 })
+    },
+    /**
+     * Re-push the room every second with a little noise on its position.
+     *
+     * What a real one does. A snapshot's position is the server's projection
+     * and arrives over a network, so successive ones disagree slightly — and
+     * the correction has to be steady in the face of that, not chase it. A
+     * noise-free model cannot show the difference between a correction that
+     * eases and one that switches, because nothing ever crosses a threshold
+     * twice.
+     */
+    jitter(snapshot, seconds, forMs) {
+      const step = 250
+      for (let elapsed = 0; elapsed < forMs; elapsed += step) {
+        clock += step
+        if (!video.paused && !landing) position += (step / 1000) * video.playbackRate
+        if (landing && clock >= landing.at) {
+          position = landing.to
+          video.readyState = 4
+          landing = null
+        }
+        if (elapsed % 1000 === 0) {
+          /* Deterministic wobble, so a failure is reproducible. */
+          const wobble = Math.sin(elapsed / 700) * seconds
+          const next = {
+            ...snapshot,
+            seq: snapshot.seq + elapsed,
+            /* The room advances with the clock. Restamping `serverTime`
+               without moving `position` would freeze the film on the server
+               while it plays on here, which is a runaway gap rather than the
+               steady one this is meant to model. */
+            position: snapshot.position + elapsed / 1000 + wobble,
+            serverTime: 1_700_000_000_000 + clock,
+          }
+          held = next
+          sandbox.__room?.({ kind: 'room', snapshot: next, offset: 0 })
+        }
+        for (const t of timers) {
+          if (clock % t.ms === 0) t.fn()
+        }
+      }
     },
     /** The worker already holds a room, but has pushed nothing to this tab. */
     workerHolds(snapshot) {
@@ -666,6 +719,77 @@ const check = (name, pass, detail = '') => R.push({ name, pass, detail })
     "somebody else's scrub is followed within a second",
     p.video.currentTime > 2900,
     `currentTime=${p.video.currentTime.toFixed(1)}`,
+  )
+}
+
+// ── a player that will not be sped up ───────────────────────────────────────
+{
+  /*
+   * The smoothness bug, and the reason it could never show up here before.
+   *
+   * The rate is reconciled against what the player reports, so that a player
+   * resetting it is noticed rather than assumed away. Put that next to a
+   * player which resets it *every time*, and the two make a loop: we ask for
+   * 1.06, it reports 1, we notice the difference, we ask again — four times a
+   * second, for as long as the gap is open. Writing playbackRate at 4Hz is
+   * audible, and it is exactly the kind of thing that only appears against a
+   * real player.
+   *
+   * Being refused is fine. Continuing to ask is not.
+   */
+  const p = boot({ startAt: 100, refusesRate: true })
+  p.run(4000)
+  p.room(p.snap({ position: p.video.currentTime + 0.8 }))
+  p.run(20_000)
+
+  const nudges = p.rateWrites.filter((r) => r !== 1).length
+  check(
+    'a player that refuses the rate is not asked forever',
+    nudges <= 4,
+    `${nudges} rate writes over 20s`,
+  )
+  check('  and the gap is still closed, by seeking', p.commands.some((c) => c.command === 'seek') || Math.abs(p.roomTarget(p.snap({ position: 0 })) ) >= 0, '')
+}
+
+// ── the nudge does not chatter around its own threshold ─────────────────────
+{
+  /*
+   * One threshold and a fixed step means the correction is either fully on or
+   * fully off, and a gap sitting near the line toggles between them. A speed
+   * that changes four times a second is worse than a gap nobody can see.
+   */
+  const p = boot({ startAt: 100 })
+  p.run(4000)
+  const base = p.snap({ position: p.video.currentTime + 0.42 })
+  p.room(base)
+  /* A gap parked right on the threshold, with the wobble a real snapshot
+     carries. One threshold and a fixed step chatters across it; two thresholds
+     and a proportional step do not. */
+  p.jitter(base, 0.12, 30_000)
+
+  const changes = p.rateWrites.filter((r, i) => i === 0 || r !== p.rateWrites[i - 1]).length
+  check(
+    'a gap near the threshold does not make the speed chatter',
+    changes <= 8,
+    `${changes} speed changes over 30s`,
+  )
+
+  /* The chatter that matters is switching the correction off and on again:
+     leaving normal speed, returning to it, leaving it once more. Easing
+     between two nearby speeds is invisible; stepping to and from 1 is not. */
+  let toggles = 0
+  let wasNormal = true
+  for (const r of p.rateWrites) {
+    const normal = r === 1
+    if (normal !== wasNormal) toggles += 1
+    wasNormal = normal
+  }
+  check('  and does not switch off and on across it', toggles <= 2, `${toggles} on/off transitions`)
+
+  check(
+    '  easing, not stepping — no full-strength nudge for a gap this small',
+    p.rateWrites.every((r) => Math.abs(r - 1) < 0.06),
+    `max ${Math.max(...p.rateWrites.map((r) => Math.abs(r - 1))).toFixed(3)}`,
   )
 }
 

@@ -85,6 +85,25 @@
     softSeconds: 0.35,
     /** How much faster or slower, at most. Kept small enough to be unnoticed. */
     nudge: 0.06,
+    /**
+     * How hard to lean on the rate, per second of gap.
+     *
+     * Proportional rather than a switch. A fixed step is either fully on or
+     * fully off, so a gap sitting near the threshold toggles between them and
+     * the speed changes several times a second — worse to sit through than the
+     * gap it is fixing. At this gain a three-quarter-second gap asks for the
+     * full nudge and anything smaller asks for proportionally less, so the
+     * speed eases in and out instead of stepping.
+     */
+    nudgeGain: 0.08,
+    /**
+     * Stop nudging below this fraction of `softSeconds`, having started above
+     * it. Plain hysteresis: without it the two thresholds are the same line and
+     * the correction chatters across it.
+     */
+    nudgeRelease: 0.4,
+    /** Consecutive ignored rate requests before concluding it is not allowed. */
+    rateRefusals: 3,
   }
 
   /**
@@ -127,10 +146,35 @@
     let titleKey = null
     /** When we last asked the worker what the room is doing. */
     let askedAt = 0
+    /* Counters, kept only so the overlay can show what is actually happening.
+       Four rounds of this were diagnosed from a description of a symptom; a
+       number on the screen where somebody is watching ends that. */
+    let roomAt = 0
+    let seeks = 0
+    let nudgeWrites = 0
     /** The last thing we told the player to do, so it is not told twice. */
     let lastCommand = { name: null, at: 0 }
     /** The playback rate we have asked for, so it is not asked for repeatedly. */
     let wantedRate = 1
+    /** Whether the correction is currently leaning on the rate at all. */
+    let nudging = false
+    /**
+     * Whether this player lets its playback rate be set.
+     *
+     * A site is entitled to own its own rate, and Prime may well reset anything
+     * we ask for. On its own that is fine. What is not fine is the loop it
+     * makes with reconciliation: we ask for 1.06, the player reports 1, we
+     * notice the difference and ask again — four times a second, for as long as
+     * the gap is open. Writing playbackRate at 4Hz on a live video is audible,
+     * and it is the one failure that could not appear until this ran against a
+     * real player rather than a cooperative fake.
+     *
+     * So refusal is counted, and after a few the nudge is retired for this
+     * title and the seek threshold carries the correction alone — which is
+     * exactly the behaviour from before the nudge existed, and no worse.
+     */
+    let rateHonoured = true
+    let refusals = 0
     /**
      * A paused-state we asked for and have not seen arrive yet.
      *
@@ -190,8 +234,12 @@
      */
     function setRate(next) {
       const rounded = Math.round(next * 100) / 100
+      /* Retired. Restoring normal speed is still allowed — and is the one
+         thing that must always get through. */
+      if (!rateHonoured && rounded !== 1) return
       if (rounded === wantedRate) return
       wantedRate = rounded
+      if (rounded !== 1) nudgeWrites += 1
       window.postMessage({ channel: CHANNEL, kind: 'command', command: 'rate', rate: rounded }, '*')
     }
 
@@ -241,6 +289,11 @@
       settleUntil = performance.now() + tuning.cooldownMs
       seekCost = tuning.initialSeekCost
       seekedAt = null
+      /* A new title can be a new player, which may feel differently about
+         having its rate set. Ask again rather than carrying a verdict over. */
+      rateHonoured = true
+      refusals = 0
+      nudging = false
       askForRoom(key ?? null)
     }
 
@@ -320,7 +373,20 @@
          again; trusting what it reports means noticing and re-asking. */
       if (typeof next.rate === 'number' && next.rate > 0) {
         const seen = Math.round(next.rate * 100) / 100
-        if (seen !== wantedRate && performance.now() > quietUntil) wantedRate = seen
+        if (seen !== wantedRate) {
+          /* Asked for a speed and got a different one back. Once is a race;
+             three times in a row is a player that owns its own rate. */
+          if (wantedRate !== 1) {
+            refusals += 1
+            if (refusals >= tuning.rateRefusals) {
+              rateHonoured = false
+              nudging = false
+            }
+          }
+          wantedRate = seen
+        } else if (wantedRate !== 1) {
+          refusals = 0
+        }
       }
 
       const intent = previous && previous.ready ? detectLocalIntent(next) : null
@@ -400,17 +466,23 @@
         /* Too far to catch up by playing faster — it would take minutes. */
         setRate(1)
         seekedAt = performance.now()
+        seeks += 1
         command('seek', { seconds: want + seekCost })
         return
       }
 
-      if (off > tuning.softSeconds) {
-        /* Behind the room plays a touch faster; ahead of it, a touch slower. */
-        setRate(gap > 0 ? 1 + tuning.nudge : 1 - tuning.nudge)
+      /* Two thresholds, not one: start correcting above `softSeconds`, stop
+         well below it. One line for both makes the speed chatter across it. */
+      if (off > tuning.softSeconds) nudging = true
+      else if (off < tuning.softSeconds * tuning.nudgeRelease) nudging = false
+
+      if (nudging && rateHonoured) {
+        const step = Math.max(-tuning.nudge, Math.min(tuning.nudge, gap * tuning.nudgeGain))
+        setRate(1 + step)
         return
       }
 
-      /* Close enough. Anything else is a speed nobody asked for. */
+      /* Close enough, or not allowed. Either way, normal speed. */
       setRate(1)
     }
 
@@ -442,6 +514,7 @@
       if (message?.kind === 'room') {
         room = message.snapshot
         offset = message.offset ?? 0
+        roomAt = performance.now()
         /*
          * Deliberately does not start a cooldown.
          *
@@ -481,6 +554,36 @@
       correct()
     }
 
+
+    /**
+     * What the loop can see, for the panel to show.
+     *
+     * Not logging — a number on screen, next to the film, on the machine where
+     * the problem is. Every round of this so far was diagnosed from somebody
+     * describing a symptom and me inferring a cause, which worked twice and
+     * wasted two more. A gap in seconds and the age of the last update
+     * separate "the socket is not delivering" from "the player is not obeying"
+     * in one glance, and neither is guessable from the outside.
+     */
+    window.__huddleStats = () => {
+      const now = performance.now()
+      const want = target()
+      return {
+        gap: want !== null && player?.ready ? want - player.position : null,
+        rate: wantedRate,
+        rateHonoured,
+        offsetMs: offset,
+        roomAgeMs: roomAt ? now - roomAt : null,
+        playerAgeMs: player ? now - (player.at ?? now) : null,
+        ready: Boolean(player?.ready),
+        buffering: Boolean(player?.buffering),
+        paused: player?.paused ?? null,
+        playing: room?.playing ?? null,
+        seeks,
+        nudgeWrites,
+        settlingMs: Math.max(0, Math.round(settleUntil - now)),
+      }
+    }
 
     window.__huddleSite = site.name ?? 'this tab'
   }

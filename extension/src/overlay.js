@@ -95,6 +95,19 @@
         button:disabled { opacity: .5; cursor: default; }
         button.ghost { background: rgba(255,255,255,.08); color: #eee; margin-top: 6px; }
         .err { color: #ff9c9c; font-size: 11px; margin-top: 6px; }
+        .stats {
+          display: none; margin-top: 10px; padding-top: 9px;
+          border-top: 1px solid rgba(255,255,255,.08);
+          font: 10.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+          color: #9a9aa0;
+        }
+        .stats.open { display: block; }
+        .stats b { color: #eee; font-weight: 600; }
+        .stats .warn { color: #fbbf24; }
+        .toggle {
+          margin-top: 8px; color: #6a6a70; font-size: 10px; cursor: pointer;
+          user-select: none; text-decoration: underline; text-underline-offset: 2px;
+        }
       </style>
       <div class="panel" id="panel">
         <div class="row"><div class="label">Status</div><div class="value" id="status">—</div></div>
@@ -114,6 +127,8 @@
           <button class="ghost" id="resync">Resync now</button>
         </div>
         <div id="err" class="err" style="display:none;"></div>
+        <div class="toggle" id="statsToggle">Show sync detail</div>
+        <div class="stats" id="stats"></div>
       </div>
       <div class="pill" id="pill"><span class="dot" id="dot"></span><span id="pillText">Huddle</span></div>
     `
@@ -134,6 +149,8 @@
       announce: root.getElementById('announce'),
       resync: root.getElementById('resync'),
       err: root.getElementById('err'),
+      statsToggle: root.getElementById('statsToggle'),
+      stats: root.getElementById('stats'),
     }
   }
 
@@ -160,6 +177,14 @@
         el.err.textContent = result?.error ?? 'Could not start the room on this.'
         el.err.style.display = 'block'
       }
+      render()
+    })
+
+    let showStats = false
+    el.statsToggle.addEventListener('click', () => {
+      showStats = !showStats
+      el.stats.classList.toggle('open', showStats)
+      el.statsToggle.textContent = showStats ? 'Hide sync detail' : 'Show sync detail'
       render()
     })
 
@@ -230,6 +255,39 @@
         el.followingTitle.textContent = room.item.title
         el.resync.disabled = !onWatchPage || !player || player.buffering
       }
+
+      if (showStats) renderStats()
+    }
+
+    /**
+     * The numbers behind the panel.
+     *
+     * Deliberately raw. This exists to be read out or screenshotted when
+     * something feels wrong, and the whole value of it is that it does not
+     * interpret: a gap of 2.4s with a fresh room update is a player not
+     * obeying, and a gap of 0.1s with a nine-second-old update is a socket not
+     * delivering. Those look identical from the sofa and need opposite fixes.
+     */
+    function renderStats() {
+      const s = window.__huddleStats?.()
+      if (!s) {
+        el.stats.textContent = 'no sync engine on this page'
+        return
+      }
+
+      const secs = (v) => (v === null || v === undefined ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}s`)
+      const ms = (v) => (v === null || v === undefined ? '—' : `${Math.round(v)}ms`)
+      /* Anything past a couple of seconds means updates have stopped arriving,
+         which is the one reading worth colouring. */
+      const stale = s.roomAgeMs !== null && s.roomAgeMs > 2500
+
+      el.stats.innerHTML = [
+        `gap <b>${secs(s.gap)}</b>   rate <b>${s.rate.toFixed(2)}</b>${s.rateHonoured ? '' : ' <span class="warn">(refused)</span>'}`,
+        `room <b class="${stale ? 'warn' : ''}">${ms(s.roomAgeMs)}</b> ago   player <b>${ms(s.playerAgeMs)}</b> ago`,
+        `clock offset <b>${ms(s.offsetMs)}</b>   settling <b>${ms(s.settlingMs)}</b>`,
+        `seeks <b>${s.seeks}</b>   speed changes <b>${s.nudgeWrites}</b>`,
+        `room ${s.playing ? 'playing' : 'paused'} · player ${s.paused ? 'paused' : 'playing'}${s.buffering ? ' · buffering' : ''}${s.ready ? '' : ' · no title'}`,
+      ].join('<br />')
     }
 
     render()
