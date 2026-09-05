@@ -33,7 +33,13 @@
   details { margin-top: 12px; }
   summary { color: #9a9aa0; font-size: 11px; cursor: pointer; outline: none; }
   summary::-webkit-details-marker { color: #6a6a70; }
-  .origin { margin-top: 12px; font-size: 10.5px; color: #7a7a80; word-break: break-all; }
+  .origin {
+    margin-top: 12px; padding: 9px 11px; border-radius: 8px;
+    background: rgba(229,72,77,.07); border: 1px solid rgba(229,72,77,.2);
+    font-size: 10.5px; color: #c9a3a5; word-break: break-all; line-height: 1.45;
+  }
+  .origin b { color: #ececec; font-weight: 600; }
+  .why { margin-top: 8px; color: #9a9aa0; font-size: 11px; line-height: 1.45; }
   code { background: #1c1c21; padding: 1px 4px; border-radius: 4px; }
 </style>
 
@@ -53,11 +59,18 @@
   <button id="save">Connect</button>
 </details>
 
-<div class="status" id="status">Not connected.</div>
+<div class="status" id="status">Checking…</div>
+<div class="why" id="why"></div>
 
-<div class="origin">
-  Add this to the API's <code>CLIENT_ORIGIN</code> list:<br />
-  <span id="origin"></span>
-</div>
+<!--
+  Shown only when the server has actually refused this socket.
+
+  It used to sit here permanently, which was reasonable when Chrome gave every
+  install its own id and every install genuinely had to be allowlisted. The id
+  is pinned now, so it is allowed before anyone installs anything — and a
+  standing "add this to CLIENT_ORIGIN" note sent people to fix the one thing
+  that was already correct while the real cause went unread.
+-->
+<div class="origin" id="origin" hidden></div>
 
 <script src="popup.js"></script>
