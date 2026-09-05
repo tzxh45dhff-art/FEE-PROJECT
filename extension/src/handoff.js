@@ -13,11 +13,12 @@
  * sides share), this reads it, asks the server for a token of its own, and
  * hands the lot to the worker. Opening the app is the entire setup.
  *
- * The token is fetched rather than read off the page on purpose. This request
- * carries the page's own cookies, so the server will only ever mint one for a
- * session the page had already proven — nothing is granted here that the
- * person was not already holding, and nothing sensitive has to sit in the DOM
- * to be passed along.
+ * The token is fetched rather than read off the page on purpose. The request
+ * proves the page's own session — by cookie same-origin, by the bearer token
+ * the app already carries when it is not — so the server will only ever mint
+ * one for a session the page had already proven. Nothing is granted here that
+ * the person was not already holding, and nothing sensitive has to sit in the
+ * DOM to be passed along.
  */
 
 const BRIDGE_ID = 'huddle-extension-bridge'
@@ -30,13 +31,61 @@ const VERSION = chrome.runtime.getManifest().version
 /** The last thing successfully configured, so a re-read is not a re-connect. */
 let applied = ''
 
+/** Where the app keeps its own session token. Same origin, so this can read it. */
+const APP_TOKEN_KEY = 'syncroom.token'
+
+/**
+ * Prove the page's session, the same way the page itself does.
+ *
+ * This asked with `credentials: 'include'` and nothing else, which works
+ * exactly where the API is same-origin — development, behind Vite's proxy —
+ * and fails everywhere that matters. Deployed, the app is on one origin and
+ * the API on another, so that cookie is third-party: Chrome blocks it by
+ * default and Safari discards it outright. The request arrived unauthenticated,
+ * the server correctly answered 401, and the extension sat at `idle` forever
+ * with nothing anywhere saying why.
+ *
+ * It looked like it worked because the machine it was written on runs the app
+ * on localhost, where the cookie is first-party. The second device is where
+ * that assumption showed.
+ *
+ * The app hit this before and solved it — see `getToken` in `src/lib/config.ts`
+ * — by carrying a bearer token cross-origin. This does the same thing, reading
+ * the same key from the same origin's storage.
+ *
+ * The app's token is used only to *prove* the session here, never handed on.
+ * What comes back is minted fresh for the extension to hold — but be accurate
+ * about what that buys: `extension-token` issues an ordinary session token,
+ * not a scoped one, so it carries the same authority the page already has. The
+ * gain is that the worker holds its own copy with its own lifetime rather than
+ * borrowing the page's, not that it is any less privileged. Narrowing it to
+ * just the watch stage would be a real improvement and is not what this is.
+ */
+function appToken() {
+  try {
+    return window.localStorage.getItem(APP_TOKEN_KEY)
+  } catch {
+    /* Storage can be denied outright, in a private window or by policy. The
+       cookie below is then the only route, and same-origin it is enough. */
+    return null
+  }
+}
+
 async function mintToken(api) {
-  /* Relative when the app is same-origin with its API (development behind
-     Vite's proxy); absolute when it is not (any real deployment). Both are
-     the page's own fetch, so both are subject to the same CORS the app
-     itself already passes. */
-  const response = await fetch(`${api}/api/auth/extension-token`, { credentials: 'include' })
-  if (!response.ok) return null
+  const token = appToken()
+  const response = await fetch(`${api}/api/auth/extension-token`, {
+    /* Kept for the same-origin case, where an httpOnly cookie is strictly
+       better than a token script can read. */
+    credentials: 'include',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      /* Without this a free ngrok tunnel can answer with its interstitial page
+         instead of the API, which parses as neither JSON nor an error. */
+      'ngrok-skip-browser-warning': 'true',
+    },
+  }).catch(() => null)
+
+  if (!response || !response.ok) return null
   const body = await response.json().catch(() => null)
   return typeof body?.token === 'string' ? body.token : null
 }
