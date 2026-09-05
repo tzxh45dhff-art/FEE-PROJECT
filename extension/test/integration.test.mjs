@@ -547,7 +547,12 @@ const check = (name, pass, detail = '') => R.push({ name, pass, detail })
   p.room(p.snap({ position: 900 }))
   p.run(8000)
   check('a large gap still seeks', p.video.currentTime > 890, `currentTime=${p.video.currentTime}`)
-  check('  and leaves the speed alone', p.video.playbackRate === 1, `rate=${p.video.playbackRate}`)
+  /* The seek aims past the room by what a seek costs, and this fake one lands
+     instantly — so it arrives slightly ahead and eases back rather than
+     sitting at exactly 1. What matters is that it never runs away. */
+  check('  at a speed nobody would notice', p.video.playbackRate >= 0.9 && p.video.playbackRate <= 1.1, `rate=${p.video.playbackRate}`)
+  p.run(40_000)
+  check('  and settles back to normal', p.video.playbackRate === 1, `rate=${p.video.playbackRate}`)
 }
 
 {
@@ -610,6 +615,57 @@ const check = (name, pass, detail = '') => R.push({ name, pass, detail })
     '  and pressing play straight after still reaches the room',
     p.sent.some((m) => m.kind === 'control' && m.control?.action === 'play'),
     JSON.stringify(p.sent),
+  )
+}
+
+// ── following somebody else's play and seek, promptly ───────────────────────
+{
+  /*
+   * "Play pause very delayed", and asymmetric in a way that gives it away:
+   * pause was instant, play was not.
+   *
+   * Every incoming room change set the five-second correction cooldown, and
+   * `correct()` checks that cooldown *after* the paused-room branch and
+   * *before* the play and seek branches. So obeying a pause happened at once
+   * and obeying a play waited out the whole cooldown — as did following
+   * somebody's scrub.
+   *
+   * The cooldown is there so our own correction's echo does not earn a second
+   * correction on top of it. That is about drift. Following a control somebody
+   * deliberately pressed is not drift, and the two must not share a brake:
+   * issuing a command already sets its own settle, which is what actually
+   * stops the oscillation.
+   */
+  const p = boot({ startAt: 100 })
+  p.run(4000)
+  p.room(p.snap({ position: 106, playing: false }))
+  p.run(1000)
+  check('setup: the room is paused and so are we', p.video.paused === true, `paused=${p.video.paused}`)
+
+  /* Somebody presses play. */
+  p.room(p.snap({ position: 106, playing: true, seq: 2 }))
+  p.run(500)
+  check(
+    'somebody else pressing play reaches us within half a second',
+    p.video.paused === false,
+    `still paused after 500ms`,
+  )
+}
+
+{
+  /* And the same for a scrub. */
+  const p = boot({ startAt: 100 })
+  p.run(4000)
+  p.room(p.snap({ position: 106 }))
+  p.run(6000)
+
+  p.commands.length = 0
+  p.room(p.snap({ position: 3000, seq: 2 }))
+  p.run(600)
+  check(
+    "somebody else's scrub is followed within a second",
+    p.video.currentTime > 2900,
+    `currentTime=${p.video.currentTime.toFixed(1)}`,
   )
 }
 

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Huddle \u2014 Watch Together",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Hold a Netflix or Prime Video tab to the same moment as everyone else in your Huddle room.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5f/2YUKSA+OOeZOiX+AJ01ddLgGtD+FY9dWAVnaFp6yrt+NRzqBjUvmRdm9RlCoF5SnKvVs5z5Q5fD0wfEyxshXLIuP9lChpQdAwPEOwhTOeJjZYN4jOeR/Ss8ofIp7WM3FK2d7yVG1gTMyx87ahmSLF9Xs8ebUL3M2LZ7UjDwTNDLQ8FSKrLTDLBN0F1bFek3RaNB/xsBW33t/q+drC2KEGAzWdyjh1fhfVJ7d/Bk8R/Bc2Dncp0XthV1JRBHht7P3cxlliXs4qDGk37pKyZ4k9yfuMEGr6Ko9rDj68v/AziMjRppt0rZM0S8VkC5XS75x8tyYstQzzGlg0qcUvUQIDAQAB",
   "permissions": [

@@ -361,6 +361,23 @@
 
       if (player.buffering) return
 
+      /*
+       * The room is running and this player is not. Start it — and note where
+       * this sits: above the settle check, alongside the pause branch, not
+       * below it with the drift correction.
+       *
+       * Starting and stopping is obedience, not correction. It was below the
+       * check, so our own pause a moment earlier — or any other recent command
+       * — held the film stopped for the length of a cooldown while the rest of
+       * the room played on. Nothing about a settle window makes pressing play
+       * less correct; the thing that stops it being pressed repeatedly is the
+       * re-issue guard in `command`, which is where that belongs.
+       */
+      if (player.paused) {
+        command('play')
+        return
+      }
+
       /* Recovered from a correction — learn what it actually cost, so the next
          aims better. Eased, because one slow fetch is not the new normal. */
       if (seekedAt !== null) {
@@ -369,17 +386,12 @@
         seekedAt = null
       }
 
+      /* Everything past here is drift correction, which is what the settle
+         window is actually for. */
       if (performance.now() < settleUntil) return
 
       const want = target()
       if (want === null) return
-
-      /* The room is running and this player is not. Start it, without reading
-         the resulting change as the person having pressed play. */
-      if (player.paused) {
-        command('play')
-        return
-      }
 
       const gap = want - player.position
       const off = Math.abs(gap)
@@ -428,13 +440,29 @@
        the offset is measured up there, where the socket is. */
     chrome.runtime.onMessage.addListener((message) => {
       if (message?.kind === 'room') {
-        const changed = message.snapshot?.seq !== room?.seq
         room = message.snapshot
         offset = message.offset ?? 0
-        /* A deliberate control from anyone — including us — means the player is
-           about to move on purpose. Reading that as drift spends a second
-           correction on top of the one the room asked for. */
-        if (changed) settleUntil = performance.now() + tuning.cooldownMs
+        /*
+         * Deliberately does not start a cooldown.
+         *
+         * It used to: any change to the room set the full five-second
+         * correction settle, on the reasoning that a control someone pressed
+         * means the player is about to move on purpose and reading that as
+         * drift would spend a second correction on top of it.
+         *
+         * That reasoning is about our *own* echo, and the brake for it belongs
+         * where the command is issued — which is where it now is. Applied to
+         * every incoming change it did something much worse, because
+         * `correct()` tests the cooldown after the paused-room branch and
+         * before the play and seek ones: obeying somebody's pause was instant,
+         * and obeying their play or their scrub waited out the whole five
+         * seconds. One person pressing play and the rest of the room sitting
+         * still for five seconds is the entire "play pause very delayed"
+         * complaint, and the asymmetry with pause is what gave it away.
+         *
+         * Following a control somebody deliberately pressed is not drift
+         * correction and must not share its brake.
+         */
       }
     })
 
