@@ -3,20 +3,41 @@
   "name": "Huddle — Watch Together",
   "version": "0.3.0",
   "description": "Hold a Netflix or Prime Video tab to the same moment as everyone else in your Huddle room.",
-  "permissions": ["storage"],
-  "host_permissions": ["*://*/*"],
-  "background": { "service_worker": "src/worker.js", "type": "module" },
-  "action": { "default_popup": "src/popup.html", "default_title": "Huddle" },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5f/2YUKSA+OOeZOiX+AJ01ddLgGtD+FY9dWAVnaFp6yrt+NRzqBjUvmRdm9RlCoF5SnKvVs5z5Q5fD0wfEyxshXLIuP9lChpQdAwPEOwhTOeJjZYN4jOeR/Ss8ofIp7WM3FK2d7yVG1gTMyx87ahmSLF9Xs8ebUL3M2LZ7UjDwTNDLQ8FSKrLTDLBN0F1bFek3RaNB/xsBW33t/q+drC2KEGAzWdyjh1fhfVJ7d/Bk8R/Bc2Dncp0XthV1JRBHht7P3cxlliXs4qDGk37pKyZ4k9yfuMEGr6Ko9rDj68v/AziMjRppt0rZM0S8VkC5XS75x8tyYstQzzGlg0qcUvUQIDAQAB",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*/*"
+  ],
+  "background": {
+    "service_worker": "src/worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "Huddle"
+  },
   "content_scripts": [
     {
-      "matches": ["*://*.netflix.com/*"],
-      "js": ["src/bridge.js"],
+      "matches": [
+        "*://*.netflix.com/*"
+      ],
+      "js": [
+        "src/bridge.js"
+      ],
       "world": "MAIN",
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://*.netflix.com/*"],
-      "js": ["src/sync.js", "src/netflix.js", "src/overlay.js"],
+      "matches": [
+        "*://*.netflix.com/*"
+      ],
+      "js": [
+        "src/sync.js",
+        "src/netflix.js",
+        "src/overlay.js"
+      ],
       "world": "ISOLATED",
       "run_at": "document_idle"
     },
@@ -29,7 +50,9 @@
         "*://*.amazon.de/gp/video/*",
         "*://*.amazon.co.jp/gp/video/*"
       ],
-      "js": ["src/bridge-prime.js"],
+      "js": [
+        "src/bridge-prime.js"
+      ],
       "world": "MAIN",
       "run_at": "document_idle"
     },
@@ -42,7 +65,11 @@
         "*://*.amazon.de/gp/video/*",
         "*://*.amazon.co.jp/gp/video/*"
       ],
-      "js": ["src/sync.js", "src/prime.js", "src/overlay.js"],
+      "js": [
+        "src/sync.js",
+        "src/prime.js",
+        "src/overlay.js"
+      ],
       "world": "ISOLATED",
       "run_at": "document_idle"
     },
@@ -52,7 +79,9 @@
         "http://127.0.0.1:*/*",
         "https://*.vercel.app/*"
       ],
-      "js": ["src/handoff.js"],
+      "js": [
+        "src/handoff.js"
+      ],
       "world": "ISOLATED",
       "run_at": "document_idle"
     }

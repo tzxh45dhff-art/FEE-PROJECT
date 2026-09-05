@@ -34,27 +34,41 @@ than an impossibility.
 
 ## Setup
 
-There are two steps, and neither involves typing a token.
+Load the extension and open the app. That is the whole thing.
 
-1. **Load the extension.** `chrome://extensions` → Developer mode → *Load
-   unpacked* → pick this `extension/` folder. (To put it on someone else's
-   machine, see **Other devices** below.)
-2. **Allowlist it on the API.** Open the popup and copy the
-   `chrome-extension://…` origin printed at the bottom, add it to
-   `CLIENT_ORIGIN` in the server's `.env`, and restart the server:
+1. **Load it.** `chrome://extensions` → Developer mode → *Load unpacked* → pick
+   this `extension/` folder. (For someone else's machine, see **Other devices**.)
+2. **Open your Huddle room in a tab.** The extension configures itself from the
+   page — the API, the room, and a session token it requests for itself.
 
-   ```
-   CLIENT_ORIGIN=https://your-app.vercel.app,chrome-extension://<id>
-   ```
-
-   The id is assigned by Chrome and differs per machine, so each person's has
-   to be added. Without it the server correctly refuses the connection.
-
-That's it. Open your Huddle room in a tab and the extension configures itself
-from the page — the API, the room, and a session token it requests for itself.
 Then start a title on Netflix or Prime Video: a panel appears over the player
 with **Start the room on this**. Everyone else opens the same title on their
 own account and their tab falls in step on its own.
+
+### The id is pinned, and that is why there is no step 3
+
+There used to be one: read the `chrome-extension://…` origin out of the popup,
+send it to whoever runs the API, have them add it to `CLIENT_ORIGIN` and
+restart. That step existed because Chrome derives an extension's id from a key
+it generates per install, so every person had a different one and the server —
+correctly — refused an origin it had never been told about.
+
+`manifest.json` now carries a `key`: the public half of a fixed keypair. Chrome
+derives the id from that instead of generating one, so **every install has the
+same id**, on every machine:
+
+```
+chrome-extension://lnngdhodgenaecklihlgfncipilodmla
+```
+
+One origin to allow, once, and `npm run live` adds it on its own — it derives
+the id from the manifest rather than having it written down, so rotating the
+key moves the allowed origin with it instead of leaving a stale one behind.
+
+The private half lives in `extension/huddle-extension-key.pem`, gitignored. It
+is not needed to load the extension unpacked, which is how it is distributed —
+only to produce a signed `.crx` with this same id. Worth keeping a copy of
+anyway: lose it and a future `.crx` can never claim this id again.
 
 ## What talks to what
 
@@ -131,10 +145,22 @@ trailer, the feature. The longest one that has loaded is the feature.
 node extension/scripts/package.mjs
 ```
 
-Writes `extension/dist/huddle-watch-<version>.zip`. Send it over, unzip, and
-*Load unpacked* on that machine. Each person then adds their own
-`chrome-extension://` origin to `CLIENT_ORIGIN` (see Setup step 2), since
-Chrome assigns a different id per install.
+Writes `extension/dist/huddle-watch-<version>.zip`. Send it over; they unzip it
+and *Load unpacked* on that machine. Nothing else — no id to copy back, no
+`CLIENT_ORIGIN` edit, no API restart, because the id is the same as yours.
+
+Two things that catch people out, neither specific to this extension:
+
+- **The unzipped folder has to stay where it is.** Chrome does not copy an
+  unpacked extension in; it reads that folder every time it starts. Unzipping
+  into Downloads and later clearing Downloads uninstalls it.
+- **Chrome asks about developer mode on every restart** — a "Disable developer
+  mode extensions" prompt. *Keep* dismisses it. This is the standing cost of
+  sideloading and the only way to avoid it is the Chrome Web Store.
+
+Updating them later is the same zip and then *Reload* on the extensions page;
+because the id is fixed, an update replaces the old one rather than installing
+a second copy beside it.
 
 ## Deployment
 

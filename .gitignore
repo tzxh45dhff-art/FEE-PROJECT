@@ -40,3 +40,8 @@ server/prisma/*.db-journal
 
 
 .vercel
+
+# The extension's signing key. Its public half is pinned in manifest.json
+# (that is what fixes the extension id); this private half is only needed to
+# produce a signed .crx with that same id. Never commit it.
+extension/*.pem

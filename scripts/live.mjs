@@ -15,6 +15,7 @@
  *   npm run live
  */
 
+import { createHash } from 'node:crypto'
 import { spawn, execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -61,6 +62,34 @@ async function tunnelFor(port, attempts = 40) {
  * this script's to tidy up — and a list that quietly loses one is a room that
  * quietly stops working for whoever owned it.
  */
+/**
+ * The extension's origin, worked out rather than written down.
+ *
+ * Chrome normally assigns an extension id per install, which meant every
+ * person watching had to read theirs out of the popup, send it over, and wait
+ * for someone to add it here and restart the API. `manifest.json` now pins a
+ * public key, which fixes the id to one value on every machine — so there is
+ * exactly one origin to allow, and it can be derived here instead of pasted.
+ *
+ * The derivation is Chrome's own: sha256 of the DER public key, first 16
+ * bytes, each hex digit mapped 0-f onto a-p. Computing it from the manifest
+ * rather than hardcoding the answer means that if the key is ever rotated,
+ * this follows it instead of quietly allowing a stale id.
+ */
+function extensionOrigin() {
+  const manifestPath = join(root, 'extension', 'manifest.json')
+  if (!existsSync(manifestPath)) return null
+  const { key } = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  if (!key) return null
+
+  const id = [...createHash('sha256').update(Buffer.from(key, 'base64')).digest().subarray(0, 16)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+    .replace(/[0-9a-f]/g, (hex) => String.fromCharCode(97 + parseInt(hex, 16)))
+
+  return `chrome-extension://${id}`
+}
+
 function ensureOrigins(...origins) {
   if (!existsSync(ENV_PATH)) return null
 
@@ -126,7 +155,7 @@ if (!url) {
 const app = process.env.HUDDLE_APP ?? 'https://huddle-sync.vercel.app'
 const link = `${app}/?api=${encodeURIComponent(url)}`
 
-const result = ensureOrigins(app)
+const result = ensureOrigins(app, extensionOrigin())
 if (result?.changed) {
   console.log(`\nadded to CLIENT_ORIGIN: ${result.added.join(', ')} — restart the API to apply`)
 }
@@ -141,7 +170,7 @@ console.log(`
   points their browser at this API and is remembered afterwards, so
   the plain address works from then on.
 
-  Everyone watching needs the extension loaded, and their own
-  chrome-extension://<id> added to CLIENT_ORIGIN in server/.env.
-  The id is printed at the bottom of the extension's popup.
+  Everyone watching needs the extension loaded. Its id is pinned, so
+  it is the same on every machine and is already allowed above —
+  there is nothing to copy out of the popup and nothing to add here.
 `)
