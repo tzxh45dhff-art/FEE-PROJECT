@@ -42,7 +42,7 @@
 ;(() => {
   const CHANNEL = 'huddle'
 
-  let latest = { player: null, room: null, offset: 0 }
+  let latest = { player: null, room: null, offset: 0, status: null, heard: false }
 
   function cleanTitle() {
     /* Both sites put the title in the tab title, suffixed or prefixed with
@@ -174,7 +174,18 @@
     function render() {
       const { player, room, offset } = latest
 
-      const connected = room !== null
+      /*
+       * Three states, not two.
+       *
+       * `room` being null used to mean "not connected", which was wrong in the
+       * case that actually happens: the worker connected and holding an empty
+       * room. The panel said the extension was not set up, and disabled the
+       * button that would have put something on — on a tab whose socket was
+       * working the entire time. So connectedness comes from the worker's own
+       * status now, and the room is only what is playing.
+       */
+      const { status, heard } = latest
+      const connected = status === 'connected' || (heard && room !== null)
       /*
        * Whether a real title is on screen, asked of the bridge rather than of
        * the URL.
@@ -192,7 +203,11 @@
       el.pillText.textContent = connected ? 'Huddle · in sync' : 'Huddle'
       el.status.textContent = connected
         ? `Connected · offset ${Math.round(offset)}ms`
-        : 'Not connected — set up the extension from its toolbar icon.'
+        : !heard
+          ? 'Checking…'
+          : status && status !== 'idle' && status !== 'not configured'
+            ? `${status} — the room's server is not answering.`
+            : 'Not set up yet. Open your Huddle room in a tab.'
 
       const hasRoomItem = Boolean(room?.item)
       el.idleRow.style.display = hasRoomItem ? 'none' : 'block'
@@ -229,7 +244,15 @@
 
     chrome.runtime.onMessage.addListener((message) => {
       if (message?.kind === 'room') {
-        latest = { ...latest, room: message.snapshot, offset: message.offset ?? 0 }
+        latest = {
+          ...latest,
+          room: message.snapshot ?? null,
+          offset: message.offset ?? 0,
+          status: message.status ?? null,
+          /* Heard from at all — which is a different fact from having a room,
+             and the one that says whether the extension is alive. */
+          heard: true,
+        }
       }
     })
   }

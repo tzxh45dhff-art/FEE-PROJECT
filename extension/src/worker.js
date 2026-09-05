@@ -68,7 +68,9 @@ async function broadcast() {
   const tabs = await chrome.tabs.query({ url: WATCHABLE })
   for (const tab of tabs) {
     if (tab.id === undefined) continue
-    chrome.tabs.sendMessage(tab.id, { kind: 'room', snapshot, offset }).catch(() => undefined)
+    chrome.tabs
+      .sendMessage(tab.id, { kind: 'room', snapshot, offset, status })
+      .catch(() => undefined)
   }
 }
 
@@ -233,8 +235,19 @@ chrome.runtime.onMessage.addListener((message, _sender, respond) => {
       /* A tab announcing itself gets the room immediately rather than waiting
          for the next change, which on a paused film is never. */
       const tabId = _sender?.tab?.id
-      if (snapshot && tabId !== undefined) {
-        chrome.tabs.sendMessage(tabId, { kind: 'room', snapshot, offset }).catch(() => undefined)
+      if (tabId !== undefined) {
+        /*
+         * Answered even with no snapshot yet, and carrying the status.
+         *
+         * It used to stay silent unless there was a snapshot, which left the
+         * tab unable to tell "the extension is not set up" from "it is
+         * connected and the room is empty". The overlay rendered both as "not
+         * connected" and disabled the button that would have started
+         * something — on a page where the socket was working the whole time.
+         */
+        chrome.tabs
+          .sendMessage(tabId, { kind: 'room', snapshot, offset, status })
+          .catch(() => undefined)
       }
       respond({ ok: true })
       return

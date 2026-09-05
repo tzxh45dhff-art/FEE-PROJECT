@@ -54,6 +54,8 @@ function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0 } = {}) {
    */
   let position = startAt
   let landing = null
+  /* What the worker is holding — what a `hello` would be answered with. */
+  let held = null
 
   const video = {
     duration,
@@ -109,6 +111,13 @@ function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0 } = {}) {
       runtime: {
         sendMessage: async (m) => {
           sent.push(m)
+          /* The real worker answers `hello` by pushing the room straight back
+             to that tab, so a tab that opens between two room changes is not
+             left knowing nothing. Modelled here because that reply is the only
+             thing standing between a fresh tab and an empty overlay. */
+          if (m.kind === 'hello' && held !== null) {
+            sandbox.__room?.({ kind: 'room', snapshot: held, offset: 0 })
+          }
         },
         onMessage: { addListener: (fn) => (sandbox.__room = fn) },
       },
@@ -153,8 +162,15 @@ function boot({ duration = 7200, startAt = 0, seekLatencyMs = 0 } = {}) {
     },
     /** What the worker would push down after the server said something. */
     room(snapshot) {
+      held = snapshot
       sandbox.__room?.({ kind: 'room', snapshot, offset: 0 })
     },
+    /** The worker already holds a room, but has pushed nothing to this tab. */
+    workerHolds(snapshot) {
+      held = snapshot
+    },
+    /** Whatever the tab has been told the room is. */
+    knowsRoom: () => held !== null && sent.some((m) => m.kind === 'hello'),
     snap: (o = {}) => ({
       roomId: 'r',
       item: { id: 'i', title: 'A Feature' },
@@ -344,6 +360,64 @@ const check = (name, pass, detail = '') => R.push({ name, pass, detail })
     p.video.currentTime > 890,
     'currentTime=' + p.video.currentTime,
   )
+}
+
+// ── a tab that opens between two room changes ───────────────────────────────
+{
+  /*
+   * The failure that reads as "connected in the app, not connected on Prime".
+   *
+   * A watching tab is told the room in exactly two ways: a broadcast, which
+   * only happens when the room *changes*, and a reply to `hello`, which was
+   * only sent on entering a title. Open Prime with nothing playing yet and
+   * neither fires — so the overlay believes there is no room, says it is not
+   * connected, and disables the one button that would start something. The
+   * socket is fine the whole time; only this tab is in the dark.
+   *
+   * Netflix had it too. It surfaced on Prime because Prime is where somebody
+   * opened a fresh tab before anything was on.
+   */
+  const p = boot({ startAt: 0 })
+  p.workerHolds(p.snap({ position: 0, playing: false, item: { id: 'i', title: 'A Feature' } }))
+
+  /* The page is up but nothing is playing — Prime's browse or detail view. */
+  p.video.duration = NaN
+  p.run(4000)
+
+  check(
+    'a tab with nothing playing still asks the worker for the room',
+    p.sent.some((m) => m.kind === 'hello'),
+    JSON.stringify(p.sent),
+  )
+}
+
+// ── it keeps asking until it is answered, then stops ────────────────────────
+{
+  /*
+   * The worker can be gone. MV3 unloads an idle service worker and starts it
+   * again on the next message, so a tab left open across that has no room and
+   * nothing coming to give it one — asking is what wakes the worker back up.
+   * One unanswered ask would leave the tab dark until somebody reloaded it.
+   */
+  const p = boot({ startAt: 0 })
+  p.video.duration = NaN
+  p.run(20_000) // nobody answers
+
+  const asks = p.sent.filter((m) => m.kind === 'hello').length
+  check('an unanswered tab keeps asking', asks >= 3, `${asks} asks in 20s`)
+  check('  but not on every tick', asks <= 6, `${asks} asks in 20s`)
+}
+
+{
+  /* And once it has an answer it stops, rather than talking to the worker
+     forever for no reason. */
+  const p = boot({ startAt: 100 })
+  p.run(2000)
+  p.room(p.snap({ position: 100 }))
+  const before = p.sent.filter((m) => m.kind === 'hello').length
+  p.run(20_000)
+  const after = p.sent.filter((m) => m.kind === 'hello').length
+  check('an answered tab stops asking', after === before, `${before} -> ${after}`)
 }
 
 let bad = 0

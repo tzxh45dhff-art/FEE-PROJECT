@@ -80,6 +80,8 @@
     let reported = { paused: null, position: 0, at: 0 }
     /** Which title the readings above belong to. */
     let titleKey = null
+    /** When we last asked the worker what the room is doing. */
+    let askedAt = 0
 
     /**
      * Move the player.
@@ -111,6 +113,27 @@
      * that to the room. Netflix reaches this by routing to a new `/watch/` id;
      * Prime by swapping the source under the same page. Both arrive here.
      */
+    /**
+     * Ask the worker what the room is on.
+     *
+     * The worker answers by pushing the room straight back to this tab, which
+     * matters more than it sounds: its own broadcasts only go out when the
+     * room *changes*, so a tab opened between two changes is told nothing at
+     * all. That tab then believes there is no room, the overlay says it is not
+     * connected — while the socket, the popup and the app are all fine — and
+     * the button that would start something is disabled, so the tab cannot
+     * even get itself out of it.
+     *
+     * Also the recovery from the service worker being unloaded. MV3 shuts an
+     * idle worker down and starts it again on the next message; a tab left
+     * open across that has a stale room and no event coming to correct it.
+     * Sending this is what wakes the worker back up.
+     */
+    function askForRoom(titleId = null) {
+      askedAt = performance.now()
+      chrome.runtime.sendMessage({ kind: 'hello', titleId }).catch(() => undefined)
+    }
+
     function enteredTitle(key) {
       titleKey = key
       reported = { paused: null, position: 0, at: 0 }
@@ -119,7 +142,7 @@
       settleUntil = performance.now() + tuning.cooldownMs
       seekCost = tuning.initialSeekCost
       seekedAt = null
-      chrome.runtime.sendMessage({ kind: 'hello', titleId: key ?? null }).catch(() => undefined)
+      askForRoom(key ?? null)
     }
 
     /**
@@ -203,6 +226,14 @@
      * landing behind it, because the seek itself takes time.
      */
     function correct() {
+      /*
+       * Still nothing from the worker. Ask again rather than wait for a change
+       * that may never come — the room can sit paused on one title all
+       * evening, and a tab that missed the last broadcast would sit blank
+       * beside it for exactly as long.
+       */
+      if (room === null && performance.now() - askedAt > 5000) askForRoom(titleKey)
+
       if (!player || !player.ready || !room || !room.item) return
 
       /* The room is paused, or nothing is on. */
@@ -247,6 +278,10 @@
     })
 
     setInterval(correct, 1000)
+
+    /* Before anything is playing, and regardless of whether anything ever
+       does — this is how a browse or detail page knows the room at all. */
+    askForRoom(null)
 
     /* The worker pushes the room down as it changes, with the clock offset —
        the offset is measured up there, where the socket is. */
