@@ -49,7 +49,7 @@ cd server && PORT=4100 DATABASE_URL="file:./night.db" npx prisma db push --skip-
       spicy (18+, confirmed), the SYSTEM suggests 3 cards to the asker who picks
       one or writes their own, done / chicken-out, rotation, results. Play stage
       gets a game picker.
-- [ ] **6. Draw and guess** — on the engine: word choice, live strokes, hints, scores.
+- [x] **6. Draw and guess** — on the engine: word choice, live strokes, hints, scores.
 - [ ] **7. How well do you know me** — on the engine.
 - [ ] **8. Room pet** — Talking Tom-like: poke/pet/feed, repeats your voice pitched
       up, grows with time spent together, sad when neglected. Lives on the dashboard.
@@ -101,5 +101,11 @@ Excluded by the owner: Ludo, new body animations.
   spicy gated 18+, system suggests 3 cards, shuffle, write-your-own, bottle
   ring, done/chicken, scoreboard, summary) + Play stage game picker. 34 server
   tests. Played a full round by eye. ₹0.
+
+- 06:25 · Task 6 done: draw and guess (230 drawable words, India-flavoured; word
+  choice with auto-pick, hints, edit-distance near-miss whispered privately,
+  speed scoring, drawer scoring, reveal, rotation, final scores). Strokes on a
+  validated drawer-only side channel; late joiners get the canvas. Countdowns
+  use server time. 47 server tests. Played by eye. ₹0.
 
 ## Morning report

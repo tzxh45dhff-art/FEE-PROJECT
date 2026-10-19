@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'socket.io'
 
 import { isError, liveCtx, type GameDef, type Player } from '../games/engine.js'
+import { drawCanvas, drawGame } from '../games/draw.js'
 import { truthDare } from '../games/truthdare.js'
 import { prisma } from '../models/prisma.js'
 import { presenceFor } from '../services/presence.service.js'
@@ -26,6 +27,31 @@ type AnyGame = GameDef<any, any>
 
 const GAMES: Record<string, AnyGame> = {
   [truthDare.id]: truthDare,
+  [drawGame.id]: drawGame,
+}
+
+/**
+ * Games with a shared canvas, and who may draw on it.
+ *
+ * Strokes are a side channel: they arrive many times a second and only matter
+ * to the canvas, so they are relayed directly instead of being folded into the
+ * game state and re-published as a personalised view on every pen movement.
+ */
+const CANVASES: Record<string, { canDraw: (state: never, userId: string) => boolean; key: (state: never) => string }> = {
+  [drawGame.id]: drawCanvas as unknown as { canDraw: (state: never, userId: string) => boolean; key: (state: never) => string },
+}
+
+type Stroke = { id: string; color: string; size: number; tool: 'pen' | 'eraser'; points: [number, number][] }
+const canvases = new Map<string, { key: string; strokes: Stroke[]; points: number }>()
+const MAX_POINTS = 40_000
+const COLOR = /^#[0-9a-f]{6}$/i
+
+function canvasFor(roomId: string, key: string) {
+  const current = canvases.get(roomId)
+  if (current && current.key === key) return current
+  const fresh = { key, strokes: [] as Stroke[], points: 0 }
+  canvases.set(roomId, fresh)
+  return fresh
 }
 
 /** Register another game. The games themselves call this from their modules. */
@@ -51,6 +77,14 @@ const ackFrom = (maybe: unknown): Ack => (typeof maybe === 'function' ? (maybe a
 
 function publish(io: Server, roomId: string) {
   const session = sessions.get(roomId)
+  const board = session ? CANVASES[session.game.id] : undefined
+  if (board) {
+    const key = board.key(session!.state as never)
+    if (canvases.get(roomId)?.key !== key) {
+      canvasFor(roomId, key)
+      for (const { socket } of watchers.get(roomId)?.values() ?? []) socket.emit('party:canvas', { roomId, strokes: [] })
+    }
+  }
   for (const { socket, userId } of watchers.get(roomId)?.values() ?? []) {
     socket.emit(
       'party:state',
@@ -61,6 +95,9 @@ function publish(io: Server, roomId: string) {
             label: session.game.label,
             seq: session.seq,
             startedBy: session.startedBy,
+            /* Deadlines are server time; this lets a client count down
+               without trusting its own clock. */
+            serverTime: Date.now(),
             view: session.game.view(session.state, userId),
           }
         : { roomId, game: null },
@@ -118,6 +155,10 @@ export function attachPartyGateway(io: Server) {
       watchers.get(roomId)!.set(socket.id, { socket, userId: self.id })
       watching.add(roomId)
       const session = sessions.get(roomId)
+      const existing = canvases.get(roomId)
+      if (session && CANVASES[session.game.id] && existing) {
+        socket.emit('party:canvas', { roomId, strokes: existing.strokes })
+      }
       socket.emit(
         'party:state',
         session
@@ -127,6 +168,7 @@ export function attachPartyGateway(io: Server) {
               label: session.game.label,
               seq: session.seq,
               startedBy: session.startedBy,
+              serverTime: Date.now(),
               view: session.game.view(session.state, self.id),
             }
           : { roomId, game: null },
@@ -208,6 +250,65 @@ export function attachPartyGateway(io: Server) {
       sessions.delete(roomId)
       publish(io, roomId)
       ack({ ok: true })
+    })
+
+    /* The drawer's pen, relayed to everyone else watching. */
+    const drawer = (roomId: string) => {
+      const session = sessions.get(roomId)
+      const board = session ? CANVASES[session.game.id] : undefined
+      if (!session || !board || !watching.has(roomId)) return null
+      if (!board.canDraw(session.state as never, self.id)) return null
+      return canvasFor(roomId, board.key(session.state as never))
+    }
+    const others = (roomId: string) =>
+      [...(watchers.get(roomId)?.values() ?? [])].filter((w) => w.socket.id !== socket.id).map((w) => w.socket)
+
+    socket.on('party:stroke', (raw: unknown) => {
+      const body = (raw ?? {}) as Record<string, unknown>
+      const roomId = typeof body.roomId === 'string' ? body.roomId : ''
+      const board = drawer(roomId)
+      if (!board) return
+      const id = typeof body.id === 'string' && body.id.length <= 40 ? body.id : null
+      const color = typeof body.color === 'string' && COLOR.test(body.color) ? body.color : null
+      const size = typeof body.size === 'number' && body.size >= 1 && body.size <= 40 ? body.size : null
+      const tool = body.tool === 'eraser' ? 'eraser' : 'pen'
+      const points = Array.isArray(body.points)
+        ? (body.points as unknown[])
+            .slice(0, 200)
+            .filter(
+              (p): p is [number, number] =>
+                Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === 'number' && n >= -0.05 && n <= 1.05),
+            )
+        : []
+      if (!id || !color || !size || points.length === 0) return
+      if (board.points + points.length > MAX_POINTS) return
+
+      let stroke = board.strokes.find((st) => st.id === id)
+      if (!stroke) {
+        stroke = { id, color, size, tool, points: [] }
+        board.strokes.push(stroke)
+      }
+      stroke.points.push(...points)
+      board.points += points.length
+      for (const s of others(roomId)) s.emit('party:stroke', { roomId, id, color, size, tool, points })
+    })
+
+    socket.on('party:undo', (raw: unknown) => {
+      const roomId = typeof (raw as { roomId?: unknown })?.roomId === 'string' ? (raw as { roomId: string }).roomId : ''
+      const board = drawer(roomId)
+      if (!board) return
+      const gone = board.strokes.pop()
+      if (gone) board.points -= gone.points.length
+      for (const { socket: s } of watchers.get(roomId)?.values() ?? []) s.emit('party:canvas', { roomId, strokes: board.strokes })
+    })
+
+    socket.on('party:clear', (raw: unknown) => {
+      const roomId = typeof (raw as { roomId?: unknown })?.roomId === 'string' ? (raw as { roomId: string }).roomId : ''
+      const board = drawer(roomId)
+      if (!board) return
+      board.strokes = []
+      board.points = 0
+      for (const { socket: s } of watchers.get(roomId)?.values() ?? []) s.emit('party:canvas', { roomId, strokes: [] })
     })
 
     socket.on('disconnect', () => {

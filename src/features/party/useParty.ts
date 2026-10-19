@@ -15,7 +15,16 @@ export type PartyState<V = unknown> = {
   label: string
   seq: number
   startedBy: { id: string; name: string }
+  /** Server clock at send, and our clock at receipt — for countdowns. */
+  serverTime: number
+  receivedAt: number
   view: V
+}
+
+/** Milliseconds until a server-time deadline, measured on the server's clock. */
+export function remaining(party: Pick<PartyState, 'serverTime' | 'receivedAt'>, deadline: number | null) {
+  if (!deadline) return 0
+  return Math.max(0, deadline - party.serverTime - (Date.now() - party.receivedAt))
 }
 
 type Reply = { ok?: boolean; error?: string }
@@ -34,7 +43,7 @@ export function useParty<V = unknown>(roomId: string) {
         if (!raw.game) return null
         /* Out-of-order delivery after a reconnect must not wind the game back. */
         if (current && current.game === raw.game && (raw.seq ?? 0) < current.seq) return current
-        return raw as PartyState<V>
+        return { ...(raw as PartyState<V>), receivedAt: Date.now() }
       })
     }
     const open = () => socket.emit('party:open', { roomId })

@@ -6,9 +6,10 @@ import { ArrowLeft, Gamepad2, Loader2, MessagesSquare, Trophy, WifiOff, X } from
 import { CoverAmbience } from '@/features/music/CoverAmbience'
 import { useGameSession } from '@/features/games/useGameSession'
 import type { GamePlayer, WirePen } from '@/features/games/types'
+import { DrawSetup, DrawTable, type DrawView } from '@/features/party/DrawGame'
 import { GamePicker, type GameId } from '@/features/party/GamePicker'
 import { TruthDareSetup, TruthDareTable, type TruthDareView } from '@/features/party/TruthDare'
-import { useParty } from '@/features/party/useParty'
+import { useParty, type PartyState } from '@/features/party/useParty'
 import { usePageVisible } from '@/hooks/usePageVisible'
 import { cn } from '@/lib/utils'
 import { lazyChunk } from '@/lib/lazyChunk'
@@ -199,6 +200,25 @@ export function GamesStage({
               error={party.error}
               onStart={(options) => void party.start('truthdare', options)}
             />
+          ))}
+
+        {screen === 'draw' &&
+          (party.party?.game === 'draw' ? (
+            <DrawTable
+              roomId={roomId}
+              party={party.party as PartyState<DrawView>}
+              selfId={selfId}
+              error={party.error}
+              act={(action, payload) => void party.act(action, payload)}
+              onLeaveTable={() => {
+                void party.dismiss()
+                setScreen('picker')
+              }}
+            />
+          ) : party.party ? (
+            <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />
+          ) : (
+            <DrawSetup people={members.length} error={party.error} onStart={(options) => void party.start('draw', options)} />
           ))}
 
         {screen === 'penfight' && (
