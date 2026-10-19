@@ -43,22 +43,28 @@ cd server && PORT=4100 DATABASE_URL="file:./night.db" npx prisma db push --skip-
 - [x] **2. Throw things** — rose, confetti, pillow, water balloon, snowball; arc + reaction.
 - [x] **3. Quick toys** — dice, coin, spin the bottle, fortune cookie, magic 8-ball.
 - [x] **4. Reactions and moments** — emoji over the video; moments pinned to timestamps.
-- [ ] **5. Shared wall** — sticky notes and doodles, persisted per room.
-- [ ] **6. Truth or dare** — system suggests questions; decks: spicy, funny,
-      friends, couples, deep; asker gets options + can write their own.
-- [ ] **7. Draw and guess** — rounds, word choice, hints, scores.
-- [ ] **8. How well do you know me** — answer about yourself, others guess, running score.
-- [ ] **9. Guess the song** — clips from the room's music library, fastest correct guess.
-- [ ] **10. Live trivia** — built-in question bank (Bollywood, cricket, films, GK), timer, leaderboard.
-- [ ] **11. Photo booth** — pose, frame, caption, snap → memory wall.
-- [ ] **12. Room pet** — Talking Tom-like: poke/pet/feed, repeats your voice pitched
-      up, grows with time spent together, sad when neglected.
-- [ ] **13. Memory wall** — photos, moments, game wins, songs, in one timeline.
+- [ ] **5. Party-game engine + Truth or dare** — one server engine for turn-based
+      room games (per-player views so secrets stay secret, timers, results saved
+      to GameResult). Truth or dare: decks funny / friends / couples / deep /
+      spicy (18+, confirmed), the SYSTEM suggests 3 cards to the asker who picks
+      one or writes their own, done / chicken-out, rotation, results. Play stage
+      gets a game picker.
+- [ ] **6. Draw and guess** — on the engine: word choice, live strokes, hints, scores.
+- [ ] **7. How well do you know me** — on the engine.
+- [ ] **8. Room pet** — Talking Tom-like: poke/pet/feed, repeats your voice pitched
+      up, grows with time spent together, sad when neglected. Lives on the dashboard.
+- [ ] **9. Photo booth** — pose, frame, caption, snap → memories.
+- [ ] **10. Live trivia** — built-in bank (Bollywood, cricket, films, GK), timer, leaderboard.
+- [ ] **11. Guess the song** — clips from the room's music library.
+- [ ] **12. Shared wall** — sticky notes and doodles, persisted per room.
+- [ ] **13. Memory wall** — photos, moments, game wins, in one timeline.
 - [ ] **14. Morning report** — below.
 
 Excluded by the owner: Ludo, new body animations.
 
 ## Decisions
+- 02:55 · Reordered tasks 5–13 so the most fun lands first (the owner warned the
+  usage limit may cut the night): party games and the pet before the wall.
 - 02:20 · The Mac's own API (4000) and ngrok were found not running at 02:20 —
   not touched tonight; left as found. The owner moves to Linux in the morning.
 - 02:40 · Effects anchor to each character's projected 3D head (published by the
