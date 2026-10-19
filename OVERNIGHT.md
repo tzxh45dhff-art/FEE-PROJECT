@@ -43,7 +43,7 @@ cd server && PORT=4100 DATABASE_URL="file:./night.db" npx prisma db push --skip-
 - [x] **2. Throw things** — rose, confetti, pillow, water balloon, snowball; arc + reaction.
 - [x] **3. Quick toys** — dice, coin, spin the bottle, fortune cookie, magic 8-ball.
 - [x] **4. Reactions and moments** — emoji over the video; moments pinned to timestamps.
-- [ ] **5. Party-game engine + Truth or dare** — one server engine for turn-based
+- [x] **5. Party-game engine + Truth or dare** — one server engine for turn-based
       room games (per-player views so secrets stay secret, timers, results saved
       to GameResult). Truth or dare: decks funny / friends / couples / deep /
       spicy (18+, confirmed), the SYSTEM suggests 3 cards to the asker who picks
@@ -94,5 +94,12 @@ Excluded by the owner: Ludo, new body animations.
   for the whole night added in one additive change. Bug found by eye and fixed:
   the pin sheet showed the frozen time but saved the live one. 22 server tests.
   ₹0.
+
+- 02:55–05:10 · Usage limit hit mid-task; resumed 05:12 with nothing lost.
+- 05:45 · Task 5 done: party-game engine (pure state machines, per-player views,
+  timers, results saved to GameResult) + truth or dare (5 decks, ~200 cards,
+  spicy gated 18+, system suggests 3 cards, shuffle, write-your-own, bottle
+  ring, done/chicken, scoreboard, summary) + Play stage game picker. 34 server
+  tests. Played a full round by eye. ₹0.
 
 ## Morning report

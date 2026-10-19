@@ -26,6 +26,8 @@ const SERVER = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 export type Harness = {
   base: string
+  /** The throwaway database this server is using, for tests that check what was written. */
+  dbUrl: string
   stop: () => Promise<void>
 }
 
@@ -69,6 +71,7 @@ export async function startServer(): Promise<Harness> {
 
   return {
     base,
+    dbUrl: env.DATABASE_URL,
     stop: async () => {
       child.kill('SIGTERM')
       await new Promise((r) => setTimeout(r, 100))

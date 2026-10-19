@@ -38,7 +38,12 @@ http
       const payload = { roomId }
       for (const [k, v] of url.searchParams) {
         if (k === 'event') continue
-        payload[k] = /^\d+$/.test(v) ? Number(v) : v === 'true' ? true : v === 'false' ? false : v
+        const value = /^\d+$/.test(v) ? Number(v) : v === 'true' ? true : v === 'false' ? false : v
+        /* Dotted keys nest: payload.kind=dare → { payload: { kind: 'dare' } }. */
+        const path = k.split('.')
+        let at = payload
+        for (const part of path.slice(0, -1)) at = at[part] ??= {}
+        at[path.at(-1)] = value
       }
       socket.emit(event, payload)
       res.end(JSON.stringify({ sent: event, payload }))
