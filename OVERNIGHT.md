@@ -96,13 +96,13 @@ Excluded by the owner: Ludo, new body animations.
   ₹0.
 
 - 02:55–05:10 · Usage limit hit mid-task; resumed 05:12 with nothing lost.
-- 05:45 · Task 5 done: party-game engine (pure state machines, per-player views,
+- 05:20 · Task 5 done: party-game engine (pure state machines, per-player views,
   timers, results saved to GameResult) + truth or dare (5 decks, ~200 cards,
   spicy gated 18+, system suggests 3 cards, shuffle, write-your-own, bottle
   ring, done/chicken, scoreboard, summary) + Play stage game picker. 34 server
   tests. Played a full round by eye. ₹0.
 
-- 06:25 · Task 6 done: draw and guess (230 drawable words, India-flavoured; word
+- 05:27 · Task 6 done: draw and guess (230 drawable words, India-flavoured; word
   choice with auto-pick, hints, edit-distance near-miss whispered privately,
   speed scoring, drawer scoring, reveal, rotation, final scores). Strokes on a
   validated drawer-only side channel; late joiners get the canvas. Countdowns
