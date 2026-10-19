@@ -41,14 +41,25 @@ export const THROWABLES = [
 
 export const TOYS = ['dice', 'coin', 'bottle', 'fortune', 'eightball'] as const
 
+/** Reactions over a film — the faces people actually pull at a screen. */
+export const REACTIONS = ['laugh', 'cry', 'shock', 'love', 'fire', 'clap', 'dead', 'popcorn'] as const
+
+/** What a pinned moment can be labelled with. */
+export const MOMENT_FACES = ['😭', '😂', '😱', '😍', '🔥', '🤯', '💀', '❤️', '🫣', '👏'] as const
+
 export type Emote = (typeof EMOTES)[number]
 export type Throwable = (typeof THROWABLES)[number]
 export type Toy = (typeof TOYS)[number]
+export type Reaction = (typeof REACTIONS)[number]
 
 export const isEmote = (v: unknown): v is Emote => typeof v === 'string' && (EMOTES as readonly string[]).includes(v)
 export const isThrowable = (v: unknown): v is Throwable =>
   typeof v === 'string' && (THROWABLES as readonly string[]).includes(v)
 export const isToy = (v: unknown): v is Toy => typeof v === 'string' && (TOYS as readonly string[]).includes(v)
+export const isReaction = (v: unknown): v is Reaction =>
+  typeof v === 'string' && (REACTIONS as readonly string[]).includes(v)
+export const isMomentFace = (v: unknown): v is string =>
+  typeof v === 'string' && (MOMENT_FACES as readonly string[]).includes(v)
 
 /**
  * Fortunes, written to be read out loud to someone sitting next to you.

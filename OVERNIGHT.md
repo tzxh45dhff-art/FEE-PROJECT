@@ -42,7 +42,7 @@ cd server && PORT=4100 DATABASE_URL="file:./night.db" npx prisma db push --skip-
 - [x] **1. Emotes** — 1–9 keys + wheel; synced; existing clips + effects.
 - [x] **2. Throw things** — rose, confetti, pillow, water balloon, snowball; arc + reaction.
 - [x] **3. Quick toys** — dice, coin, spin the bottle, fortune cookie, magic 8-ball.
-- [ ] **4. Reactions and moments** — emoji over the video; moments pinned to timestamps.
+- [x] **4. Reactions and moments** — emoji over the video; moments pinned to timestamps.
 - [ ] **5. Shared wall** — sticky notes and doodles, persisted per room.
 - [ ] **6. Truth or dare** — system suggests questions; decks: spicy, funny,
       friends, couples, deep; asker gets options + can write their own.
@@ -74,12 +74,19 @@ Excluded by the owner: Ludo, new body animations.
   touched). x86_64 download URLs checked. Colima VM left running for later tests.
 
 ## Log
-- 03:05 · Tasks 1–3 done together (they share one gateway): emotes (16, keys 1–9,
+- 02:05 · Tasks 1–3 done together (they share one gateway): emotes (16, keys 1–9,
   wave plays the model's own clip), throwing (8 items, real arcs between heads,
   impacts, nameplate flinch, reaction face), toys (dice, coin, bottle, fortune,
   8-ball — all decided server-side). Server got its first test harness (real
   server + temp DB + real sockets): 15 tests. Verified by eye in the browser
   with a scripted second person. ₹0.
 - 01:55 · Task 0 done: server/start-server.sh + server/LINUX.md. ₹0.
+
+- 02:50 · Task 4 done: reactions over the film (8, floating up the right with
+  the sender's name), moments pinned with a face and a note (saved, live for
+  everyone, "Jump there" toast, faces on the seek bar, a moments list). Schema
+  for the whole night added in one additive change. Bug found by eye and fixed:
+  the pin sheet showed the frozen time but saved the live one. 22 server tests.
+  ₹0.
 
 ## Morning report

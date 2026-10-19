@@ -79,3 +79,22 @@ export const TOYS: ToyDef[] = [
 export const emoteById = (id: string) => EMOTES.find((e) => e.id === id)
 export const throwById = (id: string) => THROWABLES.find((t) => t.id === id)
 export const toyById = (id: string) => TOYS.find((t) => t.id === id)
+
+export type ReactionDef = { id: string; glyph: string; label: string }
+
+/** Reactions over a film. Ids must match the server's REACTIONS. */
+export const REACTIONS: ReactionDef[] = [
+  { id: 'laugh', glyph: '😂', label: 'Laughing' }, // reaction
+  { id: 'cry', glyph: '😭', label: 'Crying' }, // reaction
+  { id: 'shock', glyph: '😱', label: 'Shocked' }, // reaction
+  { id: 'love', glyph: '😍', label: 'Loving it' }, // reaction
+  { id: 'fire', glyph: '🔥', label: 'Fire' }, // reaction
+  { id: 'clap', glyph: '👏', label: 'Applause' }, // reaction
+  { id: 'dead', glyph: '💀', label: 'Dead' }, // reaction
+  { id: 'popcorn', glyph: '🍿', label: 'Popcorn' }, // reaction
+]
+
+/** Faces a pinned moment can carry. Must match the server's MOMENT_FACES. */
+export const MOMENT_FACES = ['😭', '😂', '😱', '😍', '🔥', '🤯', '💀', '❤️', '🫣', '👏'] as const
+
+export const reactionById = (id: string) => REACTIONS.find((r) => r.id === id)

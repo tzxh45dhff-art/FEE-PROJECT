@@ -46,6 +46,7 @@ export function WatchControls({
   onSkip,
   onToggleFullscreen,
   disabled,
+  markers = [],
 }: {
   snapshot: WatchSnapshot
   position: number
@@ -70,6 +71,8 @@ export function WatchControls({
   onSkip: () => void
   onToggleFullscreen: () => void
   disabled: boolean
+  /** Moments pinned in this film, drawn on the bar and clickable. */
+  markers?: { id: string; position: number; emoji: string; label: string }[]
 }) {
   /* While a scrub is in progress the bar shows the finger, not the room —
      otherwise incoming snapshots would drag the thumb out from under it. */
@@ -111,6 +114,23 @@ export function WatchControls({
               style={{ width: `${progress}%` }}
             />
           </div>
+          {known &&
+            markers.map((marker) => (
+              <button
+                key={marker.id}
+                type="button"
+                onClick={() => onSeek(marker.position)}
+                aria-label={marker.label}
+                title={marker.label}
+                className="absolute bottom-[calc(50%+0.35rem)] z-10 grid size-6 -translate-x-1/2 place-items-center rounded-full text-[0.95rem] leading-none outline-none transition-transform duration-200 hover:-translate-y-0.5 hover:scale-125 focus-visible:outline-2 focus-visible:outline-signal sm:bottom-[calc(50%+0.2rem)]"
+                style={{
+                  left: `${Math.min(100, (marker.position / duration) * 100)}%`,
+                  fontFamily: '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif',
+                }}
+              >
+                <span aria-hidden>{marker.emoji}</span>
+              </button>
+            ))}
           <input
             type="range"
             min={0}

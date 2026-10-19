@@ -5,12 +5,15 @@ import {
   EIGHT_BALL,
   FORTUNES,
   isEmote,
+  isMomentFace,
+  isReaction,
   isThrowable,
   isToy,
   type Emote,
   type Throwable,
   type Toy,
 } from '../services/fun.catalog.js'
+import * as moments from '../models/moment.model.js'
 import { presenceFor } from '../services/presence.service.js'
 import { socketUser } from './presence.gateway.js'
 import { roomGuard } from './roomAuth.js'
@@ -59,6 +62,10 @@ function limiter() {
 }
 
 type Person = { id: string; name: string }
+type Ack = (reply: unknown) => void
+
+/** Socket.IO acks are optional on the client; never assume one was passed. */
+const ackFrom = (maybe: unknown): Ack => (typeof maybe === 'function' ? (maybe as Ack) : () => undefined)
 
 export type EmoteEvent = { id: string; roomId: string; from: Person; emote: Emote; at: number }
 export type ThrowEvent = { id: string; roomId: string; from: Person; to: Person; item: Throwable; at: number }
@@ -153,6 +160,72 @@ export function attachFunGateway(io: Server) {
         ...playToy(body.toy, body, roomId, self),
       }
       io.to(roomId).emit('fun:toy', event)
+    })
+
+    /*
+     * Reactions over a film. Same shape as an emote, but a separate event: they
+     * are drawn over the video rather than over someone's head, and they keep
+     * coming while the hub is covered by the stage.
+     */
+    socket.on('fun:react', async (raw: unknown) => {
+      const body = (raw ?? {}) as Record<string, unknown>
+      const roomId = await may(body.roomId)
+      if (!roomId || !isReaction(body.reaction) || !allow()) return
+      io.to(roomId).emit('fun:react', { id: randomUUID(), roomId, from: self, reaction: body.reaction, at: Date.now() })
+    })
+
+    /*
+     * Moments: a timestamp somebody pinned, with a face and a line.
+     *
+     * Over the socket with an acknowledgement rather than REST, because the
+     * thing that matters is everybody else seeing the pin appear at once —
+     * and the socket is already the room's broadcast channel.
+     */
+    socket.on('moment:add', async (raw: unknown, maybeAck: unknown) => {
+      const ack = ackFrom(maybeAck)
+      const body = (raw ?? {}) as Record<string, unknown>
+      const roomId = await may(body.roomId)
+      if (!roomId) return ack({ ok: false, error: 'Not in this room' })
+      if (!allow()) return ack({ ok: false, error: 'Slow down a little' })
+
+      const title = typeof body.title === 'string' ? body.title.trim().slice(0, 200) : ''
+      const position = typeof body.position === 'number' ? body.position : NaN
+      const note = typeof body.note === 'string' ? body.note.trim().slice(0, 120) : ''
+      const itemId = typeof body.itemId === 'string' && body.itemId.length <= 64 ? body.itemId : null
+      if (!title || !Number.isFinite(position) || position < 0 || position > 86_400 || !isMomentFace(body.emoji)) {
+        return ack({ ok: false, error: 'That moment could not be pinned' })
+      }
+
+      const moment = await moments.createMoment({
+        roomId,
+        createdById: self.id,
+        itemId,
+        title,
+        position,
+        emoji: body.emoji,
+        note,
+      })
+      io.to(roomId).emit('moment:added', { roomId, moment })
+      ack({ ok: true, moment })
+    })
+
+    socket.on('moment:list', async (raw: unknown, maybeAck: unknown) => {
+      const ack = ackFrom(maybeAck)
+      const body = (raw ?? {}) as Record<string, unknown>
+      const roomId = await may(body.roomId)
+      if (!roomId) return ack({ ok: false, moments: [] })
+      const itemId = typeof body.itemId === 'string' ? body.itemId : null
+      ack({ ok: true, moments: await moments.listMoments(roomId, itemId) })
+    })
+
+    socket.on('moment:remove', async (raw: unknown, maybeAck: unknown) => {
+      const ack = ackFrom(maybeAck)
+      const body = (raw ?? {}) as Record<string, unknown>
+      const roomId = await may(body.roomId)
+      if (!roomId || typeof body.momentId !== 'string') return ack({ ok: false })
+      const removed = await moments.removeMoment(roomId, body.momentId, self.id)
+      if (removed) io.to(roomId).emit('moment:removed', { roomId, momentId: body.momentId })
+      ack({ ok: removed })
     })
   })
 }

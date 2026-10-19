@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { after, before, describe, it } from 'node:test'
 
-import { EMOTES, THROWABLES, TOYS, FORTUNES, EIGHT_BALL } from '../src/services/fun.catalog.js'
+import { EMOTES, THROWABLES, TOYS, FORTUNES, EIGHT_BALL, REACTIONS, MOMENT_FACES } from '../src/services/fun.catalog.js'
 import { enter, makeRoom, makeUser, next, silence, sleep, startServer, type Client, type Harness } from './harness.js'
 
 let h: Harness
@@ -159,6 +159,85 @@ describe('toys', () => {
   })
 })
 
+describe('reactions over a film', () => {
+  it('reach everyone in the room', async () => {
+    await sleep(4200)
+    const r = next<{ reaction: string; from: { id: string } }>(rohan, 'fun:react')
+    aditi.emit('fun:react', { roomId, reaction: 'cry' })
+    const got = await r
+    assert.equal(got.reaction, 'cry')
+    assert.equal(got.from.id, aditi.user.id)
+  })
+
+  it('drop anything not on the list', async () => {
+    aditi.emit('fun:react', { roomId, reaction: 'javascript:alert(1)' })
+    assert.ok(await silence(rohan, 'fun:react'))
+  })
+})
+
+describe('moments', () => {
+  const ask = <T>(socket: Client, event: string, payload: unknown) =>
+    new Promise<T>((resolve) => socket.emit(event, payload, resolve))
+
+  let momentId = ''
+
+  it('a pinned moment is saved and appears for everyone at once', async () => {
+    await sleep(4200)
+    const seen = next<{ moment: { id: string; emoji: string; position: number; createdBy: { id: string } } }>(
+      rohan,
+      'moment:added',
+    )
+    const reply = await ask<{ ok: boolean; moment: { id: string } }>(aditi, 'moment:add', {
+      roomId,
+      itemId: 'item-1',
+      title: 'Spirited Away',
+      position: 3725.4,
+      emoji: '😭',
+      note: 'the train scene',
+    })
+    assert.ok(reply.ok)
+    const pushed = await seen
+    assert.equal(pushed.moment.id, reply.moment.id)
+    assert.equal(pushed.moment.emoji, '😭')
+    assert.equal(pushed.moment.position, 3725.4)
+    assert.equal(pushed.moment.createdBy.id, aditi.user.id)
+    momentId = reply.moment.id
+  })
+
+  it('lists a film’s moments in the order they happen', async () => {
+    await ask(rohan, 'moment:add', { roomId, itemId: 'item-1', title: 'Spirited Away', position: 120, emoji: '😂', note: '' })
+    const list = await ask<{ moments: { position: number }[] }>(rohan, 'moment:list', { roomId, itemId: 'item-1' })
+    assert.deepEqual(
+      list.moments.map((m) => m.position),
+      [120, 3725.4],
+    )
+  })
+
+  it('refuses a face that is not on the list, and an impossible timestamp', async () => {
+    const badFace = await ask<{ ok: boolean }>(aditi, 'moment:add', { roomId, title: 'x', position: 5, emoji: '<b>', note: '' })
+    const badTime = await ask<{ ok: boolean }>(aditi, 'moment:add', { roomId, title: 'x', position: -4, emoji: '😂', note: '' })
+    assert.equal(badFace.ok, false)
+    assert.equal(badTime.ok, false)
+  })
+
+  it('cannot be read by someone outside the room', async () => {
+    const list = await ask<{ ok: boolean; moments: unknown[] }>(outsider, 'moment:list', { roomId, itemId: 'item-1' })
+    assert.equal(list.ok, false)
+    assert.equal(list.moments.length, 0)
+  })
+
+  it('only its author or the room owner can remove it', async () => {
+    /* Rohan neither pinned it nor owns the room. */
+    const denied = await ask<{ ok: boolean }>(rohan, 'moment:remove', { roomId, momentId })
+    assert.equal(denied.ok, false)
+
+    const gone = next<{ momentId: string }>(rohan, 'moment:removed')
+    const allowed = await ask<{ ok: boolean }>(aditi, 'moment:remove', { roomId, momentId })
+    assert.equal(allowed.ok, true)
+    assert.equal((await gone).momentId, momentId)
+  })
+})
+
 describe('catalogue', () => {
   it('the client knows every id the server accepts, and no others', () => {
     const client = readFileSync(new URL('../../src/features/fun/catalog.ts', import.meta.url), 'utf8')
@@ -167,5 +246,11 @@ describe('catalogue', () => {
     assert.deepEqual(ids('emote').sort(), [...EMOTES].sort())
     assert.deepEqual(ids('throw').sort(), [...THROWABLES].sort())
     assert.deepEqual(ids('toy').sort(), [...TOYS].sort())
+    assert.deepEqual(ids('reaction').sort(), [...REACTIONS].sort())
+    const faces = /MOMENT_FACES = \[([^\]]+)\]/.exec(client)?.[1]
+    assert.deepEqual(
+      faces?.split(',').map((f) => f.trim().replace(/'/g, '')).filter(Boolean),
+      [...MOMENT_FACES],
+    )
   })
 })
