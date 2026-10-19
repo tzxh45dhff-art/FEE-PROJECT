@@ -80,7 +80,8 @@ ws.addEventListener('message', (e) => {
   if (msg.id && pending.has(msg.id)) {
     const { resolve, reject } = pending.get(msg.id)
     pending.delete(msg.id)
-    msg.error ? reject(new Error(msg.error.message)) : resolve(msg.result)
+    if (msg.error) reject(new Error(msg.error.message))
+    else resolve(msg.result)
   } else if (msg.method && listeners.has(msg.method)) {
     listeners.get(msg.method)(msg.params)
   }

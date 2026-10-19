@@ -39,9 +39,9 @@ cd server && PORT=4100 DATABASE_URL="file:./night.db" npx prisma db push --skip-
       one command: `./start-server.sh` installs deps, prepares the DB, starts the
       API, starts ngrok, restarts either if it dies, runs until Ctrl+C. Owner adds
       the ngrok token in the morning. HIGHEST PRIORITY.
-- [ ] **1. Emotes** — 1–9 keys + wheel; synced; existing clips + effects.
-- [ ] **2. Throw things** — rose, confetti, pillow, water balloon, snowball; arc + reaction.
-- [ ] **3. Quick toys** — dice, coin, spin the bottle, fortune cookie, magic 8-ball.
+- [x] **1. Emotes** — 1–9 keys + wheel; synced; existing clips + effects.
+- [x] **2. Throw things** — rose, confetti, pillow, water balloon, snowball; arc + reaction.
+- [x] **3. Quick toys** — dice, coin, spin the bottle, fortune cookie, magic 8-ball.
 - [ ] **4. Reactions and moments** — emoji over the video; moments pinned to timestamps.
 - [ ] **5. Shared wall** — sticky notes and doodles, persisted per room.
 - [ ] **6. Truth or dare** — system suggests questions; decks: spicy, funny,
@@ -59,6 +59,12 @@ cd server && PORT=4100 DATABASE_URL="file:./night.db" npx prisma db push --skip-
 Excluded by the owner: Ludo, new body animations.
 
 ## Decisions
+- 02:20 · The Mac's own API (4000) and ngrok were found not running at 02:20 —
+  not touched tonight; left as found. The owner moves to Linux in the morning.
+- 02:40 · Effects anchor to each character's projected 3D head (published by the
+  canvas each frame), falling back to the nameplate column for flat characters.
+- 02:55 · Toy result cards are a single compact row placed above the highest head;
+  a tall card had nowhere to go but over someone's face on a 900px-tall screen.
 - 01:35 · A JARVIS overnight task (2:35/4:35/6:35) shares the usage limit; expect gaps.
 - 01:40 · Linux kit tested in a real Ubuntu 24.04 VM (Colima, arm64): bare system,
   Mac node_modules copied in, Node and ngrok downloaded to .runtime, DB backed up,
@@ -68,6 +74,12 @@ Excluded by the owner: Ludo, new body animations.
   touched). x86_64 download URLs checked. Colima VM left running for later tests.
 
 ## Log
+- 03:05 · Tasks 1–3 done together (they share one gateway): emotes (16, keys 1–9,
+  wave plays the model's own clip), throwing (8 items, real arcs between heads,
+  impacts, nameplate flinch, reaction face), toys (dice, coin, bottle, fortune,
+  8-ball — all decided server-side). Server got its first test harness (real
+  server + temp DB + real sockets): 15 tests. Verified by eye in the browser
+  with a scripted second person. ₹0.
 - 01:55 · Task 0 done: server/start-server.sh + server/LINUX.md. ₹0.
 
 ## Morning report

@@ -4,14 +4,38 @@
     {
       "name": "syncroom",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 5173
     },
     {
       "name": "syncroom-full",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:all"],
+      "runtimeArgs": [
+        "run",
+        "dev:all"
+      ],
       "port": 5173
+    },
+    {
+      "name": "night-api",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd server && export PORT=4100 DATABASE_URL=file:./night.db && npx prisma db push --skip-generate >/dev/null && npx tsx watch src/server.ts"
+      ],
+      "port": 4100
+    },
+    {
+      "name": "night-web",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "VITE_API_TARGET=http://localhost:4100 npx vite --port 5180 --strictPort"
+      ],
+      "port": 5180
     }
   ]
 }

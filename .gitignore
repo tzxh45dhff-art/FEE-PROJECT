@@ -58,3 +58,4 @@ marketing/intro-video/stills/
 server/.runtime/
 server/logs/
 server/backups/
+server/prisma/night.db

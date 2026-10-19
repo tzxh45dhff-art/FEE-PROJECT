@@ -114,7 +114,7 @@ export function CharacterParty({
           height: `min(74svh, calc(${ground * 100}% - 2rem))`,
         }}
       >
-        <div className="relative h-full w-full">
+        <div data-hub-stage className="relative h-full w-full">
           {useCanvas ? (
             <ModelBoundary fallback={<GlassFigure />}>
               <Suspense fallback={<GlassFigure />}>
@@ -166,6 +166,7 @@ export function CharacterParty({
         {members.map((member) => (
           <div
             key={member.id}
+            data-hub-member={member.id}
             className="flex min-w-0 flex-1 justify-center"
             style={{ maxWidth: '18rem' }}
           >
