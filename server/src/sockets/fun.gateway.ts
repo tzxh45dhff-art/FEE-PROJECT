@@ -14,6 +14,8 @@ import {
   type Toy,
 } from '../services/fun.catalog.js'
 import * as moments from '../models/moment.model.js'
+import * as photos from '../models/photo.model.js'
+import { present as presentPhoto } from '../controllers/photo.controller.js'
 import { presenceFor } from '../services/presence.service.js'
 import { socketUser } from './presence.gateway.js'
 import { roomGuard } from './roomAuth.js'
@@ -62,6 +64,10 @@ function limiter() {
 }
 
 type Person = { id: string; name: string }
+
+export const BOOTH_COUNTDOWN_MS = 3200
+/** Who is mid-countdown in each room. */
+const shooting = new Map<string, { by: string; name: string; until: number }>()
 type Ack = (reply: unknown) => void
 
 /** Socket.IO acks are optional on the client; never assume one was passed. */
@@ -226,6 +232,37 @@ export function attachFunGateway(io: Server) {
       const removed = await moments.removeMoment(roomId, body.momentId, self.id)
       if (removed) io.to(roomId).emit('moment:removed', { roomId, momentId: body.momentId })
       ack({ ok: removed })
+    })
+
+    /*
+     * Photo booth. Whoever is taking the picture starts a countdown that
+     * everyone sees, so the room can strike a pose together; the shutter
+     * fires on their screen only, at the same moment the others' "3, 2, 1"
+     * runs out. One photo at a time per room, or two people counting down at
+     * once would be chaos.
+     */
+    socket.on('booth:countdown', async (raw: unknown, maybeAck: unknown) => {
+      const ack = ackFrom(maybeAck)
+      const body = (raw ?? {}) as Record<string, unknown>
+      const roomId = await may(body.roomId)
+      if (!roomId || !allow()) return ack({ error: 'Not now' })
+      const now = Date.now()
+      const busy = shooting.get(roomId)
+      if (busy && busy.until > now && busy.by !== self.id) return ack({ error: `${busy.name} is taking a photo — get in it!` })
+      const firesAt = now + BOOTH_COUNTDOWN_MS
+      shooting.set(roomId, { by: self.id, name: self.name, until: firesAt + 1500 })
+      io.to(roomId).emit('booth:countdown', { id: randomUUID(), roomId, by: self, firesAt, serverTime: now })
+      ack({ ok: true, firesAt, serverTime: now })
+    })
+
+    /* A photo was saved: tell the room, from the database rather than the claim. */
+    socket.on('photo:shared', async (raw: unknown) => {
+      const body = (raw ?? {}) as Record<string, unknown>
+      const roomId = await may(body.roomId)
+      if (!roomId || typeof body.id !== 'string' || !allow()) return
+      const row = await photos.findPhoto(roomId, body.id)
+      if (!row || row.createdBy.id !== self.id) return
+      io.to(roomId).emit('photo:new', { roomId, photo: presentPhoto(roomId, row) })
     })
   })
 }

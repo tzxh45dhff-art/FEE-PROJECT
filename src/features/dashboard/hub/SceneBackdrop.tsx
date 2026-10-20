@@ -50,7 +50,7 @@ export function SceneBackdrop({ scene, tilt }: { scene?: Scene; tilt: PointerTil
   const reduced = usePrefersReducedMotion()
 
   return (
-    <div aria-hidden className="absolute inset-0 overflow-hidden bg-void">
+    <div aria-hidden data-hub-backdrop className="absolute inset-0 overflow-hidden bg-void">
       {scene?.video && !reduced ? (
         <video
           className="absolute inset-0 size-full object-cover"

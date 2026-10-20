@@ -71,6 +71,7 @@ export function PetCorner({ roomId, selfId, hidden }: { roomId: string; selfId: 
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
             transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }}
+            data-pet-corner
             className="pointer-events-auto absolute left-3 top-24 z-20 flex flex-col items-center sm:bottom-[5.6rem] sm:left-5 sm:top-auto"
           >
             {pets.pet ? (

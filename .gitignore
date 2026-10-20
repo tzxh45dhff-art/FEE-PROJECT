@@ -60,3 +60,4 @@ server/logs/
 server/backups/
 server/prisma/night.db
 server/night.db
+server/night-uploads/

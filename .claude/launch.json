@@ -24,7 +24,7 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
-        "cd server && export PORT=4100 DATABASE_URL=file:./night.db && npx prisma db push --skip-generate >/dev/null && npx tsx watch src/server.ts"
+        "cd server && export PORT=4100 DATABASE_URL=file:./night.db UPLOAD_DIR=./night-uploads && npx prisma db push --skip-generate >/dev/null && npx tsx watch src/server.ts"
       ],
       "port": 4100
     },

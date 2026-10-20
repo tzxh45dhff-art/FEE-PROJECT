@@ -38,6 +38,8 @@ export async function startServer(): Promise<Harness> {
     ...process.env,
     PORT: String(port),
     DATABASE_URL: `file:${join(dir, 'test.db')}`,
+    /* Uploads go with the throwaway database, never into the real folder. */
+    UPLOAD_DIR: join(dir, 'uploads'),
     /* Tests never reach a model. Study features that need one report
        themselves unavailable instead of spending money. */
     AZURE_OPENAI_API_KEY: '',

@@ -167,6 +167,7 @@ export function CharacterParty({
           <div
             key={member.id}
             data-hub-member={member.id}
+            data-hub-name={member.name}
             className="flex min-w-0 flex-1 justify-center"
             style={{ maxWidth: '18rem' }}
           >

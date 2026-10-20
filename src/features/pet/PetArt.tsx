@@ -103,7 +103,7 @@ export function PetArt({
       </defs>
 
       {/* Ground shadow — stays put while the body moves. */}
-      <motion.ellipse cx="100" cy="200" rx="52" ry="7" fill="black" opacity={0.28} animate={{ rx: [52, 48, 52] }} transition={{ repeat: Infinity, duration: 3.2, ease: 'easeInOut' }} />
+      <motion.ellipse cx="100" cy="200" rx="52" ry="7" fill="black" opacity={0.28} animate={{ scaleX: [1, 0.92, 1] }} transition={{ repeat: Infinity, duration: 3.2, ease: 'easeInOut' }} />
 
       <motion.g animate={body} style={{ originX: 0.5, originY: 1 }}>
         {/* Breathing. */}
@@ -289,13 +289,9 @@ function Mouth({ kind, open, dark, tongue, species }: { kind: Face['mouth']; ope
         </g>
       )
     case 'chew':
+      /* Chewing: the smile squashes and springs back, a transform rather than a path morph. */
       return (
-        <motion.path
-          d="M90 113 Q100 122 110 113"
-          {...line}
-          animate={{ d: ['M90 113 Q100 122 110 113', 'M92 115 Q100 112 108 115', 'M90 113 Q100 122 110 113'] }}
-          transition={{ repeat: Infinity, duration: 0.35 }}
-        />
+        <motion.path d="M90 113 Q100 122 110 113" {...line} animate={{ scaleY: [1, 0.35, 1] }} transition={{ repeat: Infinity, duration: 0.35 }} style={{ originX: 0.5, originY: 0 }} />
       )
   }
 }
