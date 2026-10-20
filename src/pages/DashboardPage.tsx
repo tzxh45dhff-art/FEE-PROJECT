@@ -11,6 +11,7 @@ import { ACTIVITIES, type ActivityId } from '@/features/dashboard/hub/activities
 import { CharacterParty, type HubMember } from '@/features/dashboard/hub/CharacterParty'
 import { FunDock } from '@/features/fun/FunDock'
 import { FunLayer } from '@/features/fun/FunLayer'
+import { PetCorner } from '@/features/pet/PetCorner'
 import { useFun } from '@/features/fun/useFun'
 import { Fireflies } from '@/features/dashboard/hub/Fireflies'
 import { HubDrawer } from '@/features/dashboard/hub/HubDrawer'
@@ -489,6 +490,7 @@ export function DashboardPage() {
           />
 
           {activity === null && activeRoom && <FunLayer events={fun.events} youId={user?.id ?? null} />}
+          {activeRoom && <PetCorner key={activeRoom.id} roomId={activeRoom.id} selfId={user?.id} hidden={activity !== null} />}
 
           <HubRail side="left" items={leftItems} />
           <HubRail side="right" items={rightItems} insetRight={inset} />
