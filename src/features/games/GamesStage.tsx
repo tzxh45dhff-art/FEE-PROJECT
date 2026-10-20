@@ -8,6 +8,7 @@ import { useGameSession } from '@/features/games/useGameSession'
 import type { GamePlayer, WirePen } from '@/features/games/types'
 import { DrawSetup, DrawTable, type DrawView } from '@/features/party/DrawGame'
 import { KnowMeSetup, KnowMeTable, type KnowMeView } from '@/features/party/KnowMe'
+import { QuizTable, SongQuizSetup, TriviaSetup, type QuizView } from '@/features/party/Quiz'
 import { GamePicker, type GameId } from '@/features/party/GamePicker'
 import { TruthDareSetup, TruthDareTable, type TruthDareView } from '@/features/party/TruthDare'
 import { useParty, type PartyState } from '@/features/party/useParty'
@@ -238,6 +239,27 @@ export function GamesStage({
             <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />
           ) : (
             <KnowMeSetup people={members.length} error={party.error} onStart={(options) => void party.start('knowme', options)} />
+          ))}
+
+        {(screen === 'trivia' || screen === 'songquiz') &&
+          (party.party?.game === screen ? (
+            <QuizTable
+              party={party.party as PartyState<QuizView>}
+              selfId={selfId}
+              error={party.error}
+              act={(action, payload) => void party.act(action, payload)}
+              onJoin={() => void party.join()}
+              onLeaveTable={() => {
+                void party.dismiss()
+                setScreen('picker')
+              }}
+            />
+          ) : party.party ? (
+            <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />
+          ) : screen === 'trivia' ? (
+            <TriviaSetup people={members.length} error={party.error} onStart={(options) => void party.start('trivia', options)} />
+          ) : (
+            <SongQuizSetup people={members.length} error={party.error} onStart={(options) => void party.start('songquiz', options)} />
           ))}
 
         {screen === 'penfight' && (

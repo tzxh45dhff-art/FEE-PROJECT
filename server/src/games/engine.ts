@@ -38,6 +38,8 @@ export interface GameDef<S, O = unknown> {
   maxPlayers: number
   /** Validate and normalise the options from the client. */
   options: (raw: unknown) => O | { error: string }
+  /** Anything that needs the database before the game can start — the room's songs. */
+  prepare?: (roomId: string, options: O) => Promise<O | { error: string }>
   start: (players: Player[], options: O, ctx: Ctx) => S
   /**
    * Apply an action. `by` is null for the server's own timers. Return the next

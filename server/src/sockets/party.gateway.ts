@@ -3,6 +3,8 @@ import type { Server, Socket } from 'socket.io'
 import { isError, liveCtx, type GameDef, type Player } from '../games/engine.js'
 import { drawCanvas, drawGame } from '../games/draw.js'
 import { knowMe } from '../games/knowme.js'
+import { trivia } from '../games/trivia.js'
+import { songQuiz } from '../games/songquiz.js'
 import { truthDare } from '../games/truthdare.js'
 import { prisma } from '../models/prisma.js'
 import { presenceFor } from '../services/presence.service.js'
@@ -30,6 +32,8 @@ const GAMES: Record<string, AnyGame> = {
   [truthDare.id]: truthDare,
   [drawGame.id]: drawGame,
   [knowMe.id]: knowMe,
+  [trivia.id]: trivia,
+  [songQuiz.id]: songQuiz,
 }
 
 /**
@@ -202,10 +206,17 @@ export function attachPartyGateway(io: Server) {
         return ack({ error: `${game.label} needs at least ${game.minPlayers} people in the room` })
       }
 
-      const options = game.options(body.options)
+      const parsed = game.options(body.options)
+      if (isError(parsed)) return ack(parsed)
+      const options = game.prepare ? await game.prepare(roomId, parsed) : parsed
       if (isError(options)) return ack(options)
+      /* Someone else may have started a game while this one was preparing. */
+      const raced = sessions.get(roomId)
+      if (raced && raced !== running && (raced.state as { phase?: string }).phase !== 'over') {
+        return ack({ error: `${raced.game.label} is already going — end it first` })
+      }
 
-      running?.ctx.dispose()
+      sessions.get(roomId)?.ctx.dispose()
       const ctx = liveCtx((action, payload) => apply(io, roomId, null, action, payload))
       sessions.set(roomId, {
         game,
