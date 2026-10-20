@@ -1,5 +1,6 @@
 import * as azure from './azure.service.js'
 import * as gemini from './gemini.service.js'
+import { prisma } from '../models/prisma.js'
 import { HttpError } from '../utils/HttpError.js'
 
 /**
@@ -27,7 +28,7 @@ let resolved: Promise<EmbeddingProvider> | null = null
  * about whether it was ever created.
  */
 async function azureEmbeddingsWork(): Promise<boolean> {
-  if (!azure.configured()) return false
+  if (!azure.embeddingsConfigured()) return false
   try {
     await azure.embed(['probe'])
     return true
@@ -74,4 +75,57 @@ export async function embedOne(text: string): Promise<number[]> {
   const [only] = await embed([text])
   if (!only) throw HttpError.badGateway('The embedding provider returned nothing.')
   return only
+}
+
+/**
+ * Bring every stored passage onto the live provider's vectors.
+ *
+ * Switching provider — Gemini to Azure, here — leaves passages embedded by
+ * the old model in the database, and their vectors are a different length in
+ * a different space. Search skips them rather than comparing nonsense, which
+ * means those documents quietly stop being found. This re-embeds them from
+ * their stored text, in batches, once at startup; there is no file to re-read
+ * and nothing for anyone to click. Cheap: a few paise per document.
+ */
+export async function reembedStale(log: (line: string) => void = console.log) {
+  const which = await provider()
+  if (!which) return 0
+  const [probe] = await embed(['probe'])
+  const size = probe?.length ?? 0
+  if (!size) return 0
+
+  /* The text column is small; reading only the vector's length means parsing it, so batch. */
+  const stale: { id: string; text: string }[] = []
+  let cursor: string | undefined
+  for (;;) {
+    const rows = await prisma.resourceChunk.findMany({
+      take: 500,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      orderBy: { id: 'asc' },
+      select: { id: true, text: true, embedding: true },
+    })
+    if (rows.length === 0) break
+    for (const row of rows) {
+      let length = 0
+      try {
+        length = (JSON.parse(row.embedding) as unknown[]).length
+      } catch {
+        /* Unreadable counts as stale. */
+      }
+      if (length !== size) stale.push({ id: row.id, text: row.text })
+    }
+    cursor = rows.at(-1)!.id
+  }
+  if (stale.length === 0) return 0
+
+  log(`  Re-indexing ${stale.length} passage${stale.length === 1 ? '' : 's'} for ${which} search…`)
+  let done = 0
+  for (let i = 0; i < stale.length; i += 16) {
+    const batch = stale.slice(i, i + 16)
+    const vectors = await embed(batch.map((b) => b.text))
+    await prisma.$transaction(batch.map((b, j) => prisma.resourceChunk.update({ where: { id: b.id }, data: { embedding: JSON.stringify(vectors[j]) } })))
+    done += batch.length
+  }
+  log(`  Re-indexed ${done} passage${done === 1 ? '' : 's'}.`)
+  return done
 }

@@ -120,6 +120,20 @@ export const env = {
        versions, and a deployment that starts answering differently because a
        default moved underneath it is a bad afternoon. */
     apiVersion: process.env.AZURE_OPENAI_API_VERSION ?? '2024-10-21',
+    /*
+     * Where embeddings go, when that is somewhere else.
+     *
+     * A chat deployment and an embedding deployment do not have to live on
+     * the same resource, and often cannot — the embedding model may only be
+     * offered in another region, or the chat resource may not be yours to
+     * add a deployment to. Each falls back to the chat resource's value, so a
+     * server with both on one resource sets none of these.
+     */
+    embedding: {
+      endpoint: (process.env.AZURE_EMBEDDING_ENDPOINT || process.env.AZURE_OPENAI_ENDPOINT || '').replace(/\/$/, ''),
+      apiKey: process.env.AZURE_EMBEDDING_API_KEY || process.env.AZURE_OPENAI_API_KEY || '',
+      apiVersion: process.env.AZURE_EMBEDDING_API_VERSION || process.env.AZURE_OPENAI_API_VERSION || '2024-10-21',
+    },
   },
 
   /**

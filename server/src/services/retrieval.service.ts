@@ -69,6 +69,9 @@ export type Hit = {
  * quietly rather than break it.
  */
 function cosine(a: number[], b: number[]) {
+  /* Vectors from two different models share no space; comparing them gives a
+     number, and the number means nothing. */
+  if (a.length !== b.length) return 0
   let dot = 0
   let aa = 0
   let bb = 0

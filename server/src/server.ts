@@ -2,6 +2,7 @@ import { createServer } from 'node:http'
 
 import { createApp } from './app.js'
 import { env } from './config/env.js'
+import { reembedStale } from './services/embeddings.service.js'
 import { attachCallGateway } from './sockets/call.gateway.js'
 import { attachChatGateway } from './sockets/chat.gateway.js'
 import { attachGameGateway } from './sockets/game.gateway.js'
@@ -26,4 +27,6 @@ attachStudyGateway(io)
 
 httpServer.listen(env.port, () => {
   console.log(`  Huddle API on http://localhost:${env.port}`)
+  /* Documents indexed by an earlier embedding model are brought onto the current one. */
+  void reembedStale().catch((cause: unknown) => console.warn('  Could not re-index old passages:', cause instanceof Error ? cause.message : cause))
 })
