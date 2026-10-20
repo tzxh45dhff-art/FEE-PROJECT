@@ -44,6 +44,8 @@ export async function startServer(): Promise<Harness> {
        themselves unavailable instead of spending money. */
     AZURE_OPENAI_API_KEY: '',
     AZURE_OPENAI_ENDPOINT: '',
+    AZURE_EMBEDDING_ENDPOINT: '',
+    AZURE_EMBEDDING_API_KEY: '',
     GEMINI_API_KEY: '',
     NODE_ENV: 'test',
   }

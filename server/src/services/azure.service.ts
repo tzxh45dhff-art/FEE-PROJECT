@@ -42,8 +42,15 @@ function requireConfigured() {
   }
 }
 
-function url(deployment: string, path: string) {
-  return `${env.azure.endpoint}/openai/deployments/${deployment}/${path}?api-version=${env.azure.apiVersion}`
+/** Whether embeddings have somewhere to go — possibly a different resource from chat. */
+export function embeddingsConfigured() {
+  return Boolean(env.azure.embedding.endpoint && env.azure.embedding.apiKey)
+}
+
+type Target = { endpoint: string; apiKey: string; apiVersion: string }
+
+function url(deployment: string, path: string, target: Target = env.azure) {
+  return `${target.endpoint}/openai/deployments/${deployment}/${path}?api-version=${target.apiVersion}`
 }
 
 /**
@@ -67,7 +74,7 @@ const RETRY_DELAY_MS = 1200
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-async function post(target: string, body: unknown, timeoutMs: number): Promise<unknown> {
+async function post(target: string, body: unknown, timeoutMs: number, apiKey = env.azure.apiKey): Promise<unknown> {
   let lastError: unknown = null
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
@@ -75,7 +82,7 @@ async function post(target: string, body: unknown, timeoutMs: number): Promise<u
     try {
       response = await fetch(target, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'api-key': env.azure.apiKey },
+        headers: { 'content-type': 'application/json', 'api-key': apiKey },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(timeoutMs),
       })
@@ -251,7 +258,9 @@ export async function chatJson<T>(
  * and the failure would look like nothing more than bad search results.
  */
 export async function embed(texts: string[]): Promise<number[][]> {
-  requireConfigured()
+  if (!embeddingsConfigured()) {
+    throw HttpError.unavailable('No Azure embedding deployment is configured on this server.')
+  }
   if (texts.length === 0) return []
 
   const out: number[][] = []
@@ -259,9 +268,10 @@ export async function embed(texts: string[]): Promise<number[][]> {
   for (let start = 0; start < texts.length; start += EMBED_BATCH) {
     const batch = texts.slice(start, start + EMBED_BATCH)
     const payload = (await post(
-      url(env.azure.embeddingDeployment, 'embeddings'),
+      url(env.azure.embeddingDeployment, 'embeddings', env.azure.embedding),
       { input: batch },
       EMBED_TIMEOUT_MS,
+      env.azure.embedding.apiKey,
     )) as { data?: { index: number; embedding: number[] }[] }
 
     const rows = payload.data ?? []
