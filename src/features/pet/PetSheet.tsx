@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Hand, Mic, MicOff, Pencil, Sparkles, Utensils, Volleyball, X } from 'lucide-react'
+import { Pencil, X } from 'lucide-react'
 
 import { FOOD_EMOJI } from '@/features/pet/foods'
 import { LivePet } from '@/features/pet/LivePet'
@@ -30,6 +30,13 @@ const SPECIES: { id: Species; label: string; names: string[] }[] = [
 const FOODS: Food[] = ['cookie', 'fish', 'carrot', 'bamboo', 'icecream', 'pizza']
 const STAGE_LABEL = { baby: 'Baby', kid: 'Little one', teen: 'Teen', grown: 'All grown up' }
 const NEXT_STAGE = { baby: 'little one', kid: 'teen', teen: 'grown-up', grown: null }
+const MOTES = [
+  { x: '42%', y: '22%', drift: 6, t: 6 },
+  { x: '55%', y: '34%', drift: -8, t: 7.5 },
+  { x: '47%', y: '48%', drift: 5, t: 5.5 },
+  { x: '58%', y: '16%', drift: -4, t: 8 },
+  { x: '38%', y: '40%', drift: 7, t: 6.5 },
+]
 
 type Pets = ReturnType<typeof usePet>
 type Mimic = ReturnType<typeof useMimic>
@@ -197,6 +204,21 @@ function Care({ pets, selfId, mimic, level, speaker }: { pets: Pets; selfId: str
     <div className="grid md:grid-cols-[1.1fr_1fr]">
       {/* The pet, on a little lit stage. */}
       <div className="relative flex min-h-[24rem] flex-col items-center justify-end overflow-hidden bg-[radial-gradient(ellipse_at_50%_100%,rgba(255,170,110,.28),transparent_65%),radial-gradient(ellipse_at_30%_0%,rgba(140,110,255,.18),transparent_60%)] px-6 pb-5 pt-16 md:min-h-[33rem]">
+        {/* A warm lamp overhead, and dust drifting through its light. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-full bg-[conic-gradient(from_180deg_at_50%_-8%,transparent_157deg,rgba(255,214,170,.09)_172deg,rgba(255,226,190,.13)_180deg,rgba(255,214,170,.09)_188deg,transparent_203deg)]"
+        />
+        {MOTES.map((m, i) => (
+          <motion.span
+            key={i}
+            aria-hidden
+            className="pointer-events-none absolute size-1 rounded-full bg-[#ffe2c0]"
+            style={{ left: m.x, top: m.y }}
+            animate={{ y: [0, -18, 0], x: [0, m.drift, 0], opacity: [0, 0.55, 0] }}
+            transition={{ duration: m.t, repeat: Infinity, delay: i * 0.7, ease: 'easeInOut' }}
+          />
+        ))}
         {/* A rug to sit on, so it is somewhere rather than nowhere. */}
         <div
           aria-hidden
@@ -273,9 +295,15 @@ function Care({ pets, selfId, mimic, level, speaker }: { pets: Pets; selfId: str
               />
             </form>
           ) : (
-            <button type="button" onClick={() => setRenaming(true)} className="group flex items-center gap-2 text-left">
+            <button
+              type="button"
+              onClick={() => setRenaming(true)}
+              title={`Rename ${pet.name}`}
+              className="group -mx-1.5 flex items-center gap-2 rounded-xl px-1.5 text-left outline-none focus-visible:outline-2 focus-visible:outline-signal"
+            >
               <h2 className="font-display text-[2rem] font-semibold leading-none tracking-[-0.03em] text-chalk">{pet.name}</h2>
-              <Pencil className="size-3.5 text-dusk opacity-0 transition-opacity group-hover:opacity-100" aria-label="Rename" />
+              {/* Faintly there on touch screens, where there is no hover to find it. */}
+              <Pencil className="size-3.5 text-dusk opacity-40 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 sm:opacity-0" aria-label="Rename" />
             </button>
           )}
           <p className="mt-1.5 text-[0.82rem] text-mist">
@@ -283,28 +311,27 @@ function Care({ pets, selfId, mimic, level, speaker }: { pets: Pets; selfId: str
           </p>
         </div>
 
-        <div className="space-y-3">
-          <Meter label="Tummy" value={100 - pet.hunger} tone="from-amber-300 to-orange-400" low="Starving" />
-          <Meter label="Happiness" value={pet.happiness} tone="from-pink-300 to-fuchsia-400" low="Lonely" />
-          <div>
-            <div className="flex justify-between text-[0.72rem] text-mist">
-              <span className="font-semibold uppercase tracking-[0.14em]">Growing</span>
-              <span>{next ? `${Math.round(pet.progress * 100)}% to ${next}` : 'Fully grown'}</span>
-            </div>
-            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
-              <motion.div className="h-full rounded-full bg-gradient-to-r from-sky-300 to-violet-400" animate={{ width: `${pet.progress * 100}%` }} />
-            </div>
-          </div>
+        <div className="space-y-3.5 rounded-2xl bg-white/[0.025] p-4 ring-1 ring-inset ring-white/[0.05]">
+          <Meter icon="🍪" label="Tummy" value={100 - pet.hunger} tone="from-amber-300 to-orange-400" low="Starving" />
+          <Meter icon="💗" label="Happiness" value={pet.happiness} tone="from-pink-300 to-fuchsia-400" low="Lonely" />
+          <Meter
+            icon="🌱"
+            label="Growing"
+            value={pet.progress * 100}
+            tone="from-sky-300 to-violet-400"
+            note={next ? `${Math.round(pet.progress * 100)}% to ${next}` : 'Fully grown'}
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <Action icon={<Utensils className="size-4" />} label="Feed" active={tray} onClick={() => setTray((t) => !t)} />
-          <Action icon={<Volleyball className="size-4" />} label="Play" onClick={() => void pets.act('play')} />
-          <Action icon={<Sparkles className="size-4" />} label="Tickle" onClick={() => void pets.act('tickle')} />
+          <Action emoji="🍽️" label="Feed" active={tray} onClick={() => setTray((t) => !t)} />
+          <Action emoji="🎾" label="Play" onClick={() => void pets.act('play')} />
+          <Action emoji="🪶" label="Tickle" onClick={() => void pets.act('tickle')} />
           <Action
-            icon={listening ? <Mic className="size-4" /> : <MicOff className="size-4" />}
+            emoji={listening ? '👂' : '🎙️'}
             label={listening ? 'Listening' : 'Talk to me'}
             active={listening}
+            live={listening}
             onClick={() => (listening ? mimic.stop() : void mimic.start())}
           />
         </div>
@@ -312,17 +339,28 @@ function Care({ pets, selfId, mimic, level, speaker }: { pets: Pets; selfId: str
         <AnimatePresence>
           {tray && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-              <div className="flex justify-between gap-1.5 rounded-2xl bg-white/[0.04] p-2" role="group" aria-label="Food">
-                {FOODS.map((f) => (
-                  <button
+              {/* A little wooden tray of treats; each one lifts off it when you reach for it. */}
+              <div
+                className="flex justify-between gap-1 rounded-2xl bg-gradient-to-b from-[#3a2a22]/70 to-[#2a1d18]/70 p-2 shadow-[inset_0_1px_0_rgba(255,220,180,.12),inset_0_-3px_0_rgba(0,0,0,.25)] ring-1 ring-inset ring-[#ffcf9f]/10"
+                role="group"
+                aria-label="Food"
+              >
+                {FOODS.map((f, i) => (
+                  <motion.button
                     key={f}
                     type="button"
                     onClick={() => void pets.act('feed', f)}
                     aria-label={`Feed ${f}`}
-                    className="grid size-11 place-items-center rounded-xl text-[1.6rem] outline-none transition-transform hover:-translate-y-1 hover:scale-110 active:scale-95 focus-visible:outline-2 focus-visible:outline-signal"
+                    title={f}
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    whileHover={{ y: -6, rotate: i % 2 ? 8 : -8, scale: 1.15 }}
+                    whileTap={{ scale: 0.85 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 18, delay: i * 0.03 }}
+                    className="grid size-11 place-items-center rounded-xl text-[1.6rem] outline-none drop-shadow-[0_6px_6px_rgba(0,0,0,.35)] hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-signal"
                   >
                     {FOOD_EMOJI[f]}
-                  </button>
+                  </motion.button>
                 ))}
               </div>
               <p className="mt-1.5 text-center text-[0.7rem] text-dusk">Everyone has a favourite. Find theirs.</p>
@@ -336,16 +374,32 @@ function Care({ pets, selfId, mimic, level, speaker }: { pets: Pets; selfId: str
           </p>
         )}
 
-        <ul className="mt-auto space-y-1.5 text-[0.78rem] text-mist" aria-label="Recently">
-          {log.map((e) => (
-            <li key={e.id} className="flex items-center gap-2">
-              <Hand className="size-3 text-dusk" aria-hidden />
-              <span>
-                <span className="text-chalk">{e.by.id === selfId ? 'You' : e.by.name}</span> {describe(e, pet.name)}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="mt-auto">
+          <p className="mb-2 text-[0.66rem] font-semibold uppercase tracking-[0.16em] text-dusk">Recently</p>
+          <ul className="space-y-1.5 text-[0.78rem] text-mist" aria-label="Recently">
+            <AnimatePresence initial={false}>
+              {log.map((e) => (
+                <motion.li
+                  key={e.id}
+                  layout
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  className="flex items-center gap-2"
+                >
+                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-white/[0.06] text-[0.7rem]" aria-hidden>
+                    {LOG_GLYPH[e.action]}
+                  </span>
+                  <span>
+                    <span className="text-chalk">{e.by.id === selfId ? 'You' : e.by.name}</span> {describe(e, pet.name)}
+                  </span>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+            {log.length === 0 && <li className="text-dusk">Nothing yet — say hello.</li>}
+          </ul>
+        </div>
       </div>
     </div>
   )
@@ -368,34 +422,57 @@ function describe(e: PetEvent, name: string) {
   }
 }
 
-function Meter({ label, value, tone, low }: { label: string; value: number; tone: string; low: string }) {
+const LOG_GLYPH: Record<PetEvent['action'], string> = { feed: '🍽️', pet: '🤚', poke: '👉', tickle: '🪶', play: '🎾', talk: '💬' }
+
+function Meter({ icon, label, value, tone, low, note }: { icon: string; label: string; value: number; tone: string; low?: string; note?: string }) {
   const v = Math.max(0, Math.min(100, value))
+  const warn = low !== undefined && v < 25
   return (
-    <div>
-      <div className="flex justify-between text-[0.72rem] text-mist">
-        <span className="font-semibold uppercase tracking-[0.14em]">{label}</span>
-        <span className={cn(v < 25 && 'text-signal-bright')}>{v < 25 ? low : `${Math.round(v)}%`}</span>
-      </div>
-      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/[0.07]" role="meter" aria-label={label} aria-valuenow={Math.round(v)} aria-valuemin={0} aria-valuemax={100}>
-        <motion.div className={cn('h-full rounded-full bg-gradient-to-r', tone)} animate={{ width: `${v}%` }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} />
+    <div className="flex items-center gap-3">
+      <span className={cn('grid size-8 shrink-0 place-items-center rounded-xl bg-white/[0.06] text-[1rem]', warn && 'animate-pulse bg-signal/15')} aria-hidden>
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex justify-between text-[0.72rem] text-mist">
+          <span className="font-semibold uppercase tracking-[0.14em]">{label}</span>
+          <span className={cn('tabular-nums', warn && 'font-semibold text-signal-bright')}>{note ?? (warn ? low : `${Math.round(v)}%`)}</span>
+        </div>
+        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/[0.07]" role="meter" aria-label={label} aria-valuenow={Math.round(v)} aria-valuemin={0} aria-valuemax={100}>
+          <motion.div
+            className={cn('relative h-full overflow-hidden rounded-full bg-gradient-to-r', tone, warn && 'animate-pulse')}
+            initial={false}
+            animate={{ width: `${v}%` }}
+            transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+          >
+            {/* A soft glint along the top, like a filled glass tube. */}
+            <span className="absolute inset-x-1 top-[1px] h-[2px] rounded-full bg-white/40" aria-hidden />
+          </motion.div>
+        </div>
       </div>
     </div>
   )
 }
 
-function Action({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active?: boolean; onClick: () => void }) {
+function Action({ emoji, label, active, live, onClick }: { emoji: string; label: string; active?: boolean; live?: boolean; onClick: () => void }) {
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      whileHover={{ y: -2 }}
+      whileTap={{ scale: 0.94, y: 1 }}
+      transition={{ type: 'spring', stiffness: 600, damping: 22 }}
       className={cn(
-        'flex items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-[0.85rem] font-semibold outline-none transition-[transform,background-color,border-color] duration-200 hover:-translate-y-0.5 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-signal',
-        active ? 'border-white/40 bg-white/[0.12] text-chalk' : 'border-white/10 bg-white/[0.04] text-chalk hover:border-white/25',
+        'group flex items-center justify-center gap-2.5 rounded-2xl border px-3 py-2.5 text-[0.85rem] font-semibold text-chalk outline-none transition-[background-color,border-color] duration-200 focus-visible:outline-2 focus-visible:outline-signal',
+        'shadow-[inset_0_1px_0_rgba(255,255,255,.08),0_3px_0_rgba(0,0,0,.35)]',
+        active ? 'border-white/40 bg-white/[0.12]' : 'border-white/10 bg-white/[0.04] hover:border-white/25 hover:bg-white/[0.07]',
       )}
     >
-      {icon}
+      <span className="relative grid size-7 place-items-center rounded-full bg-white/[0.07] text-[0.95rem] transition-transform duration-300 group-hover:-rotate-12 group-hover:scale-110" aria-hidden>
+        {live && <span className="absolute inset-0 animate-ping rounded-full bg-signal/40" />}
+        <span className="relative">{emoji}</span>
+      </span>
       {label}
-    </button>
+    </motion.button>
   )
 }

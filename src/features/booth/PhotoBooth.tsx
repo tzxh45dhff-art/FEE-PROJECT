@@ -103,9 +103,10 @@ export function PhotoBooth({
           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-white/10 text-mist ring-1 ring-inset ring-white/15 transition-colors group-hover:text-chalk">
             <Camera className="size-[1.1rem]" aria-hidden />
           </span>
-          <span className="hidden flex-col items-start leading-tight sm:flex">
-            <span className="text-[0.86rem] font-semibold text-chalk">Photo</span>
-            <span className="text-[0.7rem] text-mist">Strike a pose</span>
+          {/* Never wraps: the bottom row is tight, so the subtitle only shows where there's room. */}
+          <span className="hidden flex-col items-start whitespace-nowrap leading-tight sm:flex">
+            <span className="whitespace-nowrap text-[0.86rem] font-semibold text-chalk">Photo</span>
+            <span className="hidden whitespace-nowrap text-[0.7rem] text-mist xl:block">Strike a pose</span>
           </span>
         </button>
 
@@ -172,18 +173,28 @@ export function PhotoBooth({
                   ))}
                 </div>
                 {/* The shutter. */}
-                <button
+                <motion.button
                   type="button"
                   disabled={!!booth.countdown}
                   onClick={() => void booth.start()}
                   aria-label="Take the photo — everyone gets a three-second countdown"
                   title="Take the photo"
-                  className="group grid size-14 place-items-center rounded-full border-[3px] border-white/85 outline-none transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal active:scale-95 disabled:opacity-50"
+                  whileHover={booth.countdown ? undefined : { scale: 1.06 }}
+                  whileTap={booth.countdown ? undefined : { scale: 0.88 }}
+                  transition={{ type: 'spring', stiffness: 600, damping: 18 }}
+                  className="group relative grid size-14 place-items-center rounded-full border-[3px] border-white/85 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:cursor-default"
                 >
-                  <span className="grid size-10 place-items-center rounded-full bg-white text-void transition-colors group-hover:bg-signal-bright group-hover:text-white">
+                  {/* While the countdown runs, the shutter glows red like a recording light. */}
+                  {booth.countdown && <span className="absolute -inset-1 animate-ping rounded-full border-2 border-signal-bright/60" aria-hidden />}
+                  <span
+                    className={cn(
+                      'grid size-10 place-items-center rounded-full transition-[background-color,color,scale] duration-200',
+                      booth.countdown ? 'scale-75 bg-signal-bright text-white' : 'bg-white text-void group-hover:bg-signal-bright group-hover:text-white',
+                    )}
+                  >
                     <Camera className="size-[1.1rem]" aria-hidden />
                   </span>
-                </button>
+                </motion.button>
                 {(booth.error || failed) && (
                   <p role="alert" className="w-full pb-1 text-center text-[0.78rem] text-signal-bright">
                     {booth.error ?? failed}
@@ -279,11 +290,29 @@ function CountdownOverlay({ countdown, mine }: { countdown: { by: { name: string
   }, [countdown.firesAt])
   const n = Math.ceil(left / 1000)
   const fired = left <= 0
+  /* How far through the current second we are — the ring drains once per number. */
+  const part = Math.max(0, Math.min(1, (left % 1000) / 1000))
   return (
     <motion.div className="pointer-events-none fixed inset-0 z-[126]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      {/* The room dims a touch at the edges while everyone holds the pose. */}
+      {!fired && <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(0,0,0,.35))]" />}
       {!fired && (
         <div className="absolute left-1/2 top-[14%] flex -translate-x-1/2 flex-col items-center">
           <div className="relative grid size-28 place-items-center rounded-full bg-black/45 backdrop-blur-md">
+            <svg viewBox="0 0 112 112" className="absolute inset-0 size-full -rotate-90" aria-hidden>
+              <circle cx="56" cy="56" r="52" fill="none" stroke="rgba(255,255,255,.12)" strokeWidth="3" />
+              <circle
+                cx="56"
+                cy="56"
+                r="52"
+                fill="none"
+                stroke="#fff"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeDasharray={2 * Math.PI * 52}
+                strokeDashoffset={2 * Math.PI * 52 * (1 - part)}
+              />
+            </svg>
             <AnimatePresence mode="popLayout">
               <motion.span
                 key={n}
@@ -302,8 +331,15 @@ function CountdownOverlay({ countdown, mine }: { countdown: { by: { name: string
           </p>
         </div>
       )}
-      {/* The flash. */}
-      {fired && <motion.div className="absolute inset-0 bg-white" initial={{ opacity: 0.95 }} animate={{ opacity: 0 }} transition={{ duration: 0.7, ease: 'easeOut' }} />}
+      {/* The flash: a hard white pop that fades warm, the way a real one leaves spots in your eyes. */}
+      {fired && (
+        <motion.div
+          className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#fff_40%,#fff4e6)]"
+          initial={{ opacity: 1 }}
+          animate={{ opacity: [1, 0.9, 0] }}
+          transition={{ duration: 0.8, times: [0, 0.15, 1], ease: 'easeOut' }}
+        />
+      )}
     </motion.div>
   )
 }
@@ -325,28 +361,40 @@ function Print({ shot, onRetake, onSave, onDone }: { shot: Shot; onRetake: () =>
       exit={{ opacity: 0 }}
     >
       <div className="flex w-full max-w-3xl flex-col items-center">
-        {/* Out of the slot, like a print. */}
+        {/* Out of the slot, like a print — and it develops as you watch, dark and murky to full colour. */}
         <motion.img
           src={shot.url}
           alt={shot.caption || 'Your photo'}
           className="max-h-[68vh] w-auto max-w-full rounded-md shadow-[0_40px_100px_-30px_rgba(0,0,0,.95)]"
-          initial={{ y: -60, rotate: -4, opacity: 0, scale: 0.92 }}
-          animate={{ y: 0, rotate: -1.2, opacity: 1, scale: 1 }}
-          transition={{ type: 'spring', stiffness: 120, damping: 16, delay: 0.1 }}
+          initial={{ y: -60, rotate: -4, opacity: 0, scale: 0.92, filter: 'brightness(0.35) sepia(0.8) contrast(0.7) saturate(0.4)' }}
+          animate={{ y: 0, rotate: -1.2, opacity: 1, scale: 1, filter: 'brightness(1) sepia(0) contrast(1) saturate(1)' }}
+          whileHover={{ rotate: 0, scale: 1.01 }}
+          transition={{
+            type: 'spring',
+            stiffness: 120,
+            damping: 16,
+            delay: 0.1,
+            filter: { duration: 2.2, delay: 0.35, ease: [0.4, 0, 0.2, 1] },
+          }}
         />
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5">
+        <motion.div
+          className="mt-6 flex flex-wrap items-center justify-center gap-2.5"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5, duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
+        >
           <button
             type="button"
             onClick={onRetake}
             disabled={state === 'saving' || state === 'saved'}
-            className="flex items-center gap-2 rounded-full border border-white/20 px-5 py-2.5 text-[0.85rem] font-semibold text-chalk hover:bg-white/10 disabled:opacity-40"
+            className="flex items-center gap-2 rounded-full border border-white/20 px-5 py-2.5 text-[0.85rem] font-semibold text-chalk outline-none transition-[background-color,transform] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal active:scale-[0.97] disabled:opacity-40"
           >
             <RotateCcw className="size-4" aria-hidden /> Retake
           </button>
           <a
             href={shot.url}
             download={`huddle-${new Date().toISOString().slice(0, 10)}.jpg`}
-            className="flex items-center gap-2 rounded-full border border-white/20 px-5 py-2.5 text-[0.85rem] font-semibold text-chalk hover:bg-white/10"
+            className="flex items-center gap-2 rounded-full border border-white/20 px-5 py-2.5 text-[0.85rem] font-semibold text-chalk outline-none transition-[background-color,transform] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal active:scale-[0.97]"
           >
             <Download className="size-4" aria-hidden /> Download
           </a>
@@ -363,19 +411,38 @@ function Print({ shot, onRetake, onSave, onDone }: { shot: Shot; onRetake: () =>
                 setState('error')
               }
             }}
-            className="flex min-w-48 items-center justify-center gap-2 rounded-full bg-chalk px-6 py-2.5 text-[0.88rem] font-semibold text-void transition-transform hover:scale-[1.03] disabled:hover:scale-100"
-          >
-            {state === 'saved' ? (
-              <>
-                <Check className="size-4" aria-hidden /> Saved to memories
-              </>
-            ) : state === 'saving' ? (
-              'Saving…'
-            ) : (
-              'Save to memories'
+            className={cn(
+              'flex min-w-48 items-center justify-center gap-2 rounded-full px-6 py-2.5 text-[0.88rem] font-semibold outline-none transition-[transform,background-color,color] duration-300 hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal active:scale-[0.97] disabled:hover:scale-100',
+              state === 'saved' ? 'bg-emerald-400 text-void' : 'bg-chalk text-void',
             )}
+          >
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={state === 'error' ? 'idle' : state}
+                className="flex items-center gap-2"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.18 }}
+              >
+                {state === 'saved' ? (
+                  <>
+                    <motion.span initial={{ scale: 0, rotate: -45 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 600, damping: 16 }}>
+                      <Check className="size-4" strokeWidth={3} aria-hidden />
+                    </motion.span>
+                    Saved to memories
+                  </>
+                ) : state === 'saving' ? (
+                  <>
+                    <span className="size-3.5 animate-spin rounded-full border-2 border-void/25 border-t-void" aria-hidden /> Saving…
+                  </>
+                ) : (
+                  'Save to memories'
+                )}
+              </motion.span>
+            </AnimatePresence>
           </button>
-        </div>
+        </motion.div>
         {state === 'error' && (
           <p role="alert" className="mt-3 text-[0.8rem] text-signal-bright">
             {message}
@@ -396,15 +463,34 @@ function PhotoToast({ url, name }: { url: string; name: string }) {
   return (
     <motion.div
       role="status"
-      className="glass-pill-ink fixed bottom-24 left-1/2 z-[120] flex -translate-x-1/2 items-center gap-3 rounded-2xl p-2 pr-4"
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 10 }}
+      className="glass-pill-ink fixed bottom-24 left-1/2 z-[120] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 overflow-hidden rounded-2xl p-2 pr-4"
+      initial={{ opacity: 0, y: 16, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 10, scale: 0.97 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 28 }}
     >
-      <img src={url} alt="" className="h-11 w-14 rounded-lg object-cover" />
-      <span className="text-[0.82rem] text-chalk">
+      {/* A tiny print, tossed onto the table at a slight angle. */}
+      <motion.span
+        className="block shrink-0 rounded-[3px] bg-[#fbf8f2] p-[3px] pb-[7px] shadow-[0_6px_14px_-4px_rgba(0,0,0,.6)]"
+        initial={{ rotate: -14, y: -10, opacity: 0 }}
+        animate={{ rotate: -5, y: 0, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 14, delay: 0.1 }}
+      >
+        <img src={url} alt="" className="block h-10 w-12 object-cover" />
+      </motion.span>
+      <span className="min-w-0 text-[0.82rem] leading-snug text-chalk">
         <span className="font-semibold">{name}</span> saved a photo 📸
+        <span className="block text-[0.7rem] text-mist">It’s in the room’s memories</span>
       </span>
+      {/* How long it stays, so it doesn't vanish mid-read. */}
+      <motion.span
+        aria-hidden
+        className="absolute inset-x-0 bottom-0 h-[2px] bg-white/30"
+        style={{ originX: 0 }}
+        initial={{ scaleX: 1 }}
+        animate={{ scaleX: 0 }}
+        transition={{ duration: 4.5, ease: 'linear' }}
+      />
     </motion.div>
   )
 }

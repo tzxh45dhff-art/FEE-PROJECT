@@ -1,3 +1,6 @@
+import { useId } from 'react'
+import { motion } from 'framer-motion'
+
 import { cn } from '@/lib/utils'
 
 /** A row of number choices — rounds, seconds — for a game's setup screen. */
@@ -14,10 +17,12 @@ export function Segmented({
   onChange: (v: number) => void
   format?: (v: number) => string
 }) {
+  /* Each row slides its own pill, so two rows on one screen don't swap pills. */
+  const pill = useId()
   return (
     <div className="mt-6 flex flex-col items-center gap-2">
       <span className="text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-mist">{label}</span>
-      <div className="flex gap-1 rounded-full bg-white/[0.06] p-1" role="radiogroup" aria-label={label}>
+      <div className="flex gap-1 rounded-full bg-white/[0.06] p-1 ring-1 ring-inset ring-white/[0.06]" role="radiogroup" aria-label={label}>
         {values.map((v) => (
           <button
             key={v}
@@ -26,11 +31,19 @@ export function Segmented({
             aria-checked={value === v}
             onClick={() => onChange(v)}
             className={cn(
-              'min-w-14 rounded-full px-4 py-1.5 text-[0.85rem] font-semibold tabular-nums outline-none transition-colors focus-visible:outline-2 focus-visible:outline-signal',
-              value === v ? 'bg-chalk text-void' : 'text-mist hover:text-chalk',
+              'relative min-w-14 rounded-full px-4 py-1.5 text-[0.85rem] font-semibold tabular-nums outline-none transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-signal active:scale-95',
+              value === v ? 'text-void' : 'text-mist hover:text-chalk',
             )}
           >
-            {format(v)}
+            {value === v && (
+              <motion.span
+                layoutId={pill}
+                aria-hidden
+                className="absolute inset-0 rounded-full bg-chalk shadow-[0_4px_14px_-4px_rgba(255,255,255,.45)]"
+                transition={{ type: 'spring', stiffness: 520, damping: 34 }}
+              />
+            )}
+            <span className="relative">{format(v)}</span>
           </button>
         ))}
       </div>

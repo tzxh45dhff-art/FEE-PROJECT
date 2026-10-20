@@ -55,12 +55,16 @@ export function GamePicker({
         <button
           type="button"
           onClick={() => onPick(live as GameId)}
-          className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-left outline-none transition-colors hover:bg-emerald-400/15 focus-visible:outline-2 focus-visible:outline-signal"
+          className="group mt-5 flex w-full items-center gap-3 rounded-2xl border border-emerald-400/30 bg-emerald-400/10 py-2.5 pl-4 pr-2.5 text-left outline-none transition-colors hover:bg-emerald-400/15 focus-visible:outline-2 focus-visible:outline-signal"
         >
-          <span className="size-2 animate-signal-pulse rounded-full bg-emerald-400" />
-          <span className="text-[0.88rem] text-chalk">
-            <span className="font-semibold">{liveLabel}</span> is on{liveBy ? ` — ${liveBy} started it` : ''}. Tap to join.
+          <span className="relative grid size-2.5 place-items-center" aria-hidden>
+            <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/60" />
+            <span className="size-2 rounded-full bg-emerald-400" />
           </span>
+          <span className="min-w-0 flex-1 text-[0.88rem] text-chalk">
+            <span className="font-semibold">{liveLabel}</span> is on{liveBy ? ` — ${liveBy} started it` : ''}.
+          </span>
+          <span className="shrink-0 rounded-full bg-emerald-400 px-3 py-1 text-[0.75rem] font-semibold text-void transition-transform group-hover:scale-105">Join</span>
         </button>
       )}
 
@@ -73,6 +77,7 @@ export function GamePicker({
             onClick={() => onPick(game.id)}
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
+            whileTap={game.ready ? { scale: 0.97 } : undefined}
             transition={{ delay: i * 0.04, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
               'group relative flex min-h-44 flex-col overflow-hidden rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-5 text-left outline-none transition-[transform,border-color] duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
@@ -80,6 +85,8 @@ export function GamePicker({
             )}
           >
             <span className={cn('absolute inset-0 bg-gradient-to-br opacity-90 transition-opacity group-hover:opacity-100', game.tone)} />
+            {/* A soft light behind the art that brightens as you hover, like a card catching the lamp. */}
+            <span aria-hidden className="absolute -left-6 -top-6 size-32 rounded-full bg-white/10 opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
             <span
               aria-hidden
               className="relative text-[2.4rem] leading-none transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110"
@@ -93,7 +100,11 @@ export function GamePicker({
             <span className="relative mt-1 text-[0.82rem] leading-snug text-mist">{game.line}</span>
             <span className="relative mt-3 flex items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-dusk">
               {game.players} players
-              {live === game.id && <span className="rounded-full bg-emerald-400/20 px-2 py-0.5 text-emerald-300">live</span>}
+              {live === game.id && (
+                <span className="flex items-center gap-1 rounded-full bg-emerald-400/20 px-2 py-0.5 text-emerald-300">
+                  <span className="size-1.5 animate-pulse rounded-full bg-emerald-300" aria-hidden /> live
+                </span>
+              )}
               {!game.ready && <span className="rounded-full bg-white/10 px-2 py-0.5 text-mist">soon</span>}
             </span>
           </motion.button>

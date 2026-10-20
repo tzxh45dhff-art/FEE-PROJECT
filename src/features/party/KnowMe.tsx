@@ -31,6 +31,19 @@ export type KnowMeView = {
 
 const LETTERS = ['A', 'B', 'C', 'D']
 const TONES = ['from-pink-500/25', 'from-amber-500/25', 'from-sky-500/25', 'from-violet-500/25']
+const MEDALS = ['🥇', '🥈', '🥉']
+
+/* Everyone keeps the same colour all game, so a guess on a tile reads as a face. */
+const HUES = ['from-rose-400 to-pink-600', 'from-amber-300 to-orange-500', 'from-sky-400 to-indigo-500', 'from-violet-400 to-fuchsia-600', 'from-emerald-300 to-teal-500', 'from-lime-300 to-green-500']
+const hue = (id: string) => HUES[[...id].reduce((n, c) => n + c.charCodeAt(0), 0) % HUES.length]!
+
+function Face({ person, className }: { person: Person; className?: string }) {
+  return (
+    <span className={cn('grid shrink-0 place-items-center rounded-full bg-gradient-to-br font-semibold text-white', hue(person.id), className)} aria-hidden>
+      {person.name.slice(0, 1).toUpperCase()}
+    </span>
+  )
+}
 
 export function KnowMeSetup({
   people,
@@ -97,6 +110,7 @@ export function KnowMeTable({
     return () => clearInterval(timer)
   }, [party, view.deadline])
   const name = (p: Person | undefined) => (p?.id === selfId ? 'You' : (p?.name ?? ''))
+  const urgent = view.phase === 'answer' && left > 0 && left <= 5000
 
   if (view.phase === 'over') {
     const ranked = [...view.players].sort((a, b) => (view.scores[b.id] ?? 0) - (view.scores[a.id] ?? 0))
@@ -111,30 +125,73 @@ export function KnowMeTable({
       <div className="mx-auto flex w-full max-w-md flex-col items-center px-5 pt-8 text-center">
         <p className="text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-signal-bright">The verdict</p>
         {best ? (
-          <h2 className="mt-2 font-display text-[2rem] font-semibold leading-tight tracking-[-0.03em] text-chalk">
-            {who(best.g)} {best.g === selfId ? 'know' : 'knows'} {best.s === selfId ? 'you' : who(best.s)} best 💞
-            <span className="mt-1 block text-[1rem] font-normal text-mist">
-              {best.right} of {best.asked} right
-            </span>
-          </h2>
+          <>
+            {/* The pair who know each other best, side by side, with a heart between them. */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+              className="relative mt-6 flex items-center"
+            >
+              <span aria-hidden className="absolute -inset-6 rounded-full bg-pink-500/20 blur-3xl" />
+              {[best.g, best.s].map((id, k) => {
+                const p = view.players.find((x) => x.id === id)
+                return p ? (
+                  <motion.span
+                    key={id}
+                    initial={{ x: k ? 26 : -26, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 18, delay: 0.15 }}
+                    className={cn('relative', k && '-ml-3')}
+                  >
+                    <Face person={p} className="size-16 font-display text-[1.5rem] ring-4 ring-[#120e15]" />
+                  </motion.span>
+                ) : null
+              })}
+              <motion.span
+                aria-hidden
+                className="absolute left-1/2 top-1/2 -ml-[0.8rem] -mt-[0.85rem] text-[1.6rem] leading-none"
+                animate={{ scale: [1, 1.22, 1, 1.12, 1] }}
+                transition={{ duration: 1.4, repeat: Infinity, repeatDelay: 0.6 }}
+              >
+                💞
+              </motion.span>
+            </motion.div>
+            <h2 className="mt-4 text-balance font-display text-[clamp(1.6rem,5vw,2rem)] font-semibold leading-tight tracking-[-0.03em] text-chalk">
+              {who(best.g)} {best.g === selfId ? 'know' : 'knows'} {best.s === selfId ? 'you' : who(best.s)} best
+              <span className="mt-1 block text-[1rem] font-normal text-mist">
+                {best.right} of {best.asked} right
+              </span>
+            </h2>
+          </>
         ) : (
           <h2 className="mt-2 font-display text-[2rem] font-semibold tracking-[-0.03em] text-chalk">Game over</h2>
         )}
         <ol className="mt-6 w-full space-y-2">
           {ranked.map((p, i) => (
-            <li key={p.id} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-              <span className="text-[0.92rem] text-chalk">
-                <span className="mr-3 tabular-nums text-dusk">{i + 1}</span>
-                {name(p)}
+            <motion.li
+              key={p.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 + i * 0.07, type: 'spring', stiffness: 300, damping: 26 }}
+              className={cn(
+                'flex items-center justify-between rounded-2xl border px-4 py-3',
+                i === 0 ? 'border-amber-200/30 bg-amber-300/[0.08] shadow-[0_0_40px_-14px_rgba(252,211,77,.5)]' : 'border-white/10 bg-white/[0.04]',
+              )}
+            >
+              <span className="flex min-w-0 items-center gap-3 text-[0.92rem] text-chalk">
+                <span className="w-5 text-center tabular-nums text-dusk">{MEDALS[i] ?? i + 1}</span>
+                <Face person={p} className="size-7 text-[0.7rem]" />
+                <span className="truncate">{name(p)}</span>
               </span>
-              <span className="font-display text-[1.1rem] font-semibold tabular-nums text-chalk">{view.scores[p.id] ?? 0}</span>
-            </li>
+              <span className={cn('font-display text-[1.1rem] font-semibold tabular-nums', i === 0 ? 'text-amber-100' : 'text-chalk')}>{view.scores[p.id] ?? 0}</span>
+            </motion.li>
           ))}
         </ol>
         <button
           type="button"
           onClick={onLeaveTable}
-          className="mt-6 rounded-full bg-chalk px-7 py-3 text-[0.88rem] font-semibold text-void outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          className="mt-6 rounded-full bg-chalk px-7 py-3 text-[0.88rem] font-semibold text-void outline-none transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal active:scale-[0.97]"
         >
           Back to games
         </button>
@@ -148,13 +205,23 @@ export function KnowMeTable({
         <p className="text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-mist">
           Question {view.turn + 1} of {view.turns}
         </p>
-        <span className="font-display text-[1.1rem] font-semibold tabular-nums text-chalk" role="timer" aria-label={`${Math.ceil(left / 1000)} seconds`}>
+        <span
+          className={cn(
+            'font-display text-[1.1rem] font-semibold tabular-nums transition-colors',
+            urgent ? 'text-signal-bright' : 'text-chalk',
+          )}
+          role="timer"
+          aria-label={`${Math.ceil(left / 1000)} seconds`}
+        >
           {view.phase === 'answer' ? `${Math.ceil(left / 1000)}s` : ''}
         </span>
       </div>
-      <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-white/[0.06]" aria-hidden>
+      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]" aria-hidden>
         <div
-          className={cn('h-full rounded-full transition-[width] duration-300 ease-linear', left < 5000 ? 'bg-signal-bright' : 'bg-chalk/70')}
+          className={cn(
+            'h-full rounded-full transition-[width] duration-300 ease-linear',
+            urgent ? 'animate-pulse bg-signal-bright shadow-[0_0_14px_rgba(255,90,90,.85)]' : 'bg-gradient-to-r from-pink-300/70 to-violet-300',
+          )}
           style={{
             width: view.phase === 'answer' ? `${Math.min(100, (left / (view.answerSeconds * 1000)) * 100)}%` : '0%',
           }}
@@ -163,18 +230,43 @@ export function KnowMeTable({
 
       <div className="my-auto flex w-full flex-col items-center py-6">
         <motion.div key={view.turn} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center text-center">
-          <span className="grid size-16 place-items-center rounded-full bg-gradient-to-br from-pink-500/60 to-violet-600/60 font-display text-[1.5rem] font-semibold text-chalk ring-2 ring-white/30">
-            {subject.name.slice(0, 1).toUpperCase()}
-          </span>
-          <p className="mt-3 text-[0.85rem] text-mist" role="status" aria-live="polite">
-            {hotSeat
-              ? revealed
-                ? 'Here’s how well they know you'
-                : 'You’re in the hot seat. Answer honestly — they’re guessing.'
-              : revealed
-                ? `${subject.name}’s answer`
-                : `What will ${subject.name} pick?`}
-          </p>
+          {/* The hot seat: a warm halo turning slowly round whoever's in it. */}
+          <div className="relative grid size-[5.5rem] place-items-center">
+            <span aria-hidden className="absolute -inset-4 rounded-full bg-gradient-to-br from-orange-500/30 to-pink-500/30 blur-2xl" />
+            <span
+              aria-hidden
+              className="absolute inset-0 animate-spin-slow rounded-full bg-[conic-gradient(from_0deg,#fb923c,#ec4899,#a78bfa,#fb923c)]"
+              style={{ animationDuration: hotSeat && !revealed ? '3s' : '8s' }}
+            />
+            <span className="relative grid size-[4.9rem] place-items-center rounded-full bg-[#140f17]">
+              <Face person={subject} className="size-[4.4rem] font-display text-[1.7rem]" />
+            </span>
+            <motion.span
+              initial={{ y: 6, scale: 0.7, opacity: 0 }}
+              animate={{ y: 0, scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 480, damping: 20, delay: 0.15 }}
+              className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-orange-500 to-pink-500 px-2.5 py-0.5 text-[0.6rem] font-bold uppercase tracking-[0.14em] text-white shadow-[0_6px_16px_-6px_rgba(236,72,153,.8)]"
+            >
+              🔥 Hot seat
+            </motion.span>
+          </div>
+          <p className="mt-5 font-display text-[1.05rem] font-semibold text-chalk">{hotSeat ? 'You' : subject.name}</p>
+          <div role="status" aria-live="polite" className="mt-1">
+            {hotSeat && !revealed ? (
+              <motion.p
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 18, delay: 0.25 }}
+                className="text-[0.85rem] text-orange-200"
+              >
+                You’re in the hot seat. Answer honestly — they’re guessing.
+              </motion.p>
+            ) : (
+              <p className="text-[0.85rem] text-mist">
+                {hotSeat ? 'Here’s how well they know you' : revealed ? `${subject.name}’s answer` : `What will ${subject.name} pick?`}
+              </p>
+            )}
+          </div>
           <h2 className="mt-2 max-w-xl font-display text-[clamp(1.5rem,3.4vw,2.2rem)] font-semibold leading-tight tracking-[-0.025em] text-chalk">
             {view.question.q}
           </h2>
@@ -192,44 +284,68 @@ export function KnowMeTable({
                 disabled={revealed}
                 onClick={() => act('answer', { option: i })}
                 aria-pressed={picked}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0, scale: truth ? 1.03 : 1 }}
-                transition={{ delay: i * 0.05 }}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0, scale: truth ? [1, 1.05, 1.03] : 1 }}
+                whileTap={revealed ? undefined : { scale: 0.97, y: 2 }}
+                transition={{ delay: revealed ? 0 : i * 0.05, type: 'spring', stiffness: 400, damping: 24, scale: truth ? { duration: 0.5 } : undefined }}
                 className={cn(
-                  'relative flex min-h-20 items-center gap-3 overflow-hidden rounded-[1.2rem] border p-4 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
+                  'group relative flex min-h-20 items-center gap-3 overflow-hidden rounded-[1.2rem] border p-4 text-left outline-none transition-[border-color,background-color,opacity] duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
+                  'shadow-[inset_0_1px_0_rgba(255,255,255,.1),0_4px_0_rgba(0,0,0,.35)]',
                   truth
-                    ? 'border-emerald-400/70 bg-emerald-500/20'
+                    ? 'border-emerald-400/70 bg-emerald-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,.18),0_4px_0_rgba(0,0,0,.35),0_0_44px_-10px_rgba(52,211,153,.7)]'
                     : revealed
-                      ? 'border-white/5 bg-white/[0.02] opacity-60'
+                      ? 'border-white/5 bg-white/[0.02] opacity-55'
                       : picked
-                        ? 'border-white/60 bg-white/[0.08]'
+                        ? 'border-white/70 bg-white/[0.1]'
                         : 'border-white/10 bg-white/[0.04] hover:border-white/30',
                 )}
               >
-                {!revealed && <span className={cn('absolute inset-0 bg-gradient-to-br to-transparent opacity-60', TONES[i])} />}
-                <span className="relative grid size-8 shrink-0 place-items-center rounded-full bg-white/10 text-[0.78rem] font-semibold text-chalk">
-                  {LETTERS[i]}
+                {!revealed && <span className={cn('absolute inset-0 bg-gradient-to-br to-transparent transition-opacity', TONES[i], picked ? 'opacity-100' : 'opacity-60')} />}
+                {truth && (
+                  <motion.span
+                    aria-hidden
+                    className="absolute inset-y-0 w-1/2 -skew-x-12 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                    initial={{ left: '-60%' }}
+                    animate={{ left: '130%' }}
+                    transition={{ duration: 0.9, delay: 0.15, ease: 'easeOut' }}
+                  />
+                )}
+                <span
+                  className={cn(
+                    'relative grid size-8 shrink-0 place-items-center rounded-full text-[0.78rem] font-semibold transition-colors',
+                    truth ? 'bg-emerald-300 text-void' : picked ? 'bg-chalk text-void' : 'bg-white/10 text-chalk',
+                  )}
+                >
+                  {truth ? '✓' : LETTERS[i]}
                 </span>
                 <span className="relative flex-1 text-[0.98rem] font-medium text-chalk">{option}</span>
-                <span className="relative flex -space-x-1.5">
-                  {guessers.map((g) => (
-                    <span
-                      key={g.id}
-                      title={g.name}
-                      className={cn(
-                        'grid size-7 place-items-center rounded-full text-[0.7rem] font-semibold ring-2 ring-void',
-                        truth ? 'bg-emerald-400 text-void' : 'bg-white/25 text-chalk',
-                      )}
-                    >
-                      {g.name.slice(0, 1).toUpperCase()}
-                    </span>
-                  ))}
-                  {truth && (
-                    <span className="ml-2 text-[1.1rem]" aria-label="the true answer">
-                      ✓
-                    </span>
-                  )}
-                </span>
+                {picked && !revealed && (
+                  <motion.span
+                    initial={{ scale: 0.6, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 22 }}
+                    className="relative shrink-0 rounded-full bg-black/35 px-2.5 py-1 text-[0.7rem] font-semibold text-chalk"
+                  >
+                    {hotSeat ? 'My answer' : 'My guess'}
+                  </motion.span>
+                )}
+                {guessers.length > 0 && (
+                  <span className="relative flex -space-x-1.5" aria-label={`Guessed by ${guessers.map((g) => g.name).join(', ')}`}>
+                    {guessers.map((g, k) => (
+                      <motion.span
+                        key={g.id}
+                        title={g.name}
+                        initial={{ scale: 0, y: 8 }}
+                        animate={{ scale: 1, y: 0 }}
+                        transition={{ type: 'spring', stiffness: 520, damping: 18, delay: 0.35 + k * 0.08 }}
+                        className={cn('relative rounded-full ring-2', truth ? 'ring-emerald-300' : 'ring-[#140f17]')}
+                      >
+                        <Face person={g} className="size-7 text-[0.7rem]" />
+                      </motion.span>
+                    ))}
+                  </span>
+                )}
+                {truth && <span className="sr-only">the true answer</span>}
               </motion.button>
             )
           })}
@@ -252,7 +368,12 @@ export function KnowMeTable({
                 damping: 22,
                 delay: 0.25,
               }}
-              className="mt-5 rounded-full bg-white/[0.06] px-5 py-2 text-[0.92rem] font-medium text-chalk"
+              className={cn(
+                'mt-5 rounded-full px-5 py-2 text-center text-[0.92rem] font-medium text-chalk ring-1',
+                selfId !== undefined && view.truth !== null && view.guesses[selfId] === view.truth && !hotSeat
+                  ? 'bg-emerald-400/15 ring-emerald-300/30'
+                  : 'bg-white/[0.06] ring-white/10',
+              )}
             >
               {verdict(view, selfId, subject)}
             </motion.p>
@@ -265,18 +386,25 @@ export function KnowMeTable({
         )}
       </div>
 
-      <div className="flex w-full items-center justify-between pt-2">
-        <ul className="flex flex-wrap gap-3 text-[0.8rem]">
+      <div className="flex w-full flex-wrap items-center justify-between gap-3 pt-2">
+        <ul className="flex flex-wrap gap-1.5 text-[0.78rem]" aria-label="Scores">
           {view.players.map((p) => (
-            <li key={p.id} className="text-mist">
-              <span className="text-chalk">{name(p)}</span> <span className="tabular-nums">{view.scores[p.id] ?? 0}</span>
+            <li
+              key={p.id}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5 text-mist',
+                p.id === subject.id ? 'bg-orange-400/15 ring-1 ring-orange-300/30' : 'bg-white/[0.05]',
+              )}
+            >
+              <Face person={p} className="size-5 text-[0.58rem]" />
+              <span className="text-chalk">{name(p)}</span> <span className="font-semibold tabular-nums">{view.scores[p.id] ?? 0}</span>
             </li>
           ))}
         </ul>
         <button
           type="button"
           onClick={() => act('end')}
-          className="rounded-full border border-white/12 px-4 py-2 text-[0.75rem] text-mist hover:bg-white/5 hover:text-chalk"
+          className="rounded-full border border-white/12 px-4 py-2 text-[0.75rem] text-mist outline-none transition-colors hover:bg-white/5 hover:text-chalk focus-visible:outline-2 focus-visible:outline-signal"
         >
           End the game
         </button>

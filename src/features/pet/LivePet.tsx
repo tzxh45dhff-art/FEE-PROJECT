@@ -17,17 +17,18 @@ import { cn } from '@/lib/utils'
  * everything, because you are looking right at it when it does that.
  */
 
-const REACT: Record<Reaction, { face: Expression; bump: 'squash' | 'jump' | 'shake' | 'wiggle'; line: string[]; hearts?: number }> = {
-  yum: { face: 'yum', bump: 'squash', line: ['Nom nom nom', 'Mmm!', 'Tasty!'] },
+/* What floats off it afterwards: love gets hearts, a giggle gets sparkles, a poke gets a little anger mark. */
+const REACT: Record<Reaction, { face: Expression; bump: 'squash' | 'jump' | 'shake' | 'wiggle'; line: string[]; hearts?: number; glyph?: string }> = {
+  yum: { face: 'yum', bump: 'squash', line: ['Nom nom nom', 'Mmm!', 'Tasty!'], hearts: 3, glyph: '✨' },
   love: { face: 'love', bump: 'jump', line: ['MY FAVOURITE!!', 'I love you!!', 'Best. Day. Ever.'], hearts: 6 },
   full: { face: 'full', bump: 'shake', line: ['I’m stuffed…', 'No more, please', 'Can’t… eat… another…'] },
   purr: { face: 'purr', bump: 'wiggle', line: ['Prrrrr…', 'Mmm, more', 'That’s the spot'], hearts: 3 },
-  ouch: { face: 'ouch', bump: 'squash', line: ['Ow!', 'Hey!', 'Ouchie!'] },
-  giggle: { face: 'giggle', bump: 'wiggle', line: ['Hehehe!', 'That tickles!', 'Stoppp hehe'] },
-  grumpy: { face: 'grumpy', bump: 'shake', line: ['Hmph.', 'Rude.', 'Okay, that’s enough.'] },
-  play: { face: 'happy', bump: 'jump', line: ['Again! Again!', 'Wheee!', 'Catch me!'] },
+  ouch: { face: 'ouch', bump: 'squash', line: ['Ow!', 'Hey!', 'Ouchie!'], hearts: 1, glyph: '💢' },
+  giggle: { face: 'giggle', bump: 'wiggle', line: ['Hehehe!', 'That tickles!', 'Stoppp hehe'], hearts: 5, glyph: '✨' },
+  grumpy: { face: 'grumpy', bump: 'shake', line: ['Hmph.', 'Rude.', 'Okay, that’s enough.'], hearts: 2, glyph: '💢' },
+  play: { face: 'happy', bump: 'jump', line: ['Again! Again!', 'Wheee!', 'Catch me!'], hearts: 4, glyph: '⭐' },
   listen: { face: 'listen', bump: 'wiggle', line: [''] },
-  sulk: { face: 'sad', bump: 'shake', line: ['…not now.', 'I’m too hungry to play', 'Leave me alone…'] },
+  sulk: { face: 'sad', bump: 'shake', line: ['…not now.', 'I’m too hungry to play', 'Leave me alone…'], hearts: 1, glyph: '💧' },
 }
 
 const DID: Record<PetEvent['action'], string> = { feed: 'fed me', pet: 'stroked me', poke: 'poked me', tickle: 'tickled me', play: 'played with me', talk: 'talked to me' }
@@ -65,7 +66,7 @@ export function LivePet({
   const [bump, setBump] = useState(0)
   const [bumpKind, setBumpKind] = useState<'squash' | 'jump' | 'shake' | 'wiggle'>('squash')
   const [bubble, setBubble] = useState<{ id: string; text: string; who?: string } | null>(null)
-  const [hearts, setHearts] = useState<{ id: string; n: number } | null>(null)
+  const [hearts, setHearts] = useState<{ id: string; n: number; glyph: string } | null>(null)
   const [snack, setSnack] = useState<{ id: string; food: Food } | null>(null)
 
   /* Eyes follow the pointer anywhere on the page. */
@@ -94,7 +95,7 @@ export function LivePet({
       const action = event.action === 'feed' && event.food ? `${FOOD_EMOJI[event.food]} ` : ''
       if (line) setBubble({ id: event.id, text: `${action}${line}`, who: who ? `${who} ${event.reaction === 'full' ? 'tried to feed me' : DID[event.action]}` : undefined })
       else if (who) setBubble({ id: event.id, text: `${who} is talking to me` })
-      if (r.hearts) setHearts({ id: event.id, n: r.hearts })
+      if (r.hearts) setHearts({ id: event.id, n: r.hearts, glyph: r.glyph ?? '💗' })
     }
     /* Food flies in first; the reaction lands when it arrives. */
     if (event.action === 'feed' && event.food && event.reaction !== 'full') {
@@ -170,23 +171,42 @@ export function LivePet({
         <PetArt species={pet.species} expression={face} look={look} mouth={level} bump={bump} bumpKind={bumpKind} className="size-full drop-shadow-[0_18px_30px_rgba(0,0,0,.35)]" />
       </motion.button>
 
-      {/* Hearts, floating up and away. */}
+      {/* Hearts (or sparkles, or stars), floating up and away, swaying as they go. */}
       <AnimatePresence>
         {hearts &&
-          Array.from({ length: hearts.n }, (_, i) => (
-            <motion.span
-              key={`${hearts.id}-${i}`}
-              aria-hidden
-              className="pointer-events-none absolute left-1/2 text-[1.2rem]"
-              style={{ bottom: `${scale * 60}%` }}
-              initial={{ opacity: 0, x: 0, y: 0, scale: 0.4 }}
-              animate={{ opacity: [0, 1, 0], x: (i - hearts.n / 2) * 18 + (i % 2 ? 6 : -6), y: -90 - (i % 3) * 22, scale: 1 }}
-              transition={{ duration: 1.5, delay: i * 0.08, ease: 'easeOut' }}
-              onAnimationComplete={() => i === hearts.n - 1 && setHearts(null)}
-            >
-              💗
-            </motion.span>
-          ))}
+          (hearts.glyph === '💢' || hearts.glyph === '💧'
+            ? /* A cross mark or a tear doesn't float: it pops by the head, like in a cartoon. */
+              Array.from({ length: hearts.n }, (_, i) => (
+                <motion.span
+                  key={`${hearts.id}-${i}`}
+                  aria-hidden
+                  className="pointer-events-none absolute text-[1.35rem]"
+                  style={{ bottom: `${scale * (72 - i * 10)}%`, left: i % 2 ? '30%' : '64%' }}
+                  initial={{ opacity: 0, scale: 0.2, rotate: -20 }}
+                  animate={{ opacity: [0, 1, 1, 0], scale: [0.2, 1.25, 1, 0.9], rotate: 0, y: hearts.glyph === '💧' ? [0, 0, 14, 22] : 0 }}
+                  transition={{ duration: 1.3, delay: i * 0.15, ease: 'easeOut' }}
+                  onAnimationComplete={() => i === hearts.n - 1 && setHearts(null)}
+                >
+                  {hearts.glyph}
+                </motion.span>
+              ))
+            : Array.from({ length: hearts.n }, (_, i) => {
+                const x = (i - (hearts.n - 1) / 2) * 20 + (i % 2 ? 6 : -6)
+                return (
+                  <motion.span
+                    key={`${hearts.id}-${i}`}
+                    aria-hidden
+                    className="pointer-events-none absolute left-1/2 -ml-[0.6rem] text-[1.2rem]"
+                    style={{ bottom: `${scale * 60}%` }}
+                    initial={{ opacity: 0, x: 0, y: 0, scale: 0.4, rotate: 0 }}
+                    animate={{ opacity: [0, 1, 1, 0], x: [0, x, x + (i % 2 ? -8 : 8), x], y: -90 - (i % 3) * 22, scale: [0.4, 1.1, 1, 0.9], rotate: i % 2 ? 14 : -14 }}
+                    transition={{ duration: 1.6, delay: i * 0.08, ease: 'easeOut' }}
+                    onAnimationComplete={() => i === hearts.n - 1 && setHearts(null)}
+                  >
+                    {hearts.glyph}
+                  </motion.span>
+                )
+              }))}
       </AnimatePresence>
 
       {/* A snack, tossed into its mouth. */}
