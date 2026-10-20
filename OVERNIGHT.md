@@ -50,7 +50,7 @@ cd server && PORT=4100 DATABASE_URL="file:./night.db" npx prisma db push --skip-
       one or writes their own, done / chicken-out, rotation, results. Play stage
       gets a game picker.
 - [x] **6. Draw and guess** — on the engine: word choice, live strokes, hints, scores.
-- [ ] **7. How well do you know me** — on the engine.
+- [x] **7. How well do you know me** — on the engine.
 - [ ] **8. Room pet** — Talking Tom-like: poke/pet/feed, repeats your voice pitched
       up, grows with time spent together, sad when neglected. Lives on the dashboard.
 - [ ] **9. Photo booth** — pose, frame, caption, snap → memories.
@@ -58,7 +58,7 @@ cd server && PORT=4100 DATABASE_URL="file:./night.db" npx prisma db push --skip-
 - [ ] **11. Guess the song** — clips from the room's music library.
 - [ ] **12. Shared wall** — sticky notes and doodles, persisted per room.
 - [ ] **13. Memory wall** — photos, moments, game wins, in one timeline.
-- [ ] **14. Morning report** — below.
+- [x] **14. Morning report** — below.
 
 Excluded by the owner: Ludo, new body animations.
 
@@ -108,4 +108,49 @@ Excluded by the owner: Ludo, new body animations.
   validated drawer-only side channel; late joiners get the canvas. Countdowns
   use server time. 47 server tests. Played by eye. ₹0.
 
+- 05:30–11:05 · Usage limit hit again mid-task; resumed 11:09 with nothing lost.
+- 11:15 · Task 7 done: how well do you know me (48 questions; the hot seat
+  answers in secret while everyone guesses at once; answers changeable until
+  the reveal; reveal shows the truth, who picked what and a verdict line;
+  +100 per right guess, +50 to the subject per right reader; the end screen
+  names who knows whom best). 53 server tests. Played by eye. ₹0.
+  Past the 09:30 cutoff, so no new tasks started after this.
+
 ## Morning report
+
+Written 11:15 IST, 20 Oct. The night was cut twice by the usage limit
+(02:55–05:10 and 05:30–11:05), so 8 of 15 tasks got done. Everything done is
+committed on **`night/fun`**: not pushed, not merged. Pushing to `main` deploys,
+so look first.
+
+**Done**
+- Linux server kit (`server/start-server.sh`, `server/LINUX.md`), tested in a real
+  Ubuntu VM.
+- Emotes (keys 1–9 and a wheel), throwing things between characters, and quick
+  toys (dice, coin, bottle, fortune cookie, 8-ball).
+- Reactions over the film, and moments pinned to timestamps.
+- A party-game engine with a game picker on the Play stage.
+- Truth or dare: 5 decks, with spicy behind an 18+ confirmation. The system offers
+  3 cards and you can also write your own.
+- Draw and guess.
+- How well do you know me.
+
+**Not started** (in this order next): room pet, photo booth, live trivia, guess the
+song, shared wall, memory wall. The database tables for all of them already
+exist (additive). The trivia and song cards on the picker say "soon".
+
+**Checks:** 53 server tests pass, `tsc` is clean on both stacks, lint is at its
+old baseline (2 warnings, not new), and the build works. ₹0 of Azure spent.
+
+**Things to do yourself**
+1. Moving to Linux: follow `server/LINUX.md`. Stop the Mac's API and ngrok,
+   copy `server/` (including the hidden `.env`, `prisma/dev.db` and `uploads/`),
+   then run `./start-server.sh`. It asks for the ngrok authtoken once.
+2. The Mac's API (port 4000) and ngrok were already down at 02:20 and I left
+   them alone. If you're staying on the Mac for now, start them yourself.
+3. Review `night/fun` (`git log main..night/fun`), then merge or push when
+   you're happy.
+4. Optional: the Colima VM from the Linux test is still running
+   (`colima stop` frees the memory). Dev servers on 4100 and 5180 are tonight's
+   test copies, using `server/night.db`, which is gitignored.
+
