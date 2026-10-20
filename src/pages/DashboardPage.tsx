@@ -9,6 +9,11 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { ActivityStage } from '@/features/dashboard/hub/ActivityStage'
 import { ACTIVITIES, type ActivityId } from '@/features/dashboard/hub/activities'
 import { CharacterParty, type HubMember } from '@/features/dashboard/hub/CharacterParty'
+import { FunDock } from '@/features/fun/FunDock'
+import { FunLayer } from '@/features/fun/FunLayer'
+import { PetCorner } from '@/features/pet/PetCorner'
+import { PhotoBooth } from '@/features/booth/PhotoBooth'
+import { useFun } from '@/features/fun/useFun'
 import { Fireflies } from '@/features/dashboard/hub/Fireflies'
 import { HubDrawer } from '@/features/dashboard/hub/HubDrawer'
 import { HubRail, type RailItem } from '@/features/dashboard/hub/HubRail'
@@ -354,6 +359,13 @@ export function DashboardPage() {
      session is live so it can badge the button and offer the way in. */
   const watch = useWatchPulse(activeRoomId)
 
+  /* Emotes, throwing things and toys — the room's own small fun. */
+  const fun = useFun(activeRoomId)
+  const others = useMemo(
+    () => party.filter((member) => !member.you).map(({ id, name }) => ({ id, name })),
+    [party],
+  )
+
   const leftItems: RailItem[] = activeRoom
     ? ACTIVITIES.map((entry) => ({
         key: entry.id,
@@ -478,6 +490,9 @@ export function DashboardPage() {
             covered={activity !== null}
           />
 
+          {activity === null && activeRoom && <FunLayer events={fun.events} youId={user?.id ?? null} />}
+          {activeRoom && <PetCorner key={activeRoom.id} roomId={activeRoom.id} selfId={user?.id} hidden={activity !== null} />}
+
           <HubRail side="left" items={leftItems} />
           <HubRail side="right" items={rightItems} insetRight={inset} />
 
@@ -538,6 +553,22 @@ export function DashboardPage() {
               <div className="flex min-w-0 max-w-full flex-nowrap items-center gap-2.5">
                 <RoomChip room={activeRoom} />
                 <VoiceButton roomId={activeRoomId} />
+                <FunDock
+                  others={others}
+                  events={fun.events}
+                  youId={user?.id ?? null}
+                  enabled={activity === null}
+                  onEmote={fun.emote}
+                  onThrow={fun.throwAt}
+                  onToy={fun.play}
+                />
+                <PhotoBooth
+                  roomId={activeRoom.id}
+                  roomName={activeRoom.name}
+                  selfId={user?.id}
+                  enabled={activity === null}
+                  onPose={fun.emote}
+                />
               </div>
             )}
           </div>

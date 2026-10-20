@@ -15,6 +15,9 @@ import { CoverAmbience } from '@/features/music/CoverAmbience'
 import type { AudioTrackInfo, PlayerHandle, QueueItem } from '@/features/watch/types'
 import { useDriftCorrection } from '@/features/sync/useDriftCorrection'
 import { useWatchSession } from '@/features/watch/useWatchSession'
+import { WatchFun } from '@/features/fun/WatchFun'
+import { clock } from '@/features/fun/time'
+import { useWatchFun } from '@/features/fun/useWatchFun'
 import { WatchControls } from '@/features/watch/WatchControls'
 import { WatchToasts } from '@/features/watch/WatchToasts'
 import { apiUrl } from '@/lib/config'
@@ -95,6 +98,13 @@ export function WatchStage({
   const [buffering, setBuffering] = useState(false)
 
   const item = snapshot?.item ?? null
+
+  /* Reactions floating over the film, and moments pinned in it. */
+  const fun = useWatchFun(roomId, item?.id ?? null)
+  const seekRoom = useCallback(
+    (seconds: number) => send('watch:control', { action: 'seek', position: seconds }),
+    [send],
+  )
   const embeddable = item?.source === 'youtube' || item?.source === 'file'
 
   /*
@@ -733,6 +743,21 @@ export function WatchStage({
 
           <WatchToasts snapshot={snapshot} selfId={selfId} />
 
+          <WatchFun
+            item={item ? { id: item.id, title: item.title } : null}
+            position={position}
+            chromeVisible={chromeVisible}
+            selfId={selfId}
+            reactions={fun.reactions}
+            moments={fun.moments}
+            arrival={fun.arrival}
+            onDismissArrival={fun.dismissArrival}
+            onReact={fun.react}
+            onPin={fun.pin}
+            onRemove={fun.remove}
+            onSeek={seekRoom}
+          />
+
           <div
             className={cn(
               'absolute inset-x-0 bottom-0 transition-opacity duration-500 ease-glass',
@@ -765,6 +790,12 @@ export function WatchStage({
                 onSkip={skip}
                 onToggleFullscreen={toggleFullscreen}
                 disabled={!item}
+                markers={fun.moments.map((m) => ({
+                  id: m.id,
+                  position: m.position,
+                  emoji: m.emoji,
+                  label: `${m.emoji} ${clock(m.position)}${m.note ? ` — ${m.note}` : ''} (${m.createdBy.name})`,
+                }))}
               />
             )}
           </div>

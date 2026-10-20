@@ -5,6 +5,7 @@ import { MathUtils, Vector3, type Group, type PerspectiveCamera } from 'three'
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
 
 import { measure, standUp } from '@/features/dashboard/hub/measure'
+import { forgetAnchor, onWave, publishAnchor } from '@/features/fun/anchors'
 import type { PointerTilt } from '@/hooks/usePointerTilt'
 
 /**
@@ -26,6 +27,8 @@ export type PartyMember = {
  */
 const TARGET_SKELETON_HEIGHT = 1.58
 const SPACING = 1.08
+/** Roughly the crown of a normalised character, in world units. */
+const HEAD_HEIGHT = 1.62
 
 /*
  * Mixamo names every downloaded clip "mixamo.com", so by the time three actions
@@ -129,9 +132,33 @@ function Character({
   const hasClips = names.length > 0
   const breathe = useRef(Math.random() * Math.PI * 2)
 
+  /* The wave emote plays this character's own greeting clip. */
+  useEffect(() => onWave((id) => id === member.id && setGreeting(true)), [member.id])
+  useEffect(() => () => forgetAnchor(member.id), [member.id])
+
+  /* Scratch vectors, reused every frame rather than allocated. */
+  const head = useMemo(() => new Vector3(), [])
+  const foot = useMemo(() => new Vector3(), [])
+
   useFrame((state, delta) => {
     const node = group.current
-    if (!node || still) return
+    if (!node) return
+
+    /*
+     * Where this head is on screen, for the effects layer (emotes rise from
+     * it, thrown things fly to it). Projected even when the scene is still, so
+     * effects stay anchored with reduced motion on — it is two vector
+     * projections, not a render.
+     */
+    head.set(restX, HEAD_HEIGHT, 0).project(state.camera)
+    foot.set(restX, 0, 0).project(state.camera)
+    const { left, top, width, height } = state.size
+    const hx = left + ((head.x + 1) / 2) * width
+    const hy = top + ((1 - head.y) / 2) * height
+    const fy = top + ((1 - foot.y) / 2) * height
+    publishAnchor(member.id, hx, hy, fy - hy)
+
+    if (still) return
 
     /*
      * The turn is applied to the outer group, never to a bone. The animation
@@ -250,7 +277,8 @@ export default function CharacterCanvas({
     <Canvas
       dpr={[1, 1.75]}
       camera={{ position: [0, 0.95, 3.6], fov: 30 }}
-      gl={{ alpha: true, antialias: true }}
+      /* Kept after each frame so the photo booth can read the characters back. */
+      gl={{ alpha: true, antialias: true, preserveDrawingBuffer: true }}
       frameloop={still ? 'demand' : 'always'}
       style={{ background: 'transparent' }}
     >

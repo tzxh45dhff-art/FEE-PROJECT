@@ -5,6 +5,9 @@ import { env } from './config/env.js'
 import { reembedStale } from './services/embeddings.service.js'
 import { attachCallGateway } from './sockets/call.gateway.js'
 import { attachChatGateway } from './sockets/chat.gateway.js'
+import { attachFunGateway } from './sockets/fun.gateway.js'
+import { attachPartyGateway } from './sockets/party.gateway.js'
+import { attachPetGateway } from './sockets/pet.gateway.js'
 import { attachGameGateway } from './sockets/game.gateway.js'
 import { attachMusicGateway } from './sockets/music.gateway.js'
 import { attachPresenceGateway } from './sockets/presence.gateway.js'
@@ -24,6 +27,9 @@ attachCallGateway(io)
 attachVoiceGateway(io)
 attachGameGateway(io)
 attachStudyGateway(io)
+attachFunGateway(io)
+attachPartyGateway(io)
+attachPetGateway(io)
 
 httpServer.listen(env.port, () => {
   console.log(`  Huddle API on http://localhost:${env.port}`)

@@ -49,3 +49,15 @@ extension/*.pem
 # Generated from extension/ by scripts/pack-extension.mjs during the build,
 # so the download the app offers can never be a stale committed binary.
 public/huddle-extension.zip
+
+# Rendered video is too large for git; the source in intro.html is what's tracked.
+marketing/intro-video/*.mp4
+marketing/intro-video/stills/
+
+# Linux server kit: downloaded runtimes, logs and database backups.
+server/.runtime/
+server/logs/
+server/backups/
+server/prisma/night.db
+server/night.db
+server/night-uploads/

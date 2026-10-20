@@ -1,6 +1,7 @@
 import { Router } from 'express'
 
 import * as musicController from '../controllers/music.controller.js'
+import * as photoController from '../controllers/photo.controller.js'
 import * as studyController from '../controllers/study.controller.js'
 import * as roomController from '../controllers/room.controller.js'
 import * as watchController from '../controllers/watch.controller.js'
@@ -20,6 +21,11 @@ roomRoutes.get('/discover', asyncHandler(roomController.discover))
 roomRoutes.post('/join', asyncHandler(roomController.joinByCode))
 roomRoutes.get('/:id', asyncHandler(roomController.show))
 roomRoutes.post('/:id/join', asyncHandler(roomController.join))
+
+/* Photo booth pictures — the memory wall's photos. */
+roomRoutes.get('/:id/photos', asyncHandler(photoController.list))
+roomRoutes.post('/:id/photos', photoController.receivePhoto, asyncHandler(photoController.create))
+roomRoutes.delete('/:id/photos/:photoId', asyncHandler(photoController.remove))
 
 /* Watch: the queue and its lookups. Playback itself is on the socket. */
 roomRoutes.get('/:id/watch', asyncHandler(watchController.capabilities))

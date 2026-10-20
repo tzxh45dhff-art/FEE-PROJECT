@@ -1,11 +1,17 @@
-import {Suspense, useCallback, useMemo} from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { Gamepad2, Loader2, MessagesSquare, Trophy, WifiOff, X } from 'lucide-react'
+import { ArrowLeft, Gamepad2, Loader2, MessagesSquare, Trophy, WifiOff, X } from 'lucide-react'
 
 import { CoverAmbience } from '@/features/music/CoverAmbience'
 import { useGameSession } from '@/features/games/useGameSession'
 import type { GamePlayer, WirePen } from '@/features/games/types'
+import { DrawSetup, DrawTable, type DrawView } from '@/features/party/DrawGame'
+import { KnowMeSetup, KnowMeTable, type KnowMeView } from '@/features/party/KnowMe'
+import { QuizTable, SongQuizSetup, TriviaSetup, type QuizView } from '@/features/party/Quiz'
+import { GamePicker, type GameId } from '@/features/party/GamePicker'
+import { TruthDareSetup, TruthDareTable, type TruthDareView } from '@/features/party/TruthDare'
+import { useParty, type PartyState } from '@/features/party/useParty'
 import { usePageVisible } from '@/hooks/usePageVisible'
 import { cn } from '@/lib/utils'
 import { lazyChunk } from '@/lib/lazyChunk'
@@ -48,6 +54,20 @@ export function GamesStage({
 }) {
   const { snapshot, motion: live, connected, send } = useGameSession(roomId, true)
   const visible = usePageVisible()
+  const party = useParty(roomId)
+  const [screen, setScreen] = useState<GameId | 'picker'>('picker')
+
+  /*
+   * When somebody starts a party game, everyone in Play is taken to it — the
+   * room is one table. Only on the moment it starts, though: someone who backs
+   * out to the picker afterwards is allowed to stay there.
+   */
+  const lastGame = useRef<string | null>(null)
+  useEffect(() => {
+    const game = party.party?.game ?? null
+    if (game && game !== lastGame.current) setScreen(game as GameId)
+    lastGame.current = game
+  }, [party.party?.game])
 
   const seat = useMemo<0 | 1 | null>(() => {
     if (!snapshot || !selfId) return null
@@ -92,7 +112,17 @@ export function GamesStage({
 
       <header className="relative z-10 flex shrink-0 items-center justify-between gap-3 px-5 py-4">
         <span className="flex min-w-0 items-center gap-2">
-          {snapshot && (
+          {screen !== 'picker' && (
+            <button
+              type="button"
+              onClick={() => setScreen('picker')}
+              aria-label="All games"
+              className="grid size-11 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-chalk outline-none backdrop-blur-md transition-colors hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:size-9"
+            >
+              <ArrowLeft aria-hidden className="size-4" />
+            </button>
+          )}
+          {screen === 'penfight' && snapshot && (
             <span className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 backdrop-blur-md">
               <span className="size-1.5 animate-signal-pulse rounded-full bg-emerald-400" />
               <span className="text-[0.72rem] text-chalk">
@@ -141,53 +171,166 @@ export function GamesStage({
         </span>
       </header>
 
-      {snapshot === null ? (
-        <Lobby opponents={opponents} onStart={(opponent) => send('game:start', { opponent })} />
-      ) : (
-        <Match
-          players={snapshot.players}
-          scores={snapshot.scores}
-          turn={snapshot.turn}
-          winner={snapshot.winner}
-          seat={seat}
-          myTurn={myTurn}
-          spectating={spectating}
-        >
-          <Suspense
-            fallback={
-              <span className="grid h-full place-items-center text-[0.8rem] text-mist">
-                <Loader2 aria-hidden className="size-5 animate-spin" />
-              </span>
-            }
-          >
-            <PenFightTable
-              pens={snapshot.pens}
-              seat={seat ?? 0}
-              myTurn={myTurn}
-              canPlay={seat !== null && snapshot.winner === null}
-              live={live}
-              onFlick={() => undefined}
-              onMotion={onMotion}
-              onSettled={onSettled}
-              paused={!visible}
-            />
-          </Suspense>
-        </Match>
-      )}
+      <div className="relative z-10 min-h-0 flex-1 overflow-y-auto">
+        {screen === 'picker' && (
+          <GamePicker
+            live={party.party?.game ?? null}
+            liveLabel={party.party?.label ?? null}
+            liveBy={party.party?.startedBy.name ?? null}
+            people={members.length}
+            onPick={setScreen}
+          />
+        )}
 
-      {snapshot?.winner !== null && snapshot !== undefined && snapshot !== null && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center">
-          <button
-            type="button"
-            onClick={() => send('game:end')}
-            className="pointer-events-auto rounded-full bg-chalk px-5 py-2.5 text-[0.82rem] font-medium text-void outline-none transition-transform duration-300 hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-          >
-            Clear the desk
-          </button>
-        </div>
-      )}
+        {screen === 'truthdare' &&
+          (party.party?.game === 'truthdare' ? (
+            <TruthDareTable
+              view={party.party.view as TruthDareView}
+              selfId={selfId}
+              error={party.error}
+              act={(action, payload) => void party.act(action, payload)}
+              onLeaveTable={() => {
+                void party.dismiss()
+                setScreen('picker')
+              }}
+            />
+          ) : party.party ? (
+            <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />
+          ) : (
+            <TruthDareSetup
+              people={members.length}
+              error={party.error}
+              onStart={(options) => void party.start('truthdare', options)}
+            />
+          ))}
+
+        {screen === 'draw' &&
+          (party.party?.game === 'draw' ? (
+            <DrawTable
+              roomId={roomId}
+              party={party.party as PartyState<DrawView>}
+              selfId={selfId}
+              error={party.error}
+              act={(action, payload) => void party.act(action, payload)}
+              onLeaveTable={() => {
+                void party.dismiss()
+                setScreen('picker')
+              }}
+            />
+          ) : party.party ? (
+            <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />
+          ) : (
+            <DrawSetup people={members.length} error={party.error} onStart={(options) => void party.start('draw', options)} />
+          ))}
+
+        {screen === 'knowme' &&
+          (party.party?.game === 'knowme' ? (
+            <KnowMeTable
+              party={party.party as PartyState<KnowMeView>}
+              selfId={selfId}
+              error={party.error}
+              act={(action, payload) => void party.act(action, payload)}
+              onLeaveTable={() => {
+                void party.dismiss()
+                setScreen('picker')
+              }}
+            />
+          ) : party.party ? (
+            <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />
+          ) : (
+            <KnowMeSetup people={members.length} error={party.error} onStart={(options) => void party.start('knowme', options)} />
+          ))}
+
+        {(screen === 'trivia' || screen === 'songquiz') &&
+          (party.party?.game === screen ? (
+            <QuizTable
+              party={party.party as PartyState<QuizView>}
+              selfId={selfId}
+              error={party.error}
+              act={(action, payload) => void party.act(action, payload)}
+              onJoin={() => void party.join()}
+              onLeaveTable={() => {
+                void party.dismiss()
+                setScreen('picker')
+              }}
+            />
+          ) : party.party ? (
+            <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />
+          ) : screen === 'trivia' ? (
+            <TriviaSetup people={members.length} error={party.error} onStart={(options) => void party.start('trivia', options)} />
+          ) : (
+            <SongQuizSetup people={members.length} error={party.error} onStart={(options) => void party.start('songquiz', options)} />
+          ))}
+
+        {screen === 'penfight' && (
+          <div className="flex h-full flex-col">
+      {snapshot === null ? (
+            <Lobby opponents={opponents} onStart={(opponent) => send('game:start', { opponent })} />
+          ) : (
+            <Match
+              players={snapshot.players}
+              scores={snapshot.scores}
+              turn={snapshot.turn}
+              winner={snapshot.winner}
+              seat={seat}
+              myTurn={myTurn}
+              spectating={spectating}
+            >
+              <Suspense
+                fallback={
+                  <span className="grid h-full place-items-center text-[0.8rem] text-mist">
+                    <Loader2 aria-hidden className="size-5 animate-spin" />
+                  </span>
+                }
+              >
+                <PenFightTable
+                  pens={snapshot.pens}
+                  seat={seat ?? 0}
+                  myTurn={myTurn}
+                  canPlay={seat !== null && snapshot.winner === null}
+                  live={live}
+                  onFlick={() => undefined}
+                  onMotion={onMotion}
+                  onSettled={onSettled}
+                  paused={!visible}
+                />
+              </Suspense>
+            </Match>
+          )}
+    
+          {snapshot?.winner !== null && snapshot !== undefined && snapshot !== null && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center">
+              <button
+                type="button"
+                onClick={() => send('game:end')}
+                className="pointer-events-auto rounded-full bg-chalk px-5 py-2.5 text-[0.82rem] font-medium text-void outline-none transition-transform duration-300 hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+              >
+                Clear the desk
+              </button>
+            </div>
+          )}
+          </div>
+        )}
+      </div>
     </motion.div>,
     document.body,
+  )
+}
+
+/** Another party game is already on — one table per room. */
+function Busy({ label, onOpen }: { label: string; onOpen: () => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <p className="font-display text-[1.4rem] font-semibold text-chalk">{label} is on right now</p>
+      <p className="max-w-sm text-[0.88rem] text-mist">One game at a time in a room. Join that one, or end it first.</p>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="mt-2 rounded-full bg-chalk px-6 py-2.5 text-[0.85rem] font-semibold text-void outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+      >
+        Go to {label}
+      </button>
+    </div>
   )
 }
 

@@ -32,6 +32,10 @@ model User {
   problems    CodingProblem[]
   submissions CodingSubmission[]
   assistant   AssistantMessage[]
+
+  moments   Moment[]
+  wallItems WallItem[]
+  photos    Photo[]
 }
 
 model Room {
@@ -71,6 +75,12 @@ model Room {
   explainers Explainer[]
   problems   CodingProblem[]
   assistant  AssistantMessage[]
+
+  moments     Moment[]
+  wallItems   WallItem[]
+  photos      Photo[]
+  gameResults GameResult[]
+  pet         RoomPet?
 
   @@index([ownerId])
 }
@@ -642,3 +652,117 @@ model AssistantMessage {
 
   @@index([roomId, userId, createdAt])
 }
+
+
+// ─── The fun side of a room ─────────────────────────────────────────────────
+//
+// Everything below is what two people leave behind from an evening together:
+// moments pinned in films, things stuck to the wall, photos, how games ended,
+// and the pet they keep alive between them. All of it belongs to the room, and
+// all of it goes when the room does.
+
+/// A moment somebody pinned while watching: a timestamp, a face and a line.
+///
+/// The title is copied in rather than joined to the queue: the queue is a
+/// running order that empties as it plays, and a moment has to outlive the row
+/// it was pinned against — the memory wall shows it months later.
+model Moment {
+  id        String   @id @default(cuid())
+  itemId    String?
+  title     String
+  position  Float
+  emoji     String
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  roomId      String
+  createdById String
+  room        Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([roomId, itemId])
+  @@index([roomId, createdAt])
+}
+
+/// Something stuck to the room's shared wall: a sticky note or a doodle.
+///
+/// Positions are fractions of the wall (0–1) rather than pixels, so a note
+/// placed on a laptop lands in the same spot on a phone.
+model WallItem {
+  id        String   @id @default(cuid())
+  /// "note" or "doodle".
+  kind      String
+  text      String   @default("")
+  /// A doodle's strokes as JSON, in the item's own 0–1 box.
+  strokes   String   @default("")
+  color     String
+  x         Float
+  y         Float
+  rotation  Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roomId      String
+  createdById String
+  room        Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+}
+
+/// A photo-booth picture. The image is a file on disk, never a database blob —
+/// the same reasoning as uploaded video: a blob would slow every query here.
+model Photo {
+  id        String   @id @default(cuid())
+  /// Filename under uploads/photos/<roomId>/.
+  file      String
+  caption   String   @default("")
+  frame     String
+  createdAt DateTime @default(now())
+
+  roomId      String
+  createdById String
+  room        Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+}
+
+/// How a game ended — for the memory wall and for running scores between the
+/// same people ("she leads 12–11").
+model GameResult {
+  id        String   @id @default(cuid())
+  /// "draw", "knowme", "songquiz", "trivia", "truthdare".
+  game      String
+  /// Display-ready JSON: players, scores, winner, a highlight or two.
+  summary   String
+  createdAt DateTime @default(now())
+
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, game, createdAt])
+}
+
+/// The room's pet. One per room, kept alive by everybody in it.
+///
+/// Hunger and happiness drift with time rather than being ticked by a timer:
+/// they are stored as of `updatedAt` and brought forward whenever read, so a
+/// room nobody opens for a week costs nothing and still comes back to a pet
+/// that clearly missed them.
+model RoomPet {
+  roomId    String   @id
+  name      String
+  species   String
+  bornAt    DateTime @default(now())
+  /// 0 full … 100 starving.
+  hunger    Float    @default(25)
+  /// 0 miserable … 100 delighted.
+  happiness Float    @default(75)
+  /// Grows with care; decides how big the pet is.
+  xp        Int      @default(0)
+  updatedAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
