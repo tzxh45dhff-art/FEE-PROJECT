@@ -54,12 +54,12 @@ export function RoomChip({ room }: { room: Room }) {
         </span>
       </span>
 
-      <span aria-hidden className="hidden h-8 w-px shrink-0 bg-white/10 lg:block" />
+      <span aria-hidden className="h-8 w-px shrink-0 bg-white/10" />
 
       <button
         type="button"
         onClick={copy}
-        className="hidden min-w-0 shrink items-center gap-2 rounded-full px-2 py-2 text-left outline-none transition-colors duration-300 hover:bg-white/[0.07] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal lg:flex lg:shrink-0 lg:px-3"
+        className="flex min-w-0 shrink items-center gap-2 rounded-full px-2 py-2 text-left outline-none transition-colors duration-300 hover:bg-white/[0.07] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal lg:shrink-0 lg:px-3"
       >
         <span className="min-w-0">
           <span className="block text-[0.62rem] uppercase tracking-[0.18em] text-dusk">
