@@ -192,6 +192,8 @@ export type SearchResult = {
   title: string
   channel: string
   thumbnail: string
+  /** The uploader carries YouTube's verified badge, when the source says. */
+  verified?: boolean
 }
 
 /**
@@ -234,8 +236,8 @@ function pipedVideoId(url: string | undefined): string | null {
  * abandoned. They are volunteer servers being asked one small question, which
  * is the case where racing is courteous rather than greedy.
  */
-async function searchViaPiped(query: string): Promise<SearchResult[]> {
-  const attempts = PIPED_INSTANCES.map((instance) => askPiped(instance, query))
+async function searchViaPiped(query: string, music = false): Promise<SearchResult[]> {
+  const attempts = PIPED_INSTANCES.map((instance) => askPiped(instance, query, music))
 
   try {
     /* `any` resolves on the first *fulfilled* attempt, ignoring rejections —
@@ -249,10 +251,11 @@ async function searchViaPiped(query: string): Promise<SearchResult[]> {
   }
 }
 
-async function askPiped(instance: string, query: string): Promise<SearchResult[]> {
+async function askPiped(instance: string, query: string, music: boolean): Promise<SearchResult[]> {
   const url = new URL(`${instance}/search`)
   url.searchParams.set('q', query)
-  url.searchParams.set('filter', 'videos')
+  /* "music_songs" is YouTube Music's own song search — studio tracks only. */
+  url.searchParams.set('filter', music ? 'music_songs' : 'videos')
 
   const response = await fetch(url, { signal: AbortSignal.timeout(6000) })
   if (!response.ok) throw new Error(`${instance} answered ${response.status}`)
@@ -262,6 +265,7 @@ async function askPiped(instance: string, query: string): Promise<SearchResult[]
       url?: string
       title?: string
       uploaderName?: string
+      uploaderVerified?: boolean
       thumbnail?: string
       duration?: number
     }[]
@@ -273,11 +277,12 @@ async function askPiped(instance: string, query: string): Promise<SearchResult[]
     /* Live streams report a duration of zero or less and behave badly in a
        queue that assumes songs end. */
     .filter((item) => (item.duration ?? 0) > 0)
-    .slice(0, 12)
+    .slice(0, music ? 25 : 12)
     .map((item) => ({
       id: item.id,
       title: item.title ?? 'Untitled',
       channel: item.uploaderName ?? '',
+      verified: item.uploaderVerified ?? false,
       /*
        * Deliberately not the thumbnail Piped hands back. That URL points at
        * the instance's own image proxy, which is the least reliable part of a
@@ -293,14 +298,17 @@ async function askPiped(instance: string, query: string): Promise<SearchResult[]
   return results
 }
 
-export async function searchYouTube(query: string): Promise<SearchResult[]> {
+export async function searchYouTube(query: string, options: { music?: boolean } = {}): Promise<SearchResult[]> {
+  const music = options.music ?? false
   /* No key: fall back to a keyless instance rather than refusing outright. */
-  if (!env.youtubeApiKey) return searchViaPiped(query)
+  if (!env.youtubeApiKey) return searchViaPiped(query, music)
 
   const url = new URL('https://www.googleapis.com/youtube/v3/search')
   url.searchParams.set('part', 'snippet')
   url.searchParams.set('type', 'video')
-  url.searchParams.set('maxResults', '12')
+  /* For songs: YouTube's Music category only, and a wider net for the ranking to choose from. */
+  url.searchParams.set('maxResults', music ? '25' : '12')
+  if (music) url.searchParams.set('videoCategoryId', '10')
   /* Embeddable-only: a result that refuses to play in an iframe is worse than
      no result, because it fails after everyone has already committed to it. */
   url.searchParams.set('videoEmbeddable', 'true')
@@ -317,7 +325,7 @@ export async function searchYouTube(query: string): Promise<SearchResult[]> {
      * free tier's 10,000 daily units. Falling through keeps the feature
      * working on the day it matters most.
      */
-    if (response.status === 403) return searchViaPiped(query)
+    if (response.status === 403) return searchViaPiped(query, music)
     throw HttpError.badRequest('YouTube search is unavailable right now.')
   }
 

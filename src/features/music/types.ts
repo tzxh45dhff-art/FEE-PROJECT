@@ -68,6 +68,8 @@ export type TrackSearchResult = {
   title: string
   channel: string
   thumbnail: string
+  /** "Official audio", "Music video", "Studio"… — what sort of upload, when known. */
+  kind?: string | null
 }
 
 /** A song as the library stores it, before it is anywhere in particular. */

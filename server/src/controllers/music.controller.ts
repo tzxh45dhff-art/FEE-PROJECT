@@ -6,6 +6,7 @@ import * as libraryModel from '../models/library.model.js'
 import { lyricsFor } from '../services/lyrics.service.js'
 import * as trackModel from '../models/track.model.js'
 import { MUSIC_SOURCES } from '../services/music.service.js'
+import { rankSongs, uploadKind } from '../services/musicRank.js'
 import { assertMembership } from '../services/room.service.js'
 import {
   searchAvailable,
@@ -52,6 +53,8 @@ export async function lyrics(req: Request, res: Response) {
   const artist = typeof req.query.artist === 'string' ? req.query.artist : null
   const album = typeof req.query.album === 'string' ? req.query.album : null
   const duration = Number(req.query.duration)
+  /* The YouTube video playing, so the lyrics can be timed to that upload. */
+  const video = typeof req.query.video === 'string' ? req.query.video : null
 
   res.json(
     await lyricsFor({
@@ -59,6 +62,7 @@ export async function lyrics(req: Request, res: Response) {
       artist,
       album,
       duration: Number.isFinite(duration) && duration > 0 ? duration : null,
+      videoId: video,
     }),
   )
 }
@@ -74,17 +78,17 @@ export async function search(req: Request, res: Response) {
   const query = typeof req.query.q === 'string' ? req.query.q.trim() : ''
   if (!query) throw HttpError.badRequest('Type something to search for')
 
-  /* The same YouTube search the watch feature uses, nudged towards music.
-     Without the hint the top results for a song title are as likely to be
-     reaction videos and lyric edits as the track itself. */
-  const results = await searchYouTube(`${query} audio`)
+  /* The same YouTube search the watch feature uses, but for songs: the Music
+     category only, official uploads first, and covers, reactions, slowed
+     edits and the like left out unless they were asked for — see musicRank. */
+  const results = rankSongs(await searchYouTube(query, { music: true }), query)
 
   /* Cleaned here rather than in the client, so a song carries the same name
      whether it was searched for, pasted, or suggested. */
   res.json({
     results: results.map((result) => {
       const named = cleanTrackName(result.title, result.channel)
-      return { ...result, title: named.title, channel: named.artist ?? result.channel }
+      return { ...result, title: named.title, channel: named.artist ?? result.channel, kind: uploadKind(result) }
     }),
   })
 }

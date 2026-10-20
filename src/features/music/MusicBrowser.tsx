@@ -498,7 +498,7 @@ function SearchView({
   return (
     <TrackGrid>
       {results.map((result) => (
-        <TrackCard key={result.id} {...rowProps(fromSearch(result))} />
+        <TrackCard key={result.id} {...rowProps(fromSearch(result))} badge={result.kind ?? undefined} />
       ))}
     </TrackGrid>
   )

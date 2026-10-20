@@ -1,3 +1,6 @@
+import { captionWords, isVideoId } from './captions.service.js'
+import { estimateOffset, shiftLines } from './lyricsAlign.js'
+
 /**
  * Time-synced lyrics, from LRCLIB.
  *
@@ -170,25 +173,56 @@ async function ask(url: string): Promise<unknown> {
  * worth re-fetching for, and being a considerate client of a free community
  * service is part of being allowed to use one.
  */
-const cache = new Map<string, { at: number; value: LyricsResult }>()
+/** A lookup, with how far its length was from the recording asked about. */
+type Found = { result: LyricsResult; gap: number }
+
+const cache = new Map<string, { at: number; value: Found }>()
 const TTL_MS = 1000 * 60 * 60 * 6
 const MAX_ENTRIES = 500
 
-export async function lyricsFor(input: {
+type Query = {
   title: string
   artist: string | null
   album?: string | null
   duration?: number | null
-}): Promise<LyricsResult> {
+}
+
+/**
+ * Lyrics for a track, timed to the recording actually playing.
+ *
+ * For a YouTube track the upload's own captions are used to find how far the
+ * lyric file is from the video, and every line is moved by that much — see
+ * lyricsAlign.ts. That also means a file whose length doesn't match the video
+ * (an official video with a long opening scene) can still be used with its
+ * timings, because the captions confirm where it sits; without that
+ * confirmation such a file is shown as words only, as before.
+ */
+export async function lyricsFor(input: Query & { videoId?: string | null }): Promise<LyricsResult> {
+  if (!input.videoId || !isVideoId(input.videoId)) return (await lookup(input, false)).result
+
+  const [found, stream] = await Promise.all([lookup(input, true), captionWords(input.videoId)])
+  const { result, gap } = found
+  if (result.kind !== 'synced') return result
+
+  const fit = stream ? estimateOffset(result.lines, stream) : null
+  if (fit) return Math.abs(fit.offset) < 0.25 ? result : { ...result, lines: shiftLines(result.lines, fit.offset) }
+
+  /* No confirmation. A file far off in length is a different cut; keep its words, not its clock. */
+  if (gap > 15) return result.plain ? { kind: 'plain', plain: result.plain } : { kind: 'plain', plain: result.lines.map((l) => l.text).join('\n') }
+  return result
+}
+
+async function lookup(input: Query, loose: boolean): Promise<Found> {
   const artist = cleanArtist(input.artist)
   const candidates = titleCandidates(input.title, artist)
-  if (candidates.length === 0) return { kind: 'none' }
+  if (candidates.length === 0) return { result: { kind: 'none' }, gap: 0 }
 
-  const key = `${candidates.join('|').toLowerCase()}::${artist.toLowerCase()}::${Math.round(input.duration ?? 0)}`
+  const key = `${candidates.join('|').toLowerCase()}::${artist.toLowerCase()}::${Math.round(input.duration ?? 0)}::${loose ? 'loose' : 'strict'}`
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < TTL_MS) return hit.value
 
-  const remember = (value: LyricsResult) => {
+  const remember = (result: LyricsResult, gap = 0): Found => {
+    const value = { result, gap }
     if (cache.size >= MAX_ENTRIES) {
       /* Oldest insertion first — Map preserves it, and this runs rarely
          enough that a real LRU would be machinery for its own sake. */
@@ -243,17 +277,19 @@ export async function lyricsFor(input: {
       })
 
       const best = ranked[0]
+      const gap = wanted && best?.duration ? Math.abs(best.duration - wanted) : 0
       /* A match more than fifteen seconds out is a different recording, and
          its timings would run further adrift with every line. Its words may
-         still be right, so it is kept as plain rather than thrown away. */
-      if (wanted && best?.duration && Math.abs(best.duration - wanted) > 15) {
+         still be right, so it is kept as plain rather than thrown away —
+         unless the caller can check the timings against the video itself. */
+      if (!loose && gap > 15) {
         const plain = ranked.find((row) => row.plainLyrics)?.plainLyrics
         if (plain && fallback.kind === 'none') fallback = { kind: 'plain', plain }
         continue
       }
 
       const result = toResult(best)
-      if (result.kind === 'synced') return remember(result)
+      if (result.kind === 'synced') return remember(result, gap)
       if (result.kind === 'plain' && fallback.kind === 'none') fallback = result
     }
 
@@ -262,6 +298,6 @@ export async function lyricsFor(input: {
     /* Timeout, offline, or the service having a bad day. Not an error worth
        showing — the view simply says it has nothing, and a later track will
        try again. Deliberately not cached, so it is not a lasting "no". */
-    return { kind: 'none' }
+    return { result: { kind: 'none' }, gap: 0 }
   }
 }

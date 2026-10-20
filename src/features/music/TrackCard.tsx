@@ -36,8 +36,11 @@ export function TrackCard({
   onNewPlaylist,
   onRemove,
   removeLabel,
+  badge,
 }: {
   track: LibraryTrack
+  /** A short label over the cover — which kind of upload a search result is. */
+  badge?: string
   playing?: boolean
   current?: boolean
   liked?: boolean
@@ -75,6 +78,12 @@ export function TrackCard({
         ) : (
           <span className="grid size-full place-items-center text-dusk">
             <Music4 aria-hidden className="size-7" />
+          </span>
+        )}
+
+        {badge && (
+          <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 text-[0.62rem] font-semibold tracking-[0.02em] text-chalk ring-1 ring-white/15">
+            {badge}
           </span>
         )}
 

@@ -199,10 +199,12 @@ export function fetchSuggestions(roomId: string, artist?: string | null) {
  */
 export function fetchLyrics(
   roomId: string,
-  track: { title: string; artist: string | null; album: string | null; duration: number | null },
+  track: { title: string; artist: string | null; album: string | null; duration: number | null; source?: string; ref?: string },
   signal?: AbortSignal,
 ) {
   const params = new URLSearchParams({ title: track.title })
+  /* The video itself, so the server can time the words to this upload. */
+  if (track.source === 'youtube' && track.ref) params.set('video', track.ref)
   if (track.artist) params.set('artist', track.artist)
   if (track.album) params.set('album', track.album)
   if (track.duration) params.set('duration', String(Math.round(track.duration)))
