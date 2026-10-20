@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io'
 
 import { isError, liveCtx, type GameDef, type Player } from '../games/engine.js'
 import { drawCanvas, drawGame } from '../games/draw.js'
+import { knowMe } from '../games/knowme.js'
 import { truthDare } from '../games/truthdare.js'
 import { prisma } from '../models/prisma.js'
 import { presenceFor } from '../services/presence.service.js'
@@ -28,6 +29,7 @@ type AnyGame = GameDef<any, any>
 const GAMES: Record<string, AnyGame> = {
   [truthDare.id]: truthDare,
   [drawGame.id]: drawGame,
+  [knowMe.id]: knowMe,
 }
 
 /**

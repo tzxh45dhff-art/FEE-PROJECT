@@ -7,6 +7,7 @@ import { CoverAmbience } from '@/features/music/CoverAmbience'
 import { useGameSession } from '@/features/games/useGameSession'
 import type { GamePlayer, WirePen } from '@/features/games/types'
 import { DrawSetup, DrawTable, type DrawView } from '@/features/party/DrawGame'
+import { KnowMeSetup, KnowMeTable, type KnowMeView } from '@/features/party/KnowMe'
 import { GamePicker, type GameId } from '@/features/party/GamePicker'
 import { TruthDareSetup, TruthDareTable, type TruthDareView } from '@/features/party/TruthDare'
 import { useParty, type PartyState } from '@/features/party/useParty'
@@ -219,6 +220,24 @@ export function GamesStage({
             <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />
           ) : (
             <DrawSetup people={members.length} error={party.error} onStart={(options) => void party.start('draw', options)} />
+          ))}
+
+        {screen === 'knowme' &&
+          (party.party?.game === 'knowme' ? (
+            <KnowMeTable
+              party={party.party as PartyState<KnowMeView>}
+              selfId={selfId}
+              error={party.error}
+              act={(action, payload) => void party.act(action, payload)}
+              onLeaveTable={() => {
+                void party.dismiss()
+                setScreen('picker')
+              }}
+            />
+          ) : party.party ? (
+            <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />
+          ) : (
+            <KnowMeSetup people={members.length} error={party.error} onStart={(options) => void party.start('knowme', options)} />
           ))}
 
         {screen === 'penfight' && (

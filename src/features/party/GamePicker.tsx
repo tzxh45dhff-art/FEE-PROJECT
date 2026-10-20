@@ -22,7 +22,7 @@ type Entry = {
 const GAMES: Entry[] = [
   { id: 'truthdare', title: 'Truth or dare', line: 'The game picks the questions. You pick how spicy.', players: '2+', art: '🍾', tone: 'from-red-500/35 via-rose-600/20 to-transparent', ready: true },
   { id: 'draw', title: 'Draw and guess', line: 'One draws, everyone races to guess.', players: '2+', art: '🎨', tone: 'from-amber-400/50 via-orange-500/20 to-transparent', ready: true },
-  { id: 'knowme', title: 'How well do you know me?', line: 'Answer about yourself. They guess. Truth comes out.', players: '2+', art: '💞', tone: 'from-pink-400/50 via-fuchsia-500/20 to-transparent', ready: false },
+  { id: 'knowme', title: 'How well do you know me?', line: 'Answer about yourself. They guess. Truth comes out.', players: '2+', art: '💞', tone: 'from-pink-400/50 via-fuchsia-500/20 to-transparent', ready: true },
   { id: 'trivia', title: 'Live trivia', line: 'Bollywood, cricket, films, everything. Fastest wins.', players: '1+', art: '🧠', tone: 'from-sky-400/50 via-indigo-500/20 to-transparent', ready: false },
   { id: 'songquiz', title: 'Guess the song', line: 'A few seconds of a track. Name it first.', players: '2+', art: '🎵', tone: 'from-emerald-400/50 via-teal-500/20 to-transparent', ready: false },
   { id: 'penfight', title: 'Pen fight', line: 'Flick your pen, knock theirs off the desk.', players: '2', art: '🖊️', tone: 'from-violet-400/50 via-purple-500/20 to-transparent', ready: true },
