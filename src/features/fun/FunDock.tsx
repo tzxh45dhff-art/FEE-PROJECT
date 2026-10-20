@@ -125,7 +125,7 @@ export function FunDock({
         </span>
         <span className="min-w-0 text-left">
           <span className="block font-display text-[0.85rem] font-semibold tracking-[-0.01em] text-chalk">Fun</span>
-          <span className="block truncate text-[0.68rem] text-mist">Emotes · throw · toys</span>
+          <span className="hidden truncate whitespace-nowrap text-[0.68rem] text-mist xl:block">Emotes · throw · toys</span>
         </span>
       </button>
 

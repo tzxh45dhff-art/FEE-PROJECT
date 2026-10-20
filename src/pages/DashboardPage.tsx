@@ -47,6 +47,7 @@ import { useEntrance } from '@/features/transition/EntranceContext'
 import { usePointerTilt } from '@/hooks/usePointerTilt'
 import { characterFor, hasRoster } from '@/lib/characters'
 import { findScene, hasScenes } from '@/lib/scenes'
+import { cn } from '@/lib/utils'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -410,6 +411,7 @@ export function DashboardPage() {
           {
             key: 'talk',
             label: 'Chat & call',
+            short: 'Chat',
             hint:
               call.othersOnCall > 0
                 ? `${call.othersOnCall} on the call`
@@ -426,6 +428,7 @@ export function DashboardPage() {
     {
       key: 'rooms',
       label: activeRoom ? 'Switch room' : 'Your rooms',
+      short: 'Rooms',
       hint: activeRoom ? 'Somewhere else' : 'Everywhere you belong',
       icon: Users,
       onClick: () => setPanel('rooms'),
@@ -451,6 +454,40 @@ export function DashboardPage() {
         ]
       : []),
   ]
+
+  /*
+   * In a room, only talking to it deserves a big button on the right. Switching
+   * room, settings and leaving are things you do once a visit at most, so they
+   * share one row of small round buttons underneath — the hub stops reading as
+   * eight equally loud choices. Outside a room nothing is crowded, so the
+   * rooms and settings keep their full-size buttons.
+   */
+  /*
+   * Below laptop width the rails fold to icons by default — two columns of
+   * full tiles cover whoever is standing between them. The fold is a choice
+   * people can undo, and it is remembered.
+   */
+  const wide = useMediaQuery('(min-width: 1024px)')
+  const [railsOpen, setRailsOpen] = useState(() => {
+    try {
+      return localStorage.getItem('huddle.rails') === 'open'
+    } catch {
+      return false
+    }
+  })
+  const toggleRails = () =>
+    setRailsOpen((open) => {
+      try {
+        localStorage.setItem('huddle.rails', open ? 'folded' : 'open')
+      } catch {
+        /* Private mode — the choice just isn't remembered. */
+      }
+      return !open
+    })
+  const railsFolded = !wide && !railsOpen
+
+  const rightRail = activeRoom ? rightItems.filter((item) => item.key === 'talk') : rightItems
+  const rightTray = activeRoom ? rightItems.filter((item) => item.key !== 'talk') : []
 
   /* While the corridor plays the hub stays mounted but invisible, so the room
      fetch is already in flight by the time it hands off. */
@@ -493,8 +530,23 @@ export function DashboardPage() {
           {activity === null && activeRoom && <FunLayer events={fun.events} youId={user?.id ?? null} />}
           {activeRoom && <PetCorner key={activeRoom.id} roomId={activeRoom.id} selfId={user?.id} hidden={activity !== null} />}
 
-          <HubRail side="left" items={leftItems} />
-          <HubRail side="right" items={rightItems} insetRight={inset} />
+          {/* Which room this is, and its invite code, up where a page's title goes —
+              the bottom of the screen is for doing things. */}
+          {activeRoom && (
+            <div className="pointer-events-auto absolute left-4 top-4 z-20 hidden md:left-8 lg:block">
+              <RoomChip room={activeRoom} />
+            </div>
+          )}
+
+          {/* Narrower than a laptop, the bottom row has no width to spare; the sky under the header does. */}
+          {activeRoom && (
+            <div className="pointer-events-none absolute inset-x-3 top-[4.25rem] z-20 flex justify-center lg:hidden [&>*]:pointer-events-auto">
+              <RoomChip room={activeRoom} />
+            </div>
+          )}
+
+          <HubRail side="left" items={leftItems} collapsed={railsFolded} onToggleCollapsed={wide ? undefined : toggleRails} />
+          <HubRail side="right" items={rightRail} compact={rightTray} collapsed={railsFolded} insetRight={inset} />
 
           {/*
             Everything along the bottom of the room, in one column against the
@@ -510,7 +562,11 @@ export function DashboardPage() {
             collide with the chip either.
           */}
           <div
-            className="pointer-events-none absolute bottom-6 left-0 z-20 flex flex-col items-start gap-2.5 px-6 transition-[right] duration-500 ease-glass"
+            className={cn(
+              'pointer-events-none absolute bottom-6 left-0 z-20 flex flex-col items-start gap-2.5 px-6 transition-[right] duration-500 ease-glass',
+              /* The pet stands in the corner; the controls line up beside it on the same ground. */
+              activeRoom && 'sm:pl-[12.5rem]',
+            )}
             /*
              * Stops short of both the panel and the dock's corner.
              * 
@@ -551,7 +607,6 @@ export function DashboardPage() {
                  are allowed to grow into each other. The chip truncates
                  instead, which is the one of the two that can afford to. */
               <div className="flex min-w-0 max-w-full flex-nowrap items-center gap-2.5">
-                <RoomChip room={activeRoom} />
                 <VoiceButton roomId={activeRoomId} />
                 <FunDock
                   others={others}

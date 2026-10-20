@@ -72,7 +72,7 @@ export function PetCorner({ roomId, selfId, hidden }: { roomId: string; selfId: 
             exit={{ opacity: 0, y: 20 }}
             transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }}
             data-pet-corner
-            className="pointer-events-auto absolute left-3 top-24 z-20 flex flex-col items-center sm:bottom-[5.6rem] sm:left-5 sm:top-auto"
+            className="pointer-events-auto absolute left-2 top-[7.75rem] z-20 flex w-[11.5rem] flex-col items-center sm:bottom-3 sm:left-3 sm:top-auto md:left-5"
           >
             {pets.pet ? (
               <>
@@ -83,7 +83,7 @@ export function PetCorner({ roomId, selfId, hidden }: { roomId: string; selfId: 
                   mimic={mimic.mode}
                   level={level}
                   speaker={speaker}
-                  className="h-36 w-32 sm:h-52 sm:w-48"
+                  className="h-28 w-24 sm:h-52 sm:w-48 sm:[@media(max-height:760px)]:h-40 sm:[@media(max-height:760px)]:w-36"
                   onTap={() => void pets.act('poke')}
                 />
                 <button
