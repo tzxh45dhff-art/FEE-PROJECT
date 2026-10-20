@@ -59,3 +59,4 @@ server/.runtime/
 server/logs/
 server/backups/
 server/prisma/night.db
+server/night.db
