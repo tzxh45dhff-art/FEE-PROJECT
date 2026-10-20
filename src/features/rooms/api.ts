@@ -32,6 +32,13 @@ export function createRoom(input: { name: string; type: string; visibility: Room
   return api.post<{ room: Room }>('/rooms', input).then((r) => r.room)
 }
 
+export type RoomChanges = { name?: string; type?: string; visibility?: RoomVisibility; newCode?: boolean }
+
+/** Owner only — the server refuses anyone else. */
+export function updateRoom(id: string, changes: RoomChanges) {
+  return api.patch<{ room: Room }>(`/rooms/${id}`, changes).then((r) => r.room)
+}
+
 export function fetchRoom(id: string) {
   return api.get<{ room: Room }>(`/rooms/${id}`).then((r) => r.room)
 }

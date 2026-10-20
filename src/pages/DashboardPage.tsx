@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { AnimatePresence, motion } from 'framer-motion'
-import { DoorOpen, LogOut, MessagesSquare, Plus, Settings2, Users } from 'lucide-react'
+import { DoorOpen, House, LogOut, MessagesSquare, Plus, Settings2, Users } from 'lucide-react'
 
 import { useAuth } from '@/features/auth/AuthContext'
 import { ActivityStage } from '@/features/dashboard/hub/ActivityStage'
@@ -18,6 +18,7 @@ import { Fireflies } from '@/features/dashboard/hub/Fireflies'
 import { HubDrawer } from '@/features/dashboard/hub/HubDrawer'
 import { HubRail, type RailItem } from '@/features/dashboard/hub/HubRail'
 import { HubSettings } from '@/features/dashboard/hub/HubSettings'
+import { RoomSettings } from '@/features/dashboard/components/RoomSettings'
 import { RoomChip } from '@/features/dashboard/hub/RoomChip'
 import { RoomList } from '@/features/dashboard/hub/RoomList'
 import { SceneBackdrop } from '@/features/dashboard/hub/SceneBackdrop'
@@ -54,7 +55,7 @@ const EASE = [0.16, 1, 0.3, 1] as const
 /** How many people stand in the scene before the rest are only a count. */
 const MAX_ON_STAGE = 5
 
-type Panel = 'rooms' | 'create' | 'settings'
+type Panel = 'rooms' | 'create' | 'settings' | 'room'
 
 /**
  * The hub.
@@ -69,7 +70,7 @@ type Panel = 'rooms' | 'create' | 'settings'
 export function DashboardPage() {
   const { user } = useAuth()
   const { phase } = useEntrance()
-  const { rooms, loading, error, create, join, setOnline } = useRooms()
+  const { rooms, loading, error, create, join, update: updateRoom, setOnline } = useRooms()
   const { preferences, update } = usePreferences(user?.id)
   const tilt = usePointerTilt()
 
@@ -425,10 +426,22 @@ export function DashboardPage() {
           } satisfies RailItem,
         ]
       : []),
+    ...(activeRoom
+      ? [
+          {
+            key: 'room',
+            label: 'Room settings',
+            short: 'Room',
+            hint: activeRoom.ownerId === user?.id ? 'Name, privacy, code' : 'Who’s here, the code',
+            icon: House,
+            onClick: () => setPanel('room'),
+          } satisfies RailItem,
+        ]
+      : []),
     {
       key: 'rooms',
       label: activeRoom ? 'Switch room' : 'Your rooms',
-      short: 'Rooms',
+      short: activeRoom ? 'Switch' : 'Rooms',
       hint: activeRoom ? 'Somewhere else' : 'Everywhere you belong',
       icon: Users,
       onClick: () => setPanel('rooms'),
@@ -534,14 +547,14 @@ export function DashboardPage() {
               the bottom of the screen is for doing things. */}
           {activeRoom && (
             <div className="pointer-events-auto absolute left-4 top-4 z-20 hidden md:left-8 lg:block">
-              <RoomChip room={activeRoom} />
+              <RoomChip room={activeRoom} onOpen={() => setPanel('room')} />
             </div>
           )}
 
           {/* Narrower than a laptop, the bottom row has no width to spare; the sky under the header does. */}
           {activeRoom && (
             <div className="pointer-events-none absolute inset-x-3 top-[4.25rem] z-20 flex justify-center lg:hidden [&>*]:pointer-events-auto">
-              <RoomChip room={activeRoom} />
+              <RoomChip room={activeRoom} onOpen={() => setPanel('room')} />
             </div>
           )}
 
@@ -868,6 +881,17 @@ export function DashboardPage() {
                 return room
               }}
             />
+          </HubDrawer>
+        )}
+
+        {panel === 'room' && activeRoom && (
+          <HubDrawer
+            key="room"
+            title="Room settings"
+            subtitle={activeRoom.ownerId === user?.id ? 'Everyone in the room sees the change.' : 'What this room is, and who’s in it.'}
+            onClose={() => setPanel(null)}
+          >
+            <RoomSettings room={activeRoom} selfId={user?.id} onSave={(changes) => updateRoom(activeRoom.id, changes)} />
           </HubDrawer>
         )}
 

@@ -103,3 +103,8 @@ export function joinRoom(userId: string, roomId: string) {
 export function touchMembership(id: string) {
   return prisma.membership.update({ where: { id }, data: { lastSeen: new Date() } })
 }
+
+/** Change what a room is called, what kind it is, who can find it, or its code. */
+export function updateRoom(id: string, data: { name?: string; type?: string; visibility?: string; slug?: string }): Promise<RoomWithMembers> {
+  return prisma.room.update({ where: { id }, data, include: { members: memberSelect } })
+}

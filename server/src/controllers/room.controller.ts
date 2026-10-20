@@ -15,6 +15,25 @@ const newRoom = z.object({
     .default('private'),
 })
 
+const roomChanges = z
+  .object({
+    name: z.string().trim().min(1, 'Give the room a name').max(48).optional(),
+    type: z.enum(ROOM_TYPES, { errorMap: () => ({ message: 'Pick a room type' }) }).optional(),
+    visibility: z.enum(ROOM_VISIBILITIES, { errorMap: () => ({ message: 'Pick who can join' }) }).optional(),
+    /** Throw the old code away and make a new one. */
+    newCode: z.boolean().optional(),
+  })
+  .strict()
+
+export async function update(req: Request, res: Response) {
+  const parsed = roomChanges.safeParse(req.body)
+  if (!parsed.success) {
+    throw HttpError.badRequest(parsed.error.issues[0]?.message ?? 'Invalid change')
+  }
+  const room = await roomService.updateRoom(req.userId!, req.params.id!, parsed.data)
+  res.json({ room })
+}
+
 export async function list(req: Request, res: Response) {
   res.json({ rooms: await roomService.listRooms(req.userId!) })
 }

@@ -8,6 +8,7 @@ import { attachChatGateway } from './sockets/chat.gateway.js'
 import { attachFunGateway } from './sockets/fun.gateway.js'
 import { attachPartyGateway } from './sockets/party.gateway.js'
 import { attachPetGateway } from './sockets/pet.gateway.js'
+import { attachRoomGateway } from './sockets/room.gateway.js'
 import { attachGameGateway } from './sockets/game.gateway.js'
 import { attachMusicGateway } from './sockets/music.gateway.js'
 import { attachPresenceGateway } from './sockets/presence.gateway.js'
@@ -30,6 +31,7 @@ attachStudyGateway(io)
 attachFunGateway(io)
 attachPartyGateway(io)
 attachPetGateway(io)
+attachRoomGateway(io)
 
 httpServer.listen(env.port, () => {
   console.log(`  Huddle API on http://localhost:${env.port}`)

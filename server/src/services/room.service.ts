@@ -128,3 +128,30 @@ export async function assertMembership(userId: string, roomId: string) {
   await roomModel.touchMembership(membership.id)
   return membership
 }
+
+/**
+ * Change a room's settings. Only its owner may: a room's name and who can get
+ * in are decisions about everybody in it, and the person who made it is the
+ * one who answers for them.
+ *
+ * A new code replaces the old one outright, so every link already shared stops
+ * working — the point of asking for one.
+ */
+export async function updateRoom(
+  userId: string,
+  roomId: string,
+  changes: { name?: string; type?: RoomType; visibility?: RoomVisibility; newCode?: boolean },
+) {
+  const room = await roomModel.findRoomById(roomId)
+  if (!room || !room.members.some((member) => member.user.id === userId)) throw HttpError.notFound('Room not found')
+  if (room.ownerId !== userId) throw HttpError.forbidden('Only the person who made this room can change its settings')
+
+  const name = changes.name ?? room.name
+  const updated = await roomModel.updateRoom(roomId, {
+    ...(changes.name !== undefined ? { name: changes.name } : {}),
+    ...(changes.type !== undefined ? { type: changes.type } : {}),
+    ...(changes.visibility !== undefined ? { visibility: changes.visibility } : {}),
+    ...(changes.newCode ? { slug: slugify(name) } : {}),
+  })
+  return serialiseRoom(updated)
+}

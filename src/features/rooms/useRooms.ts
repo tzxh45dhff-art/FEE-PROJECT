@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import * as roomsApi from '@/features/rooms/api'
-import type { Room, RoomVisibility } from '@/features/rooms/api'
+import type { Room, RoomChanges, RoomVisibility } from '@/features/rooms/api'
+import { getSocket } from '@/lib/socket'
 
 /**
  * The caller's rooms, plus a `create` that folds the new room into the list
@@ -42,6 +43,35 @@ export function useRooms() {
     return room
   }, [])
 
+  /*
+   * A room's settings changed — by you, or by its owner while you were in it.
+   * Presence keeps its own live list, so that is carried over rather than
+   * replaced by the server's snapshot of a moment ago.
+   */
+  const replace = useCallback((room: Room) => {
+    setRooms((current) => current.map((entry) => (entry.id === room.id ? { ...room, online: entry.online } : entry)))
+  }, [])
+
+  useEffect(() => {
+    const socket = getSocket()
+    const onUpdated = (raw: { room: Room }) => raw?.room && replace(raw.room)
+    socket.on('room:updated', onUpdated)
+    return () => {
+      socket.off('room:updated', onUpdated)
+    }
+  }, [replace])
+
+  /** Save new settings, then tell everyone else in the room. */
+  const update = useCallback(
+    async (id: string, changes: RoomChanges) => {
+      const room = await roomsApi.updateRoom(id, changes)
+      replace(room)
+      getSocket().emit('room:changed', { roomId: id })
+      return room
+    },
+    [replace],
+  )
+
   /** Patch one room's live member list from a presence event. */
   const setOnline = useCallback((roomId: string, online: string[]) => {
     setRooms((current) =>
@@ -49,5 +79,5 @@ export function useRooms() {
     )
   }, [])
 
-  return { rooms, loading, error, reload: load, create, join, setOnline }
+  return { rooms, loading, error, reload: load, create, join, update, setOnline }
 }

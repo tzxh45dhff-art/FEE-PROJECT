@@ -10,7 +10,7 @@ import { roomStyle } from '@/features/rooms/roomStyle'
  * The invite link is the room's whole social mechanic, so it is on screen
  * rather than behind a menu — copying it should never cost a click of hunting.
  */
-export function RoomChip({ room }: { room: Room }) {
+export function RoomChip({ room, onOpen }: { room: Room; onOpen?: () => void }) {
   const art = roomStyle(room.type)
   const [copied, setCopied] = useState(false)
 
@@ -38,7 +38,13 @@ export function RoomChip({ room }: { room: Room }) {
      * truncate keeps the button on screen at any name length.
      */
     <div className="glass-pill-ink pointer-events-auto flex min-w-0 max-w-full items-center gap-2.5 rounded-full py-2 pl-3 pr-2 sm:gap-4 sm:pl-4">
-      <span className="flex min-w-0 flex-1 items-center gap-2.5 sm:flex-none">
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={!onOpen}
+        aria-label={`${room.name} — room settings`}
+        className="-my-1 -ml-1.5 flex min-w-0 flex-1 items-center gap-2.5 rounded-full py-1 pl-1.5 pr-2 text-left outline-none transition-colors enabled:hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-signal sm:flex-none"
+      >
         <span
           aria-hidden
           className="size-2.5 shrink-0 rounded-full"
@@ -52,7 +58,7 @@ export function RoomChip({ room }: { room: Room }) {
             {art.name}
           </span>
         </span>
-      </span>
+      </button>
 
       <span aria-hidden className="h-8 w-px shrink-0 bg-white/10" />
 

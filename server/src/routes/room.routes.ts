@@ -20,6 +20,7 @@ roomRoutes.post('/', asyncHandler(roomController.create))
 roomRoutes.get('/discover', asyncHandler(roomController.discover))
 roomRoutes.post('/join', asyncHandler(roomController.joinByCode))
 roomRoutes.get('/:id', asyncHandler(roomController.show))
+roomRoutes.patch('/:id', asyncHandler(roomController.update))
 roomRoutes.post('/:id/join', asyncHandler(roomController.join))
 
 /* Photo booth pictures — the memory wall's photos. */

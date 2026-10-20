@@ -1,25 +1,11 @@
 import { useState, type FormEvent } from 'react'
-import { Globe, Lock } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import type { Room, RoomVisibility } from '@/features/rooms/api'
 import { ROOM_TYPE_OPTIONS, roomStyle } from '@/features/rooms/roomStyle'
+import { VISIBILITY_OPTIONS } from '@/features/rooms/visibility'
 import { cn } from '@/lib/utils'
 
-const VISIBILITY_OPTIONS = [
-  {
-    value: 'private' as const,
-    label: 'Private',
-    hint: 'Listed to nobody. The room code is the only way in.',
-    icon: Lock,
-  },
-  {
-    value: 'open' as const,
-    label: 'Open',
-    hint: 'Shows up in Discover. Anyone signed in can walk in.',
-    icon: Globe,
-  },
-]
 
 type CreateRoomFormProps = {
   onCreate: (input: { name: string; type: string; visibility: RoomVisibility }) => Promise<Room>
