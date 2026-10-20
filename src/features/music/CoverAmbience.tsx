@@ -44,21 +44,29 @@ export function CoverAmbience({
           ? /* Dark enough to hold white text against whatever backdrop the
                room happens to be wearing, blurred enough that none of it
                competes for attention. */
-            'bg-void/72 backdrop-blur-2xl backdrop-saturate-125'
+            'bg-void/80 backdrop-blur-xl [@media(pointer:coarse)]:bg-void/88 [@media(pointer:coarse)]:backdrop-blur-md'
           : 'bg-void',
       )}
     >
+      {/*
+        The blooms are soft because the gradients are, not because of a blur
+        filter. A blurred layer half again the size of the screen, animated,
+        is the single most expensive thing a phone can be asked to draw — on
+        a foldable it ran the GPU out of tile memory and parts of the player
+        (half the record, the title, the play button) simply never painted.
+        A wide radial falloff looks the same and costs nothing.
+      */}
       <div
-        className={cn('absolute -inset-[30%] blur-[80px]', translucent ? 'opacity-45' : 'opacity-90')}
+        className={cn('absolute -inset-[30%] will-change-transform', translucent ? 'opacity-45' : 'opacity-90')}
         style={{
-          background: `radial-gradient(38% 42% at 32% 34%, ${base}, transparent 70%)`,
+          background: `radial-gradient(46% 50% at 32% 34%, ${base}, color-mix(in oklab, ${base} 45%, transparent) 38%, transparent 78%)`,
           animation: 'music-drift 26s ease-in-out infinite',
         }}
       />
       <div
-        className={cn('absolute -inset-[30%] blur-[90px]', translucent ? 'opacity-40' : 'opacity-80')}
+        className={cn('absolute -inset-[30%] will-change-transform', translucent ? 'opacity-40' : 'opacity-80')}
         style={{
-          background: `radial-gradient(42% 38% at 68% 66%, ${accent}, transparent 72%)`,
+          background: `radial-gradient(50% 46% at 68% 66%, ${accent}, color-mix(in oklab, ${accent} 45%, transparent) 40%, transparent 80%)`,
           /* Offset and reversed so the two never travel as one shape. */
           animation: 'music-drift 34s ease-in-out infinite reverse',
         }}
@@ -66,7 +74,10 @@ export function CoverAmbience({
 
       {/* Grain and a vignette, the same finish the rest of the app uses — they
           are what stop a large soft gradient from banding on a dark screen. */}
-      <div className="grain absolute inset-0 opacity-[0.14] mix-blend-overlay" />
+      {/* Not on touch screens: a full-screen blend layer is another whole
+          composite pass, and on a phone's display the banding it hides is
+          invisible anyway. */}
+      <div className="grain absolute inset-0 opacity-[0.14] mix-blend-overlay [@media(pointer:coarse)]:hidden" />
       <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_50%,transparent_45%,rgba(0,0,0,0.72))]" />
     </div>
   )

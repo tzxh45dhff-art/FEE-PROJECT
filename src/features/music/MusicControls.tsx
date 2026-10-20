@@ -98,7 +98,7 @@ export function MusicControls({
           <span aria-hidden className="absolute inset-x-0 h-1 rounded-full bg-white/12" />
           <span
             aria-hidden
-            className="absolute h-1 rounded-full bg-chalk transition-[width] duration-150"
+            className="absolute h-1 rounded-full bg-chalk"
             style={{ width: `${percent}%` }}
           />
           <span

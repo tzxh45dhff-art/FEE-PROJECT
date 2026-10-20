@@ -110,7 +110,7 @@ export function WatchControls({
         <div className="relative flex h-11 flex-1 items-center sm:h-6">
           <div className="absolute inset-x-0 h-1 overflow-hidden rounded-full bg-white/15">
             <div
-              className="h-full rounded-full bg-signal transition-[width] duration-200 ease-linear"
+              className="h-full rounded-full bg-signal"
               style={{ width: `${progress}%` }}
             />
           </div>

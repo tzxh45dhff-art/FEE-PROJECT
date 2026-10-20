@@ -44,7 +44,7 @@ export function MusicQueuePanel({
   }
 
   return (
-    <aside className="pointer-events-auto flex h-full w-full flex-col border-l border-white/[0.08] bg-void/70 backdrop-blur-2xl md:w-[24rem]">
+    <aside className="pointer-events-auto flex h-full w-full flex-col border-l border-white/[0.08] bg-void/85 backdrop-blur-xl md:w-[24rem]">
       <header className="flex items-start justify-between gap-3 border-b border-white/[0.07] px-5 py-4">
         <div>
           <h3 className="font-display text-[1.05rem] font-semibold tracking-[-0.02em] text-chalk">

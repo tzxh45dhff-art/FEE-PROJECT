@@ -246,7 +246,7 @@ export function MusicStage({
                   />
                   <span
                     aria-hidden
-                    className="absolute left-0 top-0 h-px bg-chalk transition-[width] duration-500"
+                    className="absolute left-0 top-0 h-px bg-chalk"
                     style={{ width: `${progress}%` }}
                   />
 

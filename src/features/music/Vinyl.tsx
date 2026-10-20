@@ -142,8 +142,13 @@ export function Vinyl({
     <div className={cn('relative aspect-square w-full', className)}>
       <canvas ref={canvas} className="absolute inset-0 size-full" />
 
+      {/* The shadow stays still under the record rather than spinning with
+          it — a large soft shadow on a rotating layer is redrawn every frame,
+          which on a phone was enough to leave half the disc unpainted. */}
+      <div aria-hidden className="absolute inset-[14%] rounded-full shadow-[0_30px_80px_-20px_rgba(0,0,0,0.85)]" />
+
       <div
-        className="absolute inset-[14%] rounded-full shadow-[0_30px_80px_-20px_rgba(0,0,0,0.85)]"
+        className="absolute inset-[14%] rounded-full will-change-transform"
         style={{
           /* The disc itself: black vinyl with a sheen across it, and grooves
              drawn as a repeating gradient rather than a texture file. */
