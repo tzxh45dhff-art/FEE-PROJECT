@@ -1095,7 +1095,6 @@ body::-webkit-scrollbar {
     0 2px 18px rgb(0 0 0 / 0.55);
 }
 
-
 /*
  * Stop iOS Safari zooming when a field takes focus.
  *
@@ -1411,4 +1410,37 @@ body::-webkit-scrollbar {
 
 @keyframes study-fade-in {
   to { opacity: 1; }
+}
+
+@theme inline {
+  --animate-background-position-spin: background-position-spin 3000ms infinite alternate;
+  --animate-ripple: ripple var(--duration,2s) ease calc(var(--i, 0)*.2s) infinite;
+  --animate-shine: shine var(--duration) infinite linear;
+  @keyframes background-position-spin {
+  0% {
+    background-position: top center;
+    }
+  100% {
+    background-position: bottom center;
+    }
+  }
+  @keyframes ripple {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    }
+  50% {
+    transform: translate(-50%, -50%) scale(0.9);
+    }
+  }
+  @keyframes shine {
+  0% {
+    background-position: 0% 0%;
+    }
+  50% {
+    background-position: 100% 100%;
+    }
+  to {
+    background-position: 0% 0%;
+    }
+  }
 }

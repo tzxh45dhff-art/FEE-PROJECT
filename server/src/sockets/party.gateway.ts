@@ -218,16 +218,24 @@ export function attachPartyGateway(io: Server) {
 
       sessions.get(roomId)?.ctx.dispose()
       const ctx = liveCtx((action, payload) => apply(io, roomId, null, action, payload))
-      sessions.set(roomId, {
+      const session = {
         game,
         state: game.start(players, options, ctx),
         seq: 1,
         startedBy: self,
         saved: false,
         ctx,
-      })
+      }
+      sessions.set(roomId, session)
       publish(io, roomId)
       ack({ ok: true })
+
+      /* Whatever the game wants to do after it has started, without anyone waiting on it. */
+      game.background?.(roomId, options)
+        .then((result) => {
+          if (result && sessions.get(roomId) === session) apply(io, roomId, null, result.action, result.payload)
+        })
+        .catch(() => undefined)
     })
 
     socket.on('party:act', async (raw: unknown, maybeAck: unknown) => {

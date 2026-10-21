@@ -40,6 +40,12 @@ export interface GameDef<S, O = unknown> {
   options: (raw: unknown) => O | { error: string }
   /** Anything that needs the database before the game can start — the room's songs. */
   prepare?: (roomId: string, options: O) => Promise<O | { error: string }>
+  /**
+   * Slow work that must not hold the start up — new cards from a model, say.
+   * Runs once the game is under way; what it returns is applied as an action
+   * from the server, if the same game is still running.
+   */
+  background?: (roomId: string, options: O) => Promise<{ action: string; payload: Record<string, unknown> } | null>
   start: (players: Player[], options: O, ctx: Ctx) => S
   /**
    * Apply an action. `by` is null for the server's own timers. Return the next

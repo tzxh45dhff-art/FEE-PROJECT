@@ -1,5 +1,6 @@
 import { CARDS, DECKS, type Deck, type Kind } from './truthdare.cards.js'
 import { shuffle, text, type Ctx, type GameDef, type Player } from './engine.js'
+import { freshCards, keepSpares, recentlyUsed, takeSpares, type FreshCard } from './truthdare.fresh.js'
 
 /**
  * Truth or dare, the way it goes in a room of friends on a call.
@@ -14,7 +15,13 @@ import { shuffle, text, type Ctx, type GameDef, type Player } from './engine.js'
  * round-robin — the same chain it follows when people play it in a room.
  */
 
-export type Card = { id: string; deck: Deck; kind: Kind; text: string; custom: boolean }
+export type Card = { id: string; deck: Deck; kind: Kind; text: string; custom: boolean; fresh?: boolean }
+
+/** The reactions anyone watching can send. */
+export const REACTIONS = ['😂', '🔥', '😳', '💀', '👏', '🥺', '😍', '🙈'] as const
+
+/** A photo of a dare being done: a small JPEG, sent as a data URL. */
+const MAX_PROOF = 240_000
 type Tally = { truths: number; dares: number; chickens: number }
 
 export type TruthDare = {
@@ -31,25 +38,54 @@ export type TruthDare = {
   used: string[]
   tally: Record<string, Tally>
   round: number
-  log: { asker: string; answerer: string; kind: Kind; text: string; outcome: 'done' | 'chicken' }[]
+  log: { asker: string; answerer: string; kind: Kind; text: string; outcome: 'done' | 'chicken'; answer?: string }[]
+  /** Cards the model wrote for this game — mixed into what the asker is offered. */
+  fresh: Card[]
+  /*
+   * Playing apart. The person answering can type the truth so everyone reads
+   * it, or send a photo of the dare being done; everyone else can react, and
+   * say if they are not convinced. All of it clears when the turn ends.
+   */
+  answer: string | null
+  proof: string | null
+  reactions: { id: number; by: string; emoji: string }[]
+  doubts: string[]
+  reactionId: number
 }
 
-type Options = { decks: Deck[] }
+type Options = { decks: Deck[]; recent: string[]; fresh: FreshCard[]; seen?: string[] }
 
 const OFFER = 3
 
 function draw(state: TruthDare, kind: Kind, ctx: Ctx, avoid: string[] = []): Card[] {
-  const all = state.decks.flatMap((deck) =>
+  const bank: Card[] = state.decks.flatMap((deck) =>
     CARDS[deck][kind].map((t, i) => ({ id: `${deck}:${kind}:${i}`, deck, kind, text: t, custom: false })),
   )
-  let pool = all.filter((c) => !state.used.includes(c.id) && !avoid.includes(c.id))
+  const fresh = state.fresh.filter((c) => c.kind === kind)
+  const open = (c: Card) => !state.used.includes(c.id) && !avoid.includes(c.id)
+  let pool = [...bank, ...fresh].filter(open)
   /* A long evening runs a deck dry. Start it over rather than offering
      nothing — by then nobody remembers card forty from two hours ago. */
   if (pool.length < OFFER) {
     state.used = state.used.filter((id) => !id.includes(`:${kind}:`))
-    pool = all.filter((c) => !avoid.includes(c.id))
+    pool = [...bank, ...fresh].filter((c) => !avoid.includes(c.id))
   }
-  return shuffle(pool, ctx).slice(0, OFFER)
+  /* New cards first: up to two of the three on offer, while they last. */
+  const newOnes = shuffle(pool.filter((c) => c.fresh), ctx).slice(0, 2)
+  const rest = shuffle(pool.filter((c) => !newOnes.includes(c)), ctx).slice(0, OFFER - newOnes.length)
+  return shuffle([...newOnes, ...rest], ctx)
+}
+
+/** Back to the bottle, with nothing of the last turn left on the table. */
+function clearTurn(state: TruthDare) {
+  state.answerer = null
+  state.choice = null
+  state.offered = []
+  state.card = null
+  state.answer = null
+  state.proof = null
+  state.reactions = []
+  state.doubts = []
 }
 
 const idx = (state: TruthDare, id: string | undefined) => state.players.findIndex((p) => p.id === id)
@@ -68,10 +104,32 @@ export const truthDare: GameDef<TruthDare, Options> = {
     if (decks.length === 0) return { error: 'Pick at least one deck' }
     /* Spicy is for adults, and the room has to say so out loud first. */
     if (decks.includes('spicy') && body.adults !== true) return { error: 'Spicy is 18+ — confirm everyone here is an adult' }
-    return { decks }
+    return { decks, recent: [], fresh: [] }
   },
 
-  start(players, { decks }, ctx) {
+  /*
+   * What this room has already seen, and any new cards already written for it
+   * — both instant. Writing new ones takes the model several seconds, which
+   * the start never waits for: see `background`.
+   */
+  async prepare(roomId, options) {
+    try {
+      const recent = await recentlyUsed(roomId)
+      return { ...options, recent: recent.ids, seen: recent.texts, fresh: takeSpares(roomId, options.decks, recent.ids) }
+    } catch {
+      return options
+    }
+  },
+
+  /* New cards, mixed into this game the moment they exist, and kept for the next one. */
+  async background(roomId, options) {
+    const cards = await freshCards(options.decks, [...(options.seen ?? []), ...options.fresh.map((c) => c.text)])
+    if (cards.length === 0) return null
+    keepSpares(roomId, cards)
+    return { action: 'fresh', payload: { cards } }
+  },
+
+  start(players, { decks, recent, fresh }, ctx) {
     return {
       decks,
       players,
@@ -82,10 +140,16 @@ export const truthDare: GameDef<TruthDare, Options> = {
       choice: null,
       offered: [],
       card: null,
-      used: [],
+      used: [...(recent ?? [])],
       tally: Object.fromEntries(players.map((p) => [p.id, { truths: 0, dares: 0, chickens: 0 }])),
       round: 1,
       log: [],
+      fresh: fresh ?? [],
+      answer: null,
+      proof: null,
+      reactions: [],
+      doubts: [],
+      reactionId: 0,
     }
   },
 
@@ -94,6 +158,20 @@ export const truthDare: GameDef<TruthDare, Options> = {
     const me = idx(state, by?.id)
     const isAsker = me === state.asker
     const isAnswerer = state.answerer !== null && me === state.answerer
+
+    /* New cards from the server, arriving after the start. */
+    if (by === null && action === 'fresh') {
+      if (state.phase === 'over' || !Array.isArray(payload.cards)) return prev
+      const known = new Set(state.fresh.map((c) => c.id))
+      for (const raw of payload.cards as Card[]) {
+        if (!raw || typeof raw.text !== 'string' || known.has(raw.id) || !state.decks.includes(raw.deck)) continue
+        if (raw.kind !== 'truth' && raw.kind !== 'dare') continue
+        known.add(raw.id)
+        state.fresh.push({ id: raw.id, deck: raw.deck, kind: raw.kind, text: raw.text.slice(0, 200), custom: false, fresh: true })
+      }
+      state.fresh = state.fresh.slice(-120)
+      return state
+    }
 
     if (action === 'end') {
       if (me < 0) return { error: 'Only players can end the game' }
@@ -105,10 +183,7 @@ export const truthDare: GameDef<TruthDare, Options> = {
       /* Someone wandered off mid-turn. Anyone may move it along. */
       if (me < 0 || state.phase === 'over') return { error: 'Nothing to skip' }
       state.asker = state.answerer ?? (state.asker + 1) % state.players.length
-      state.answerer = null
-      state.choice = null
-      state.offered = []
-      state.card = null
+      clearTurn(state)
       state.spin = null
       state.phase = 'spin'
       return state
@@ -160,6 +235,35 @@ export const truthDare: GameDef<TruthDare, Options> = {
       }
 
       case 'perform': {
+        /* While it's being done: the answer, the proof, the room's reactions. */
+        if (action === 'answer') {
+          if (!isAnswerer || state.choice !== 'truth') return { error: 'Only they can answer this one' }
+          const t = text(payload.text, 280)
+          if (!t) return { error: 'Type your answer first' }
+          state.answer = t
+          return state
+        }
+        if (action === 'proof') {
+          if (!isAnswerer || state.choice !== 'dare') return { error: 'Only they can send proof' }
+          const image = typeof payload.image === 'string' ? payload.image : ''
+          if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(image) || image.length > MAX_PROOF) return { error: 'That photo didn’t come through — try a smaller one' }
+          state.proof = image
+          return state
+        }
+        if (action === 'react') {
+          if (me < 0) return { error: 'Join the game to react' }
+          const emoji = REACTIONS.find((e) => e === payload.emoji)
+          if (!emoji) return { error: 'Pick a reaction' }
+          state.reactionId += 1
+          state.reactions = [...state.reactions, { id: state.reactionId, by: state.players[me]!.name, emoji }].slice(-14)
+          return state
+        }
+        if (action === 'doubt') {
+          if (me < 0 || isAnswerer) return { error: 'Only the others can doubt it' }
+          const id = state.players[me]!.id
+          state.doubts = state.doubts.includes(id) ? state.doubts.filter((d) => d !== id) : [...state.doubts, id]
+          return state
+        }
         if (action !== 'done' && action !== 'chicken') return { error: 'Done, or chicken out?' }
         if (!isAnswerer && !isAsker) return { error: 'Only the two of them can call it' }
         const answerer = state.players[state.answerer!]!
@@ -173,13 +277,12 @@ export const truthDare: GameDef<TruthDare, Options> = {
           kind: state.choice!,
           text: state.card!.text,
           outcome: action === 'chicken' ? 'chicken' : 'done',
+          ...(state.answer ? { answer: state.answer } : {}),
         })
         if (state.log.length > 60) state.log.shift()
         /* Whoever just answered asks next. */
         state.asker = state.answerer!
-        state.answerer = null
-        state.choice = null
-        state.card = null
+        clearTurn(state)
         state.round += 1
         state.phase = 'spin'
         return state
@@ -192,7 +295,7 @@ export const truthDare: GameDef<TruthDare, Options> = {
 
   view(state, viewer) {
     const asker = state.players[state.asker]
-    const { offered, used: _used, ...rest } = state
+    const { offered, used: _used, fresh: _fresh, ...rest } = state
     return {
       ...rest,
       /* The cards on offer are the asker's alone. The person answering finds
@@ -223,6 +326,9 @@ export const truthDare: GameDef<TruthDare, Options> = {
         players,
         bravest: bravest && bravest.dares > 0 ? bravest.name : null,
         highlight: state.log.filter((l) => l.outcome === 'done').at(-1) ?? null,
+        /* So the room's next games deal different cards — see truthdare.fresh. */
+        used: state.used.slice(-150),
+        seen: state.log.map((l) => l.text).slice(-40),
       },
     }
   },

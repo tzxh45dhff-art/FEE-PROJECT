@@ -35,7 +35,7 @@ function play(state: TruthDare, by: typeof aditi | null, action: string, payload
 describe('truth or dare — the rules', () => {
   it('spicy needs the room to confirm everyone is an adult', () => {
     assert.ok('error' in (truthDare.options({ decks: ['spicy'] }) as object))
-    assert.deepEqual(truthDare.options({ decks: ['spicy', 'funny'], adults: true }), { decks: ['spicy', 'funny'] })
+    assert.deepEqual(truthDare.options({ decks: ['spicy', 'funny'], adults: true }), { decks: ['spicy', 'funny'], recent: [], fresh: [] })
     assert.ok('error' in (truthDare.options({ decks: [] }) as object))
     assert.ok('error' in (truthDare.options({ decks: ['made-up'] }) as object))
   })
