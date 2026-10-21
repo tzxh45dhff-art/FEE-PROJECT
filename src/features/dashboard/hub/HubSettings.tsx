@@ -1,8 +1,10 @@
 import { Suspense, lazy, useState } from 'react'
-import { Shuffle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { LogOut, Shuffle } from 'lucide-react'
 
 import { ModelBoundary } from '@/components/background/ModelBoundary'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/features/auth/AuthContext'
 import { PickerPanel, type PickerKind } from '@/features/dashboard/hub/PickerPanel'
 import { groundFor, type HubPreferences } from '@/features/dashboard/hub/usePreferences'
 import { ROSTER, type Character } from '@/lib/characters'
@@ -152,6 +154,8 @@ export function HubSettings({
 
   return (
     <div className="flex flex-col gap-9">
+      <Account />
+
       <section>
         <h3 className="font-display text-[1.05rem] font-semibold tracking-[-0.02em] text-chalk">
           Backdrop
@@ -287,5 +291,40 @@ export function HubSettings({
         </div>
       </section>
     </div>
+  )
+}
+
+/**
+ * Who you are signed in as, and the way out. Here rather than in a bar across
+ * the top of the hub, where it sat on top of the room's own controls.
+ */
+function Account() {
+  const { user, signOut } = useAuth()
+  const navigate = useNavigate()
+  const [leaving, setLeaving] = useState(false)
+  if (!user) return null
+  return (
+    <section className="flex items-center gap-3.5 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-3.5">
+      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-signal to-signal-deep font-display text-[1.05rem] font-semibold text-white">
+        {user.name.slice(0, 1).toUpperCase()}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-display text-[0.98rem] font-semibold text-chalk">{user.name}</span>
+        <span className="block truncate text-[0.78rem] text-mist">{user.email}</span>
+      </span>
+      <button
+        type="button"
+        disabled={leaving}
+        onClick={async () => {
+          setLeaving(true)
+          await signOut()
+          navigate('/')
+        }}
+        className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/12 px-3.5 py-2 text-[0.8rem] font-medium text-chalk outline-none transition-colors hover:border-signal/50 hover:bg-signal/10 focus-visible:outline-2 focus-visible:outline-signal disabled:opacity-50"
+      >
+        <LogOut aria-hidden className="size-3.5" />
+        {leaving ? 'Signing out…' : 'Sign out'}
+      </button>
+    </section>
   )
 }

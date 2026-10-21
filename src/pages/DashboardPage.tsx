@@ -19,7 +19,6 @@ import { HubDrawer } from '@/features/dashboard/hub/HubDrawer'
 import { HubRail, type RailItem } from '@/features/dashboard/hub/HubRail'
 import { HubSettings } from '@/features/dashboard/hub/HubSettings'
 import { RoomSettings } from '@/features/dashboard/components/RoomSettings'
-import { RoomChip } from '@/features/dashboard/hub/RoomChip'
 import { RoomList } from '@/features/dashboard/hub/RoomList'
 import { SceneBackdrop } from '@/features/dashboard/hub/SceneBackdrop'
 import { groundFor, usePreferences } from '@/features/dashboard/hub/usePreferences'
@@ -449,7 +448,7 @@ export function DashboardPage() {
     {
       key: 'settings',
       label: 'Settings',
-      hint: 'Backdrop and character',
+      hint: 'You, your backdrop and character',
       icon: Settings2,
       onClick: () => setPanel('settings'),
     },
@@ -542,21 +541,6 @@ export function DashboardPage() {
 
           {activity === null && activeRoom && <FunLayer events={fun.events} youId={user?.id ?? null} />}
           {activeRoom && <PetCorner key={activeRoom.id} roomId={activeRoom.id} selfId={user?.id} hidden={activity !== null} />}
-
-          {/* Which room this is, and its invite code, up where a page's title goes —
-              the bottom of the screen is for doing things. */}
-          {activeRoom && (
-            <div className="pointer-events-auto absolute left-4 top-4 z-20 hidden md:left-8 lg:block">
-              <RoomChip room={activeRoom} onOpen={() => setPanel('room')} />
-            </div>
-          )}
-
-          {/* Narrower than a laptop, the bottom row has no width to spare; the sky under the header does. */}
-          {activeRoom && (
-            <div className="pointer-events-none absolute inset-x-3 top-[4.25rem] z-20 flex justify-center lg:hidden [&>*]:pointer-events-auto">
-              <RoomChip room={activeRoom} onOpen={() => setPanel('room')} />
-            </div>
-          )}
 
           <HubRail side="left" items={leftItems} collapsed={railsFolded} onToggleCollapsed={wide ? undefined : toggleRails} />
           <HubRail side="right" items={rightRail} compact={rightTray} collapsed={railsFolded} insetRight={inset} />

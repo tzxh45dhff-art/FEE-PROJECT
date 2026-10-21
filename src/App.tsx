@@ -43,7 +43,10 @@ export default function App() {
   return (
     <div className={dark ? 'relative min-h-svh bg-void' : 'relative min-h-svh'}>
       <LiquidGlassFilter />
-      <Header />
+      {/* Not on the hub: it is a full-screen room with its own controls at
+          every edge, and a bar across the top only covered them. Your account
+          lives in the hub's Settings instead. */}
+      {!onHub && <Header />}
 
       {/*
         The last line of defence.
