@@ -74,6 +74,7 @@ export function PetSheet({
       <motion.div
         role="dialog"
         aria-modal="true"
+        data-lenis-prevent
         aria-label={pets.pet ? `${pets.pet.name}, your room pet` : 'Adopt a room pet'}
         className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[56rem] overflow-y-auto overscroll-contain rounded-[2rem] border border-white/10 bg-[#141017]/95 shadow-[0_40px_120px_-30px_rgba(0,0,0,.9)]"
         initial={{ y: 30, scale: 0.97, opacity: 0 }}

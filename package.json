@@ -17,7 +17,8 @@
     "db:push": "npm --prefix server run db:push",
     "db:studio": "npm --prefix server run db:studio",
     "live": "node scripts/live.mjs",
-    "pack:extension": "node scripts/pack-extension.mjs"
+    "pack:extension": "node scripts/pack-extension.mjs",
+    "character": "node scripts/add-character.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

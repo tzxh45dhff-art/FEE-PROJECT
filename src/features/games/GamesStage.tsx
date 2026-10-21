@@ -171,7 +171,8 @@ export function GamesStage({
         </span>
       </header>
 
-      <div className="relative z-10 min-h-0 flex-1 overflow-y-auto">
+      {/* Marked so the page's smooth scrolling hands the wheel to this panel. */}
+      <div data-lenis-prevent className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         {screen === 'picker' && (
           <GamePicker
             live={party.party?.game ?? null}

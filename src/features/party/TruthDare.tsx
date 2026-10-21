@@ -327,7 +327,9 @@ export function TruthDareTable({
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-4 pb-5 lg:grid-cols-[1fr_18rem] lg:px-8">
-        <div className="relative flex min-h-0 flex-col items-center justify-center overflow-y-auto py-2">
+        {/* Centred with auto margins, not justify-center: content taller than
+            the screen then scrolls from its top instead of being cut off. */}
+        <div data-lenis-prevent className="relative flex min-h-0 flex-col items-center overflow-y-auto py-2 [&>*:not(.absolute)]:my-auto">
           <Floaters reactions={view.reactions} />
           <AnimatePresence mode="wait">
             {(view.phase === 'spin' || spinning) && (
@@ -378,6 +380,7 @@ export function TruthDareTable({
         {sheet && (
           <motion.div className="fixed inset-0 z-[150] flex items-end bg-black/60 backdrop-blur-sm lg:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSheet(false)}>
             <motion.div
+              data-lenis-prevent
               className="max-h-[80dvh] w-full overflow-y-auto rounded-t-[1.6rem] border-t border-white/10 bg-[#120c1d] p-4 pb-8"
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
@@ -961,7 +964,7 @@ function Side({ view, selfId, act }: { view: TruthDareView; selfId: string | und
         <p className="mt-3 text-[0.7rem] text-dusk">{view.decks.map(deckLabel).join(' · ')}</p>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-[1.3rem] border border-white/10 bg-white/[0.035] p-4 backdrop-blur">
+      <div data-lenis-prevent className="min-h-0 flex-1 overflow-y-auto rounded-[1.3rem] border border-white/10 bg-white/[0.035] p-4 backdrop-blur">
         <p className="text-[0.66rem] font-semibold uppercase tracking-[0.18em] text-violet-200/80">Tonight so far</p>
         {view.log.length === 0 ? (
           <p className="mt-3 text-[0.8rem] text-dusk">Nothing yet. Spin it.</p>

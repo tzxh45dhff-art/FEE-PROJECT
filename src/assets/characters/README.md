@@ -51,6 +51,20 @@ procedural breath instead.
 - Cloned with `SkeletonUtils`, so the same character can stand in a room more
   than once without the two instances fighting over one skeleton.
 
+### Adding one — the one command
+
+Export the `.glb` from Blender anywhere (your Downloads folder is fine), then:
+
+```bash
+npm run character -- ~/Downloads/maya.glb
+```
+
+That compresses it the same way as the characters already here (textures to
+WebP at 1024px, geometry and animation untouched), saves it into this folder
+as `maya.glb`, and prints the size before and after and the animation clips it
+found. Add `--name something` to choose the name it's saved under. Restart
+`npm run dev` if it's running, then pick it in **Settings → Your character**.
+
 ### Export tips
 
 - **Under ~2 MB each.** These download when someone opens the hub.
