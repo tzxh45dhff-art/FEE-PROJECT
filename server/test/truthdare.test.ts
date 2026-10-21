@@ -235,5 +235,24 @@ describe('truth or dare — in a real room', () => {
     const cleared = await ask<{ ok?: boolean }>(a, 'party:dismiss', { roomId })
     assert.ok(cleared.ok)
   })
+
+  it('a rematch is a new session, so clients do not mistake it for an old state', async () => {
+    type Tagged = View & { session: string; seq: number }
+    const first = next<Tagged>(a, 'party:state')
+    await ask(a, 'party:start', { roomId, game: 'truthdare', options: { decks: ['funny'] } })
+    const one = await first
+    await ask(a, 'party:act', { roomId, action: 'spin' })
+    const ended = next<Tagged>(a, 'party:state')
+    await ask(a, 'party:act', { roomId, action: 'end' })
+    const over = await ended
+
+    const again = next<Tagged>(a, 'party:state')
+    assert.ok((await ask<{ ok?: boolean }>(a, 'party:start', { roomId, game: 'truthdare', options: { decks: ['funny'] } })).ok)
+    const two = await again
+    assert.ok(two.seq < over.seq, 'the new game counts from the start again')
+    assert.notEqual(two.session, one.session)
+    await ask(a, 'party:act', { roomId, action: 'end' })
+    await ask(a, 'party:dismiss', { roomId })
+  })
 })
 

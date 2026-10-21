@@ -72,6 +72,7 @@ export function songItems(pool: Song[], rounds: number, ctx: Ctx): QuizItem[] {
     return {
       prompt: 'Name that song',
       tag: `Song ${i + 1}`,
+      category: 'music',
       options,
       answer: options.indexOf(song.title),
       media: { source: song.source, ref: song.ref, start: clipStart(song, ctx) },
@@ -97,10 +98,10 @@ export const songQuiz = quizGame<Options>({
   readyMs: 4_000,
 
   options(raw) {
-    const body = (raw ?? {}) as { rounds?: unknown; seconds?: unknown }
+    const body = (raw ?? {}) as { rounds?: unknown; seconds?: unknown; lateJoin?: unknown }
     const rounds = [5, 10, 15].includes(body.rounds as number) ? (body.rounds as number) : 10
     const seconds = [10, 15, 20].includes(body.seconds as number) ? (body.seconds as number) : 15
-    return { rounds, seconds, pool: [] }
+    return { rounds, seconds, pool: [], lateJoin: body.lateJoin !== false }
   },
 
   async prepare(roomId, options) {

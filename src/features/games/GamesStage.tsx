@@ -81,6 +81,8 @@ export function GamesStage({
   const myTurn = seat !== null && snapshot?.turn === seat && snapshot.winner === null
 
   const opponents = members.filter((member) => !member.you)
+  /* What each quiz was last started with, so "Play again" is one tap. */
+  const quizOptions = useRef<Partial<Record<'trivia' | 'songquiz', unknown>>>({})
 
   const onMotion = useCallback(
     (pens: [WirePen, WirePen]) => send('game:motion', { pens }),
@@ -254,13 +256,30 @@ export function GamesStage({
                 void party.dismiss()
                 setScreen('picker')
               }}
+              onPlayAgain={quizOptions.current[screen] ? () => void party.start(screen, quizOptions.current[screen]) : undefined}
             />
           ) : party.party ? (
             <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />
           ) : screen === 'trivia' ? (
-            <TriviaSetup people={members.length} error={party.error} onStart={(options) => void party.start('trivia', options)} />
+            <TriviaSetup
+              people={members.length}
+              players={members}
+              error={party.error}
+              onStart={(options) => {
+                quizOptions.current.trivia = options
+                void party.start('trivia', options)
+              }}
+            />
           ) : (
-            <SongQuizSetup people={members.length} error={party.error} onStart={(options) => void party.start('songquiz', options)} />
+            <SongQuizSetup
+              people={members.length}
+              players={members}
+              error={party.error}
+              onStart={(options) => {
+                quizOptions.current.songquiz = options
+                void party.start('songquiz', options)
+              }}
+            />
           ))}
 
         {screen === 'penfight' && (

@@ -1,4 +1,4 @@
-import type { Ctx, GameDef, Player } from './engine.js'
+import { shuffle, type Ctx, type GameDef, type Player } from './engine.js'
 
 /**
  * The shape shared by live trivia and guess the song.
@@ -19,6 +19,8 @@ export type QuizItem = {
   prompt: string
   /** A label above the prompt: "Cricket", "Round 3". */
   tag: string
+  /** Which category, for the icon beside the label. */
+  category?: string
   options: string[]
   answer: number
   /** Whatever the client needs to play the round — a song clip. Hidden at reveal. */
@@ -27,7 +29,19 @@ export type QuizItem = {
   reveal?: Record<string, unknown>
 }
 
+/** A skip is recorded as a pick of -1: answered, scores nothing, keeps the streak. */
 export type Pick = { option: number; ms: number }
+
+/*
+ * Power-ups, one of each per player per game. A 50/50 hides two wrong
+ * answers from whoever used it; a skip passes the question without breaking
+ * a streak; extra time gives that one player ten more seconds.
+ */
+export const POWERS = ['fifty', 'skip', 'time'] as const
+export type Power = (typeof POWERS)[number]
+export const EXTRA_MS = 10_000
+
+export const QUIZ_REACTIONS = ['🔥', '😂', '😱', '👏', '💀', '🤯', '❤️', '😭'] as const
 
 export type Quiz = {
   players: Player[]
@@ -46,9 +60,21 @@ export type Quiz = {
   seconds: number
   readyMs: number
   items: QuizItem[]
+  powers: Record<string, Power[]>
+  /** This round's 50/50s: which options each person no longer sees. */
+  hidden: Record<string, number[]>
+  /** This round's extra time, per person. */
+  extra: Record<string, number>
+  /** When the extra time runs out, if anyone took some. */
+  graceUntil: number | null
+  reactions: { id: number; by: string; emoji: string }[]
+  reactionId: number
+  /** One-line facts about the answers, written after the start — by round. */
+  facts: Record<number, string>
+  lateJoin: boolean
 }
 
-export type QuizOptions = { rounds: number; seconds: number }
+export type QuizOptions = { rounds: number; seconds: number; lateJoin?: boolean }
 
 const REVEAL_MS = 5_000
 const BASE = 500
@@ -64,6 +90,9 @@ export function points(ms: number, seconds: number, streak: number) {
 function begin(state: Quiz, ctx: Ctx) {
   state.picks = {}
   state.gains = {}
+  state.hidden = {}
+  state.extra = {}
+  state.graceUntil = null
   state.phase = 'ready'
   state.opensAt = ctx.now() + state.readyMs
   state.deadline = state.opensAt
@@ -71,15 +100,27 @@ function begin(state: Quiz, ctx: Ctx) {
   ctx.schedule(state.readyMs, 'open', { round: state.round })
 }
 
+/**
+ * Whether anyone could still answer. Past the main clock that is only the
+ * people who bought extra time, so once they're in there is no need to wait.
+ */
+function everyoneIn(state: Quiz, now: number) {
+  const pastClock = state.deadline !== null && now > state.deadline
+  return state.players.every((p) => p.id in state.picks || (pastClock && !(state.extra[p.id] ?? 0)))
+}
+
 function reveal(state: Quiz, ctx: Ctx) {
   const item = state.items[state.round]!
   for (const p of state.players) {
     const pick = state.picks[p.id]
-    if (pick && pick.option === item.answer) {
+    if (pick?.option === -1) {
+      /* Skipped: nothing gained, nothing lost, streak intact. */
+      state.gains[p.id] = 0
+    } else if (pick && pick.option === item.answer) {
       const streak = (state.streaks[p.id] ?? 0) + 1
       state.streaks[p.id] = streak
       state.best[p.id] = Math.max(state.best[p.id] ?? 0, streak)
-      const gain = points(pick.ms, state.seconds, streak)
+      const gain = points(pick.ms, (state.seconds * 1000 + (state.extra[p.id] ?? 0)) / 1000, streak)
       state.gains[p.id] = gain
       state.scores[p.id] = (state.scores[p.id] ?? 0) + gain
     } else {
@@ -101,6 +142,7 @@ export function quizGame<O extends QuizOptions>(def: {
   options: (raw: unknown) => O | { error: string }
   prepare?: (roomId: string, options: O) => Promise<O | { error: string }>
   items: (options: O, ctx: Ctx) => QuizItem[]
+  background?: GameDef<Quiz, O>['background']
 }): GameDef<Quiz, O> {
   return {
     id: def.id,
@@ -109,6 +151,7 @@ export function quizGame<O extends QuizOptions>(def: {
     maxPlayers: 12,
     options: def.options,
     prepare: def.prepare,
+    background: def.background,
 
     start(players, options, ctx) {
       const items = def.items(options, ctx)
@@ -127,6 +170,14 @@ export function quizGame<O extends QuizOptions>(def: {
         seconds: options.seconds,
         readyMs: def.readyMs,
         items,
+        powers: Object.fromEntries(players.map((p) => [p.id, [...POWERS]])),
+        hidden: {},
+        extra: {},
+        graceUntil: null,
+        reactions: [],
+        reactionId: 0,
+        facts: {},
+        lateJoin: options.lateJoin !== false,
       }
       begin(state, ctx)
       return state
@@ -143,6 +194,15 @@ export function quizGame<O extends QuizOptions>(def: {
         return state
       }
 
+      if (by === null && action === 'facts') {
+        const facts = payload.facts
+        if (!Array.isArray(facts)) return prev
+        facts.forEach((fact, i) => {
+          if (typeof fact === 'string' && fact.trim()) state.facts[i] = fact.trim().slice(0, 220)
+        })
+        return state
+      }
+
       if (by === null) {
         if (payload.round !== state.round) return prev
         if (action === 'open' && state.phase === 'ready') {
@@ -154,6 +214,13 @@ export function quizGame<O extends QuizOptions>(def: {
           return state
         }
         if (action === 'timeup' && state.phase === 'question') {
+          /* Someone bought extra time and hasn't answered yet: wait for them, once. */
+          const waiting = state.players.some((p) => (state.extra[p.id] ?? 0) > 0 && !(p.id in state.picks))
+          if (waiting && !payload.final) {
+            state.graceUntil = ctx.now() + EXTRA_MS
+            ctx.schedule(EXTRA_MS, 'timeup', { round: state.round, final: true })
+            return state
+          }
           reveal(state, ctx)
           return state
         }
@@ -170,29 +237,69 @@ export function quizGame<O extends QuizOptions>(def: {
         return prev
       }
 
-      if (action !== 'answer') return { error: 'Unknown move' }
       if (!state.players.some((p) => p.id === by.id)) return { error: 'Join the game to play' }
+
+      if (action === 'react') {
+        if (state.phase === 'over') return { error: 'The game is over' }
+        const emoji = QUIZ_REACTIONS.find((e) => e === payload.emoji)
+        if (!emoji) return { error: 'Pick a reaction' }
+        state.reactionId += 1
+        state.reactions = [...state.reactions, { id: state.reactionId, by: by.name, emoji }].slice(-14)
+        return state
+      }
+
+      if (action !== 'answer' && action !== 'power') return { error: 'Unknown move' }
       if (state.phase !== 'question') return { error: state.phase === 'ready' ? 'Not yet — get ready' : 'Too late for that one' }
       if (by.id in state.picks) return { error: 'You’ve locked in' }
-      const option = Number(payload.option)
+      /* After the clock, only someone who bought extra time may still answer. */
+      if (state.deadline !== null && ctx.now() > state.deadline && !(state.extra[by.id] ?? 0)) return { error: 'Too late for that one' }
       const item = state.items[state.round]!
+
+      if (action === 'power') {
+        const kind = POWERS.find((k) => k === payload.kind)
+        const left = state.powers[by.id] ?? []
+        if (!kind || !left.includes(kind)) return { error: 'You’ve used that one' }
+        state.powers[by.id] = left.filter((k) => k !== kind)
+        if (kind === 'fifty') {
+          const wrong = item.options.map((_, i) => i).filter((i) => i !== item.answer && !(state.hidden[by.id] ?? []).includes(i))
+          state.hidden[by.id] = shuffle(wrong, ctx).slice(0, 2)
+        } else if (kind === 'time') {
+          state.extra[by.id] = EXTRA_MS
+        } else {
+          state.picks[by.id] = { option: -1, ms: Math.max(0, ctx.now() - state.opensAt) }
+          if (everyoneIn(state, ctx.now())) reveal(state, ctx)
+        }
+        return state
+      }
+
+      const option = Number(payload.option)
       if (!Number.isInteger(option) || option < 0 || option >= item.options.length) return { error: 'Pick one of the options' }
+      if ((state.hidden[by.id] ?? []).includes(option)) return { error: 'That one’s been ruled out' }
 
       state.picks[by.id] = { option, ms: Math.max(0, ctx.now() - state.opensAt) }
-      if (state.players.every((p) => p.id in state.picks)) reveal(state, ctx)
+      if (everyoneIn(state, ctx.now())) reveal(state, ctx)
       return state
     },
 
     view(state, viewer) {
-      const { items, picks, ...rest } = state
+      const { items, picks, powers, hidden, extra, facts, ...rest } = state
       const item = items[state.round]
       const revealed = state.phase === 'reveal' || state.phase === 'over'
+      const mine = extra[viewer] ?? 0
       return {
         ...rest,
+        /* Your own power-ups and what they did this round — nobody else's. */
+        powers: powers[viewer] ?? [],
+        hidden: hidden[viewer] ?? [],
+        extraMs: mine,
+        /* With extra time, your clock runs longer than everyone else's. */
+        deadline: state.phase === 'question' && state.deadline !== null && mine ? state.deadline + mine : state.deadline,
+        fact: revealed ? (facts[state.round] ?? null) : null,
         item: item
           ? {
               prompt: item.prompt,
               tag: item.tag,
+              category: item.category ?? null,
               /* The options stay hidden through "get ready": reading time is for the question. */
               options: state.phase === 'ready' && !item.media ? [] : item.options,
               answer: revealed ? item.answer : null,
@@ -207,8 +314,13 @@ export function quizGame<O extends QuizOptions>(def: {
     },
 
     join(state, player) {
-      if (state.players.some((p) => p.id === player.id) || state.players.length >= 12) return null
-      return { ...state, players: [...state.players, player], scores: { ...state.scores, [player.id]: 0 } }
+      if (!state.lateJoin || state.players.some((p) => p.id === player.id) || state.players.length >= 12) return null
+      return {
+        ...state,
+        players: [...state.players, player],
+        scores: { ...state.scores, [player.id]: 0 },
+        powers: { ...state.powers, [player.id]: [...POWERS] },
+      }
     },
 
     over(state) {

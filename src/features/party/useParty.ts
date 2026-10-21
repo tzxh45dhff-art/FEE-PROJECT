@@ -13,6 +13,8 @@ import { getSocket } from '@/lib/socket'
 export type PartyState<V = unknown> = {
   game: string
   label: string
+  /** One id per game played; a rematch gets a new one and starts its `seq` again. */
+  session?: string
   seq: number
   startedBy: { id: string; name: string }
   /** Server clock at send, and our clock at receipt — for countdowns. */
@@ -42,7 +44,7 @@ export function useParty<V = unknown>(roomId: string) {
       setParty((current) => {
         if (!raw.game) return null
         /* Out-of-order delivery after a reconnect must not wind the game back. */
-        if (current && current.game === raw.game && (raw.seq ?? 0) < current.seq) return current
+        if (current && current.game === raw.game && current.session === raw.session && (raw.seq ?? 0) < current.seq) return current
         return { ...(raw as PartyState<V>), receivedAt: Date.now() }
       })
     }

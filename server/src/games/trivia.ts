@@ -1,3 +1,4 @@
+import * as azure from '../services/azure.service.js'
 import { BANK, CATEGORIES, type Category } from './trivia.questions.js'
 import { shuffle } from './engine.js'
 import { quizGame, type QuizOptions } from './quiz.js'
@@ -18,12 +19,12 @@ export const trivia = quizGame<Options>({
   readyMs: 3_000,
 
   options(raw) {
-    const body = (raw ?? {}) as { rounds?: unknown; seconds?: unknown; categories?: unknown }
+    const body = (raw ?? {}) as { rounds?: unknown; seconds?: unknown; categories?: unknown; lateJoin?: unknown }
     const rounds = [5, 10, 15, 20].includes(body.rounds as number) ? (body.rounds as number) : 10
     const seconds = [10, 15, 20].includes(body.seconds as number) ? (body.seconds as number) : 15
     const picked = Array.isArray(body.categories) ? ALL.filter((c) => (body.categories as unknown[]).includes(c)) : ALL
     if (picked.length === 0) return { error: 'Pick at least one category' }
-    return { rounds, seconds, categories: picked }
+    return { rounds, seconds, categories: picked, lateJoin: body.lateJoin !== false }
   },
 
   items({ rounds, categories }, ctx) {
@@ -37,7 +38,36 @@ export const trivia = quizGame<Options>({
     }
     return shuffle(drawn, ctx).map(([category, prompt, right, ...wrong]) => {
       const options = shuffle([right, ...wrong], ctx)
-      return { prompt, tag: `${CATEGORIES[category].emoji} ${CATEGORIES[category].label}`, options, answer: options.indexOf(right) }
+      return { prompt, tag: CATEGORIES[category].label, category, options, answer: options.indexOf(right) }
     })
+  },
+
+  /*
+   * A line about each answer, for the reveal — "the Nile runs about 6,650 km".
+   * Written while the first question is being read; a reveal that comes
+   * before it is ready simply shows no fact.
+   */
+  async background(_roomId, _options, state) {
+    if (!azure.configured()) return null
+    const list = state.items.map((item, i) => `${i + 1}. ${item.prompt} — Answer: ${item.options[item.answer]}`).join('\n')
+    try {
+      const reply = await Promise.race([
+        azure.chatJson<{ facts?: unknown }>(
+          [
+            { role: 'system', content: 'You write short, true, delightful trivia facts. You only answer with JSON.' },
+            {
+              role: 'user',
+              content: `For each quiz question below, write one fact about the correct answer that someone would enjoy hearing right after getting it: one sentence, at most 24 words, accurate, no hedging, and do not just restate the question.\n\n${list}\n\nAnswer as JSON: {"facts": ["fact for 1", "fact for 2", ...]} in the same order.`,
+            },
+          ],
+          { temperature: 0.5, maxTokens: 1600 },
+        ),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 25_000)),
+      ])
+      const facts = Array.isArray(reply?.facts) ? reply.facts.map((f) => (typeof f === 'string' ? f : '')) : []
+      return facts.some(Boolean) ? { action: 'facts', payload: { facts } } : null
+    } catch {
+      return null
+    }
   },
 })

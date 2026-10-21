@@ -1,21 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
-import { Check, Flame, Volume2, X } from 'lucide-react'
+import confetti from 'canvas-confetti'
+import { ArrowRight, Binoculars, Check, ChevronDown, Clapperboard, FastForward, Film, Globe2, Hash, LogIn, Music2, Timer, Trophy, Volume2, X } from 'lucide-react'
 
+import { BorderBeam } from '@/components/ui/border-beam'
+import { Particles } from '@/components/ui/particles'
 import { ClipPlayer, type ClipMedia, type ClipStatus } from '@/features/party/ClipPlayer'
 import { Segmented } from '@/features/party/Segmented'
 import { remaining, type PartyState } from '@/features/party/useParty'
 import { cn } from '@/lib/utils'
 
 /**
- * Live trivia and guess the song, on screen.
+ * Live trivia and guess the song, on screen — a game show.
  *
- * Both are the same game underneath — a beat to get ready, four options
- * against the clock, a reveal — so they share this table. The song quiz only
- * adds a record that spins while the clip plays and a cover at the reveal.
+ * A dark studio lit in amber, the question on a glass card above a lit
+ * pedestal, a ring of a clock, four big answer tiles, and a verdict in marker
+ * pen. Both games are the same underneath — a beat to get ready, four options
+ * against the clock, a reveal — so they share this table; the song quiz swaps
+ * the question card for a record that spins while the clip plays.
  */
 
 type Person = { id: string; name: string }
+type Power = 'fifty' | 'skip' | 'time'
+type Act = (action: string, payload?: Record<string, unknown>) => void
 
 export type QuizView = {
   players: Person[]
@@ -33,6 +40,7 @@ export type QuizView = {
   item: {
     prompt: string
     tag: string
+    category?: string | null
     options: string[]
     answer: number | null
     media: ClipMedia | null
@@ -40,156 +48,329 @@ export type QuizView = {
   } | null
   picks: Record<string, { option: number; ms: number }>
   answered: string[]
+  powers?: Power[]
+  hidden?: number[]
+  extraMs?: number
+  fact?: string | null
+  reactions?: { id: number; by: string; emoji: string }[]
 }
 
-const TILES = [
-  { tone: 'from-rose-500/45 to-rose-600/10', ring: 'ring-rose-400/70', dot: 'bg-rose-400', shape: '▲' },
-  { tone: 'from-amber-400/45 to-amber-600/10', ring: 'ring-amber-300/70', dot: 'bg-amber-300', shape: '◆' },
-  { tone: 'from-sky-400/45 to-sky-600/10', ring: 'ring-sky-300/70', dot: 'bg-sky-300', shape: '●' },
-  { tone: 'from-violet-400/45 to-violet-600/10', ring: 'ring-violet-300/70', dot: 'bg-violet-300', shape: '■' },
-]
+const CATEGORY: Record<string, { icon: typeof Film; tint: string }> = {
+  bollywood: { icon: Clapperboard, tint: 'text-rose-300' },
+  cricket: { icon: Trophy, tint: 'text-emerald-300' },
+  movies: { icon: Film, tint: 'text-amber-300' },
+  music: { icon: Music2, tint: 'text-fuchsia-300' },
+  gk: { icon: Globe2, tint: 'text-sky-300' },
+}
 
 const TRIVIA_CATEGORIES = [
-  { id: 'bollywood', label: 'Bollywood', emoji: '🎬', tone: 'from-rose-500/50 via-orange-500/15' },
-  { id: 'cricket', label: 'Cricket', emoji: '🏏', tone: 'from-emerald-500/45 via-teal-500/15' },
-  { id: 'movies', label: 'Movies', emoji: '🍿', tone: 'from-amber-400/45 via-yellow-500/15' },
-  { id: 'music', label: 'Music', emoji: '🎵', tone: 'from-fuchsia-500/45 via-violet-500/15' },
-  { id: 'gk', label: 'General knowledge', emoji: '🌍', tone: 'from-sky-500/45 via-indigo-500/15' },
+  { id: 'bollywood', label: 'Bollywood' },
+  { id: 'cricket', label: 'Cricket' },
+  { id: 'movies', label: 'Movies' },
+  { id: 'music', label: 'Music' },
+  { id: 'gk', label: 'General knowledge' },
 ] as const
 
-const startLabel = (people: number) => (people === 1 ? 'Play solo' : `Start with ${people} players`)
+/* Four answer tiles, each its own lit scene rather than a flat colour. */
+const TILE_ART = [
+  'bg-[radial-gradient(120%_90%_at_20%_10%,rgba(251,146,60,.55),transparent_55%),linear-gradient(160deg,#3b1d0b,#170c07)]',
+  'bg-[radial-gradient(120%_90%_at_80%_10%,rgba(56,189,248,.5),transparent_55%),linear-gradient(160deg,#0a2240,#070f1f)]',
+  'bg-[radial-gradient(120%_90%_at_20%_90%,rgba(167,139,250,.5),transparent_55%),linear-gradient(160deg,#21123d,#0d0819)]',
+  'bg-[radial-gradient(120%_90%_at_80%_90%,rgba(52,211,153,.45),transparent_55%),linear-gradient(160deg,#0b2d26,#06130f)]',
+]
 
-/* Everyone keeps the same colour all game, so you can spot a face at a glance. */
-const HUES = ['from-rose-400 to-pink-600', 'from-amber-300 to-orange-500', 'from-sky-400 to-indigo-500', 'from-violet-400 to-fuchsia-600', 'from-emerald-300 to-teal-500', 'from-lime-300 to-green-500']
-const hue = (id: string) => HUES[[...id].reduce((n, c) => n + c.charCodeAt(0), 0) % HUES.length]!
+const REACTIONS = ['🔥', '😂', '😱', '👏', '💀', '🤯', '❤️', '😭'] as const
 
-const CONFETTI = ['bg-rose-400', 'bg-amber-300', 'bg-sky-300', 'bg-violet-300', 'bg-emerald-300']
+function hueFor(id: string) {
+  let h = 0
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360
+  return h
+}
 
-/* ── Setup ─────────────────────────────────────────────────────────────── */
+// ── the studio ────────────────────────────────────────────────────────────────
 
-function SetupShell({ kicker, title, blurb, children }: { kicker: string; title: string; blurb: string; children: React.ReactNode }) {
+/** The set every trivia screen sits on: a dark studio, stage lights from above, dust in the beams. */
+function Studio() {
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col items-center px-5 pb-10 pt-4 text-center">
-      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-signal-bright">{kicker}</p>
-      <h2 className="mt-2 text-balance font-display text-[clamp(1.8rem,4vw,2.6rem)] font-semibold leading-tight tracking-[-0.03em] text-chalk">{title}</h2>
-      <p className="mt-2 max-w-md text-pretty text-[0.9rem] leading-relaxed text-mist">{blurb}</p>
+    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden bg-[linear-gradient(180deg,#0a0e1c,#070a14_55%,#0b0a12)]">
+      <div className="absolute inset-x-0 top-0 h-[70%] bg-[conic-gradient(from_180deg_at_50%_-10%,transparent_150deg,rgba(251,191,36,.10)_165deg,transparent_172deg,rgba(251,191,36,.08)_182deg,transparent_190deg,rgba(251,191,36,.10)_198deg,transparent_212deg)]" />
+      <div className="absolute -left-[10%] bottom-[-10%] h-[60%] w-[55%] rounded-full bg-[radial-gradient(closest-side,rgba(245,158,11,.20),transparent)]" />
+      <div className="absolute -right-[10%] top-[10%] h-[55%] w-[50%] rounded-full bg-[radial-gradient(closest-side,rgba(59,130,246,.18),transparent)]" />
+      <Particles className="absolute inset-0" quantity={45} ease={80} size={0.45} color="#fcd34d" refresh={false} />
+      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_40%,transparent_55%,rgba(0,0,0,.6))]" />
+    </div>
+  )
+}
+
+function Marker({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <span className={cn('font-marker leading-[0.95]', className)}>{children}</span>
+}
+
+function Avatar({ person, size = 'md', ring }: { person: Person; size?: 'sm' | 'md' | 'lg'; ring?: string }) {
+  const hue = hueFor(person.id)
+  const box = size === 'lg' ? 'size-16 text-[1.4rem]' : size === 'md' ? 'size-12 text-[1.05rem]' : 'size-8 text-[0.78rem]'
+  return (
+    <span
+      className={cn('grid shrink-0 place-items-center rounded-full font-display font-semibold text-white ring-2', box, ring ?? 'ring-white/20')}
+      style={{ background: `radial-gradient(circle at 35% 30%, hsl(${hue} 70% 50%), hsl(${hue} 60% 22%))` }}
+    >
+      {person.name.slice(0, 1).toUpperCase()}
+    </span>
+  )
+}
+
+// ── setup ─────────────────────────────────────────────────────────────────────
+
+function Lobby({
+  poster,
+  players,
+  children,
+  error,
+  ready,
+  label,
+  onStart,
+}: {
+  poster: React.ReactNode
+  players: Person[]
+  children: React.ReactNode
+  error: string | null
+  ready: boolean
+  label: string
+  onStart: () => void
+}) {
+  return (
+    <div className="relative isolate min-h-full w-full overflow-hidden">
+      <Studio />
+      <div className="mx-auto grid w-full max-w-6xl items-center gap-8 px-5 pb-10 pt-4 lg:min-h-[calc(100dvh-7rem)] lg:grid-cols-2 lg:gap-14 lg:px-10">
+        <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
+          {poster}
+          <motion.button
+            type="button"
+            disabled={!ready}
+            onClick={onStart}
+            whileHover={ready ? { scale: 1.03 } : undefined}
+            whileTap={ready ? { scale: 0.97 } : undefined}
+            className="relative mt-8 hidden items-center gap-3 overflow-hidden rounded-full bg-lime-300 px-9 py-4 text-[1.05rem] font-bold text-[#0d1206] shadow-[0_18px_50px_-14px_rgba(190,242,100,.85)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40 lg:flex"
+          >
+            {ready && <BorderBeam size={80} duration={5} colorFrom="#ffffff" colorTo="#d9f99d" />}
+            Play now <ArrowRight aria-hidden className="size-5" />
+          </motion.button>
+        </div>
+
+        <div className="rounded-[1.6rem] border border-white/10 bg-white/[0.04] p-5 backdrop-blur-md sm:p-6">
+          <p className="flex items-center gap-2">
+            <Marker className="text-[1.9rem] text-white">Your lobby</Marker>
+            <span className="text-[1.3rem]" aria-hidden>
+              👑
+            </span>
+            <span className="ml-auto rounded-full bg-white/10 px-2.5 py-0.5 text-[0.72rem] font-semibold text-white/75">{players.length} in the room</span>
+          </p>
+          <ul className="mt-4 grid grid-cols-4 gap-3 sm:grid-cols-5">
+            {players.map((p, i) => (
+              <motion.li
+                key={p.id}
+                initial={{ opacity: 0, scale: 0.7 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: i * 0.05, type: 'spring', stiffness: 260, damping: 18 }}
+                className="flex min-w-0 flex-col items-center gap-1.5"
+              >
+                <motion.span animate={{ y: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 2.4 + (i % 3) * 0.4, ease: 'easeInOut', delay: i * 0.2 }}>
+                  <Avatar person={p} />
+                </motion.span>
+                <span className="max-w-full truncate text-[0.72rem] text-white/80">{p.name}</span>
+              </motion.li>
+            ))}
+          </ul>
+          <div className="mt-5 flex flex-col divide-y divide-white/[0.06] rounded-2xl border border-white/[0.07] bg-black/20">{children}</div>
+          {error && (
+            <p role="alert" className="mt-3 text-[0.82rem] text-signal-bright">
+              {error}
+            </p>
+          )}
+          {/* The brush-stroke start, like a sign painted on the set. */}
+          <motion.button
+            type="button"
+            disabled={!ready}
+            onClick={onStart}
+            whileHover={ready ? { scale: 1.03, rotate: -1 } : undefined}
+            whileTap={ready ? { scale: 0.97 } : undefined}
+            className="relative mx-auto mt-6 flex -rotate-2 items-center gap-3 rounded-[0.6rem_1.6rem_0.8rem_1.4rem] bg-gradient-to-r from-amber-300 via-amber-400 to-orange-400 px-10 py-3.5 text-[#1a1203] shadow-[0_16px_40px_-12px_rgba(251,191,36,.8)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40"
+          >
+            <Marker className="text-[1.45rem]">{label}</Marker>
+            <ArrowRight aria-hidden className="size-5" />
+          </motion.button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Row({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+      <span className="flex items-center gap-2.5 text-[0.86rem] text-white/85">
+        <span className="text-white/55" aria-hidden>
+          {icon}
+        </span>
+        {label}
+      </span>
       {children}
     </div>
   )
 }
 
-function StartButton({ disabled, label, onClick }: { disabled?: boolean; label: string; onClick: () => void }) {
+function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button
       type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="mt-7 rounded-full bg-chalk px-8 py-3 text-[0.9rem] font-semibold text-void outline-none transition-[transform,opacity] duration-300 hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={() => onChange(!on)}
+      className={cn('relative flex h-7 w-12 items-center rounded-full px-1 outline-none transition-colors focus-visible:outline-2 focus-visible:outline-white', on ? 'justify-end bg-lime-400' : 'justify-start bg-white/15')}
     >
-      {label}
+      <motion.span layout className="size-5 rounded-full bg-white shadow" transition={{ type: 'spring', stiffness: 500, damping: 32 }} />
     </button>
   )
 }
 
+const startLabel = (people: number) => (people === 1 ? 'Play solo' : 'Start game')
+
 export function TriviaSetup({
   people,
+  players = [],
   error,
   onStart,
 }: {
   people: number
+  players?: Person[]
   error: string | null
-  onStart: (options: { categories: string[]; rounds: number; seconds: number }) => void
+  onStart: (options: { categories: string[]; rounds: number; seconds: number; lateJoin: boolean }) => void
 }) {
   const [categories, setCategories] = useState<string[]>(TRIVIA_CATEGORIES.map((c) => c.id))
   const [rounds, setRounds] = useState(10)
   const [seconds, setSeconds] = useState(15)
+  const [lateJoin, setLateJoin] = useState(true)
   const toggle = (id: string) => setCategories((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]))
 
   return (
-    <SetupShell kicker="Live trivia" title="Fastest right answer wins." blurb="Same question, same moment, for everyone. Answers lock on the first tap — so be quick, but be right.">
-      <div className="mt-7 flex w-full flex-wrap justify-center gap-2.5" role="group" aria-label="Categories">
-        {TRIVIA_CATEGORIES.map((c) => {
-          const on = categories.includes(c.id)
-          return (
-            <button
-              key={c.id}
-              type="button"
-              aria-pressed={on}
-              onClick={() => toggle(c.id)}
-              className={cn(
-                'relative w-[calc(50%-0.35rem)] overflow-hidden rounded-[1.1rem] border p-4 text-left outline-none transition-[transform,border-color] duration-300 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:w-[calc(33.333%-0.45rem)]',
-                on ? 'border-white/40' : 'border-white/10 hover:border-white/25',
-              )}
-            >
-              <span className={cn('absolute inset-0 bg-gradient-to-br to-transparent transition-opacity duration-300', c.tone, on ? 'opacity-100' : 'opacity-30')} />
-              <span className="relative block text-[1.5rem] leading-none" aria-hidden>
-                {c.emoji}
-              </span>
-              <span className="relative mt-2 block font-display text-[1rem] font-semibold text-chalk">{c.label}</span>
-              <span
-                aria-hidden
+    <Lobby
+      players={players}
+      error={error}
+      ready={categories.length > 0}
+      label={categories.length === 0 ? 'Pick a category' : startLabel(people)}
+      onStart={() => onStart({ categories, rounds, seconds, lateJoin })}
+      poster={
+        <>
+          <p className="-rotate-3 font-marker text-[1.05rem] leading-tight text-white/65">
+            Know fast.
+            <br />
+            Play live.
+          </p>
+          <motion.h2
+            initial={{ opacity: 0, y: 14, rotate: -6 }}
+            animate={{ opacity: 1, y: 0, rotate: -4 }}
+            transition={{ type: 'spring', stiffness: 160, damping: 16 }}
+            className="mt-3 px-2 text-white [text-shadow:0_0_40px_rgba(251,191,36,.35)]"
+          >
+            <Marker className="block text-[clamp(3.4rem,8vw,6rem)]">Trivia</Marker>
+            <Marker className="block pl-[0.6em] text-[clamp(3.4rem,8vw,6rem)]">Live</Marker>
+          </motion.h2>
+          <svg viewBox="0 0 220 14" className="mt-1 w-56 text-amber-400" aria-hidden>
+            <motion.path d="M3 9 C 60 2, 140 2, 217 7" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.4, duration: 0.7 }} />
+          </svg>
+          <p className="mt-5 text-[1.02rem] leading-relaxed text-white/80">
+            Real people.
+            <br />
+            Real questions.
+            <br />
+            Real-time chaos.
+          </p>
+        </>
+      }
+    >
+      <Row icon={<Hash className="size-4" />} label="Questions">
+        <Segmented label="Questions" values={[5, 10, 15, 20]} value={rounds} onChange={setRounds} compact />
+      </Row>
+      <div className="px-4 py-3">
+        <span className="text-[0.86rem] text-white/85">Categories</span>
+        <div className="mt-2.5 flex flex-wrap gap-2" role="group" aria-label="Categories">
+          {TRIVIA_CATEGORIES.map((c) => {
+            const on = categories.includes(c.id)
+            const Icon = CATEGORY[c.id]!.icon
+            return (
+              <button
+                key={c.id}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggle(c.id)}
                 className={cn(
-                  'absolute right-3 top-3 grid size-5 place-items-center rounded-full border text-[0.6rem] transition-colors',
-                  on ? 'border-chalk bg-chalk text-void' : 'border-white/30',
+                  'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[0.78rem] font-medium outline-none transition-colors focus-visible:outline-2 focus-visible:outline-white active:scale-95',
+                  on ? 'border-amber-300/60 bg-amber-300/15 text-white' : 'border-white/10 text-white/50 hover:text-white',
                 )}
               >
-                {on ? '✓' : ''}
-              </span>
-            </button>
-          )
-        })}
+                <Icon aria-hidden className={cn('size-3.5', on && CATEGORY[c.id]!.tint)} />
+                {c.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
-      <div className="flex flex-wrap justify-center gap-x-10">
-        <Segmented label="Questions" values={[5, 10, 15, 20]} value={rounds} onChange={setRounds} />
-        <Segmented label="Seconds each" values={[10, 15, 20]} value={seconds} onChange={setSeconds} />
-      </div>
-      {error && (
-        <p role="alert" className="mt-4 text-[0.8rem] text-signal-bright">
-          {error}
-        </p>
-      )}
-      <StartButton
-        disabled={categories.length === 0}
-        label={categories.length === 0 ? 'Pick a category' : startLabel(people)}
-        onClick={() => onStart({ categories, rounds, seconds })}
-      />
-    </SetupShell>
+      <Row icon={<Timer className="size-4" />} label="Seconds per question">
+        <Segmented label="Seconds per question" values={[10, 15, 20]} value={seconds} onChange={setSeconds} compact />
+      </Row>
+      <Row icon={<LogIn className="size-4" />} label="Allow late join">
+        <Toggle on={lateJoin} onChange={setLateJoin} label="Allow late join" />
+      </Row>
+    </Lobby>
   )
 }
 
 export function SongQuizSetup({
   people,
+  players = [],
   error,
   onStart,
 }: {
   people: number
+  players?: Person[]
   error: string | null
-  onStart: (options: { rounds: number; seconds: number }) => void
+  onStart: (options: { rounds: number; seconds: number; lateJoin: boolean }) => void
 }) {
   const [rounds, setRounds] = useState(10)
   const [seconds, setSeconds] = useState(15)
+  const [lateJoin, setLateJoin] = useState(true)
   return (
-    <SetupShell
-      kicker="Guess the song"
-      title="How well do you know your own music?"
-      blurb="Clips come from everything this room has played, saved and liked. Name it before anyone else does."
+    <Lobby
+      players={players}
+      error={error}
+      ready
+      label={startLabel(people)}
+      onStart={() => onStart({ rounds, seconds, lateJoin })}
+      poster={
+        <>
+          <Disc spinning className="size-40" />
+          <motion.h2 initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0, rotate: -3 }} className="mt-6 px-2 text-white [text-shadow:0_0_40px_rgba(232,121,249,.35)]">
+            <Marker className="block text-[clamp(2.8rem,7vw,4.8rem)]">Guess the song</Marker>
+          </motion.h2>
+          <p className="mt-4 max-w-sm text-[1rem] leading-relaxed text-white/80">Clips from everything this room has played, saved and liked. Name it before anyone else does.</p>
+        </>
+      }
     >
-      <Disc spinning className="mt-8 size-36" />
-      <div className="flex flex-wrap justify-center gap-x-10">
-        <Segmented label="Songs" values={[5, 10, 15]} value={rounds} onChange={setRounds} />
-        <Segmented label="Seconds each" values={[10, 15, 20]} value={seconds} onChange={setSeconds} />
-      </div>
-      {error && (
-        <p role="alert" className="mt-4 max-w-sm text-[0.82rem] text-signal-bright">
-          {error}
-        </p>
-      )}
-      <StartButton label={startLabel(people)} onClick={() => onStart({ rounds, seconds })} />
-    </SetupShell>
+      <Row icon={<Music2 className="size-4" />} label="Songs">
+        <Segmented label="Songs" values={[5, 10, 15]} value={rounds} onChange={setRounds} compact />
+      </Row>
+      <Row icon={<Timer className="size-4" />} label="Seconds per song">
+        <Segmented label="Seconds per song" values={[10, 15, 20]} value={seconds} onChange={setSeconds} compact />
+      </Row>
+      <Row icon={<LogIn className="size-4" />} label="Allow late join">
+        <Toggle on={lateJoin} onChange={setLateJoin} label="Allow late join" />
+      </Row>
+    </Lobby>
   )
 }
 
-/* ── Table ─────────────────────────────────────────────────────────────── */
+// ── the table ─────────────────────────────────────────────────────────────────
 
 export function QuizTable({
   party,
@@ -198,13 +379,15 @@ export function QuizTable({
   act,
   onJoin,
   onLeaveTable,
+  onPlayAgain,
 }: {
   party: PartyState<QuizView>
   selfId: string | undefined
   error: string | null
-  act: (action: string, payload?: Record<string, unknown>) => void
+  act: Act
   onJoin: () => void
   onLeaveTable: () => void
+  onPlayAgain?: () => void
 }) {
   const view = party.view
   const item = view.item
@@ -212,6 +395,7 @@ export function QuizTable({
   const mine = selfId !== undefined ? view.picks[selfId] : undefined
   const revealed = view.phase === 'reveal'
   const song = !!item?.media || !!item?.reveal
+  const [sheet, setSheet] = useState(false)
 
   const [left, setLeft] = useState(() => remaining(party, view.deadline))
   useEffect(() => {
@@ -225,286 +409,526 @@ export function QuizTable({
   const [clip, setClip] = useState<ClipStatus>('loading')
   const [unlock, setUnlock] = useState(0)
   const partyRef = useRef(party)
-  partyRef.current = party
+  useEffect(() => {
+    partyRef.current = party
+  }, [party])
   const elapsed = () => {
     const p = partyRef.current
     return Math.max(0, p.serverTime + (Date.now() - p.receivedAt) - p.view.opensAt)
   }
 
-  if (view.phase === 'over') return <Podium view={view} selfId={selfId} onLeaveTable={onLeaveTable} />
+  /* A right answer is a moment — confetti on the screen of whoever got it. */
+  const myGain = selfId ? view.gains[selfId] : undefined
+  const celebrated = useRef(-1)
+  useEffect(() => {
+    if (revealed && myGain && celebrated.current !== view.round) {
+      celebrated.current = view.round
+      void confetti({ particleCount: 70, spread: 70, startVelocity: 34, origin: { y: 0.55 }, colors: ['#bef264', '#fcd34d', '#f472b6', '#7dd3fc'], disableForReducedMotion: true })
+    }
+  }, [revealed, myGain, view.round])
+
+  if (view.phase === 'over') return <Podium view={view} selfId={selfId} onLeaveTable={onLeaveTable} onPlayAgain={onPlayAgain} />
   if (!item) return null
 
-  const total = view.phase === 'ready' ? view.readyMs : view.seconds * 1000
-  const name = (p: Person) => (p.id === selfId ? 'You' : p.name)
-  const myGain = selfId ? view.gains[selfId] : undefined
-  const myStreak = selfId ? (view.streaks[selfId] ?? 0) : 0
-  const secs = Math.ceil(left / 1000)
-  /* The last three seconds should feel like the last three seconds. */
-  const urgent = view.phase === 'question' && left > 0 && left <= 3000
+  const total = view.phase === 'ready' ? view.readyMs : view.seconds * 1000 + (view.extraMs ?? 0)
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-5xl gap-8 px-5 pb-6">
-      {item.media && (
-        <ClipPlayer media={item.media} playing={view.phase === 'question' || revealed} elapsedMs={elapsed} onStatus={setClip} unlock={unlock} />
-      )}
+    <div className="relative isolate flex h-full min-h-0 w-full flex-col overflow-hidden">
+      <Studio />
+      {item.media && <ClipPlayer media={item.media} playing={view.phase === 'question' || revealed} elapsedMs={elapsed} onStatus={setClip} unlock={unlock} />}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Header: what, where, how long. */}
-        <div className="flex items-center justify-between gap-3">
-          <p className="flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-mist">
-            <span className="rounded-full bg-white/[0.07] px-2.5 py-1 normal-case tracking-normal text-chalk">{item.tag}</span>
-            {song ? `of ${view.rounds}` : `${view.round + 1} of ${view.rounds}`}
+      {/* Where we are, and how long is left. */}
+      <div className="flex shrink-0 items-center gap-4 px-4 pb-2 pt-1 lg:px-8">
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.85rem] font-semibold text-white/90">
+            {song ? 'Song' : 'Question'} {view.round + 1}
+            <span className="text-white/45">/{view.rounds}</span>
           </p>
-          <span
-            className={cn(
-              'relative grid h-9 min-w-9 place-items-center rounded-full px-2 transition-colors duration-300',
-              urgent ? 'bg-signal/20 ring-1 ring-signal-bright/50' : view.phase === 'question' ? 'bg-white/[0.06]' : '',
-            )}
-            role="timer"
-            aria-label={view.phase === 'question' ? `${secs} seconds left` : undefined}
-          >
-            {/* Each second replaces the last outright, popping in. No exit
-                animation: a ticking number must never depend on one finishing. */}
-            {view.phase === 'question' && (
-              <motion.span
-                key={secs}
-                initial={{ scale: urgent ? 1.7 : 1.2, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: 'spring', stiffness: 520, damping: 22 }}
-                className={cn('font-display text-[1.15rem] font-semibold tabular-nums', urgent ? 'text-signal-bright' : 'text-chalk')}
-              >
-                {secs}
-              </motion.span>
-            )}
-          </span>
-        </div>
-        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]" aria-hidden>
-          <div
-            className={cn(
-              'h-full rounded-full transition-[width,background-color] duration-100 ease-linear',
-              urgent ? 'animate-pulse bg-signal-bright shadow-[0_0_14px_rgba(255,90,90,.85)]' : view.phase === 'ready' ? 'bg-chalk/40' : 'bg-gradient-to-r from-chalk/60 to-chalk',
-            )}
-            style={{ width: view.phase === 'reveal' ? '0%' : `${Math.min(100, (left / total) * 100)}%` }}
-          />
-        </div>
-
-        <div className="my-auto flex w-full flex-col items-center py-6">
-          {/* The stage: the question, or the record. */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={`${view.round}-${song ? 'song' : 'q'}`}
-              initial={{ opacity: 0, y: 16, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
-              className="flex w-full flex-col items-center text-center"
-            >
-              {song ? (
-                <SongStage view={view} clip={clip} left={left} onUnlock={() => setUnlock((n) => n + 1)} />
-              ) : (
-                <>
-                  {view.phase === 'ready' && <Countdown left={left} />}
-                  <h2 className="mt-2 max-w-2xl text-balance font-display text-[clamp(1.5rem,3.4vw,2.35rem)] font-semibold leading-tight tracking-[-0.025em] text-chalk">
-                    {item.prompt}
-                  </h2>
-                </>
-              )}
-            </motion.div>
-          </AnimatePresence>
-
-          {/* Four options. */}
-          <div className="mt-7 grid w-full gap-2.5 sm:grid-cols-2">
-            {item.options.length === 0
-              ? TILES.map((_, i) => <div key={i} className="h-[4.5rem] animate-pulse rounded-[1.2rem] bg-white/[0.04]" />)
-              : item.options.map((option, i) => {
-                  const tile = TILES[i]!
-                  const right = revealed && item.answer === i
-                  const wrongPick = revealed && mine?.option === i && item.answer !== i
-                  const picked = mine?.option === i
-                  const locked = mine !== undefined || !playing || view.phase !== 'question'
-                  const pickers = revealed ? view.players.filter((p) => view.picks[p.id]?.option === i) : []
-                  return (
-                    <motion.button
-                      key={`${view.round}-${i}`}
-                      type="button"
-                      disabled={locked}
-                      onClick={() => act('answer', { option: i })}
-                      aria-pressed={picked}
-                      initial={{ opacity: 0, y: 14, scale: 0.97 }}
-                      animate={{
-                        opacity: revealed ? (right || picked ? 1 : 0.35) : mine && !picked ? 0.45 : 1,
-                        y: 0,
-                        /* The right answer swells once, then settles a touch proud of the rest. */
-                        scale: right ? [1, 1.05, 1.02] : picked && !revealed ? 1.01 : 1,
-                      }}
-                      whileTap={locked ? undefined : { scale: 0.96, y: 2 }}
-                      transition={{
-                        delay: view.phase === 'question' && !mine ? i * 0.05 : 0,
-                        type: 'spring',
-                        stiffness: 420,
-                        damping: 24,
-                        scale: right ? { duration: 0.5, ease: [0.2, 0.8, 0.2, 1] } : { type: 'spring', stiffness: 420, damping: 24 },
-                      }}
-                      className={cn(
-                        /* A little lip underneath, so it reads as a button you press, not a card. */
-                        'group relative flex min-h-[4.5rem] items-center gap-3 overflow-hidden rounded-[1.2rem] border p-4 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
-                        'shadow-[inset_0_1px_0_rgba(255,255,255,.14),0_4px_0_rgba(0,0,0,.4)]',
-                        right
-                          ? 'border-emerald-300/80 bg-emerald-500/25 shadow-[inset_0_1px_0_rgba(255,255,255,.2),0_4px_0_rgba(0,0,0,.4),0_0_44px_-8px_rgba(52,211,153,.75)]'
-                          : wrongPick
-                            ? 'border-rose-400/60 bg-rose-500/15'
-                            : picked
-                              ? cn('border-transparent ring-2', tile.ring)
-                              : 'border-white/10 bg-white/[0.02]',
-                        !locked && 'transition-[border-color,filter] duration-200 hover:border-white/30 hover:brightness-110',
-                      )}
-                    >
-                      {!right && !wrongPick && <span className={cn('absolute inset-0 bg-gradient-to-br', tile.tone)} />}
-                      {/* A sheen across the right answer as it's revealed. */}
-                      {right && (
-                        <motion.span
-                          aria-hidden
-                          className="absolute inset-y-0 w-1/2 -skew-x-12 bg-gradient-to-r from-transparent via-white/25 to-transparent"
-                          initial={{ left: '-60%' }}
-                          animate={{ left: '130%' }}
-                          transition={{ duration: 0.9, delay: 0.15, ease: 'easeOut' }}
-                        />
-                      )}
-                      <span
-                        className={cn(
-                          'relative grid size-9 shrink-0 place-items-center rounded-xl text-[0.85rem] text-void shadow-[inset_0_-2px_0_rgba(0,0,0,.2)] transition-transform duration-200',
-                          right ? 'bg-emerald-300' : wrongPick ? 'bg-rose-400' : tile.dot,
-                          !locked && 'group-hover:-rotate-6 group-hover:scale-110',
-                        )}
-                        aria-hidden
-                      >
-                        {right ? <Check className="size-4" strokeWidth={3} /> : wrongPick ? <X className="size-4" strokeWidth={3} /> : tile.shape}
-                      </span>
-                      <span className="relative flex-1 text-[1rem] font-semibold leading-snug text-chalk">{option}</span>
-                      {picked && view.phase === 'question' && (
-                        <motion.span
-                          initial={{ scale: 0.6, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          transition={{ type: 'spring', stiffness: 500, damping: 22 }}
-                          className="relative flex items-center gap-1 rounded-full bg-black/35 px-2.5 py-1 text-[0.7rem] font-semibold text-chalk"
-                        >
-                          <span className="size-1.5 rounded-full bg-chalk" aria-hidden /> Locked in
-                        </motion.span>
-                      )}
-                      {pickers.length > 0 && (
-                        <span className="relative flex -space-x-1.5" aria-label={`Picked by ${pickers.map((p) => p.name).join(', ')}`}>
-                          {pickers.slice(0, 5).map((p, k) => (
-                            <motion.span
-                              key={p.id}
-                              title={p.name}
-                              initial={{ scale: 0, y: 6 }}
-                              animate={{ scale: 1, y: 0 }}
-                              transition={{ type: 'spring', stiffness: 520, damping: 20, delay: 0.3 + k * 0.07 }}
-                              className={cn('grid size-7 place-items-center rounded-full bg-gradient-to-br text-[0.7rem] font-bold text-white ring-2 ring-black/50', hue(p.id))}
-                            >
-                              {p.name.slice(0, 1).toUpperCase()}
-                            </motion.span>
-                          ))}
-                          {pickers.length > 5 && (
-                            <span className="grid size-7 place-items-center rounded-full bg-black/60 text-[0.62rem] font-bold text-chalk ring-2 ring-black/50">+{pickers.length - 5}</span>
-                          )}
-                        </span>
-                      )}
-                    </motion.button>
-                  )
-                })}
+          <div className="mt-1.5 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-white/10">
+            <motion.div className="h-full rounded-full bg-gradient-to-r from-sky-400 to-indigo-400" animate={{ width: `${((view.round + (revealed ? 1 : 0)) / view.rounds) * 100}%` }} />
           </div>
-
-          {/* Under the options: who's in, or how you did. */}
-          <div className="mt-5 flex min-h-12 items-center justify-center">
-            <AnimatePresence mode="wait">
-              {revealed && playing ? (
-                <motion.div
-                  key={`gain-${view.round}`}
-                  initial={{ opacity: 0, y: 10, scale: 0.9 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 380, damping: 20, delay: 0.2 }}
-                  className="flex items-center gap-3"
-                >
-                  {myGain ? (
-                    <>
-                      <span className="relative">
-                        <Burst seed={`${view.round}`} />
-                        <motion.span
-                          initial={{ scale: 0.4 }}
-                          animate={{ scale: [0.4, 1.25, 1] }}
-                          transition={{ duration: 0.55, delay: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
-                          className="relative block font-display text-[2rem] font-semibold tabular-nums text-emerald-300 drop-shadow-[0_0_18px_rgba(52,211,153,.55)]"
-                        >
-                          +{myGain}
-                        </motion.span>
-                      </span>
-                      {myStreak >= 2 && (
-                        <span className="flex items-center gap-1 rounded-full bg-orange-500/20 px-3 py-1 text-[0.8rem] font-semibold text-orange-200">
-                          <Flame className="size-3.5" aria-hidden /> {myStreak} in a row
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-[0.95rem] text-mist">{mine ? 'Not this time.' : 'Too slow — no answer.'}</span>
-                  )}
-                </motion.div>
-              ) : view.phase === 'question' ? (
-                <motion.p key="answered" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-[0.8rem] text-dusk">
-                  {view.answered.length} of {view.players.length} answered
-                </motion.p>
-              ) : null}
-            </AnimatePresence>
-          </div>
-          {!playing && (
-            <button
-              type="button"
-              onClick={onJoin}
-              className="mt-1 rounded-full bg-chalk px-5 py-2 text-[0.8rem] font-semibold text-void outline-none transition-transform hover:scale-[1.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal active:scale-95"
-            >
-              Join in
-            </button>
-          )}
-          {error && (
-            <p role="alert" className="mt-2 text-[0.8rem] text-signal-bright">
-              {error}
-            </p>
-          )}
         </div>
-
-        <div className="flex items-center justify-between pt-2 lg:hidden">
-          <Leaderboard view={view} selfId={selfId} compact />
-        </div>
-        <div className="flex justify-end pt-2">
-          <button type="button" onClick={() => act('end')} className="rounded-full border border-white/12 px-4 py-2 text-[0.75rem] text-mist hover:bg-white/5 hover:text-chalk">
-            End the game
-          </button>
-        </div>
+        <button type="button" onClick={() => setSheet(true)} className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-[0.75rem] text-white backdrop-blur lg:hidden">
+          <Trophy aria-hidden className="size-3.5 text-amber-300" /> Board
+        </button>
+        <Clock left={view.phase === 'question' ? left : 0} total={total} active={view.phase === 'question'} />
       </div>
 
-      <aside className="hidden w-60 shrink-0 flex-col pt-10 lg:flex" aria-label="Scores">
-        <p className="mb-3 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-mist">Leaderboard</p>
-        <Leaderboard view={view} selfId={selfId} name={name} />
-      </aside>
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-4 pb-4 lg:grid-cols-[minmax(0,1fr)_19rem] lg:px-8">
+        <div data-lenis-prevent className="relative flex min-h-0 flex-col items-center overflow-y-auto py-2 [&>*:not(.absolute)]:my-auto">
+          <Floaters reactions={view.reactions ?? []} />
+          <div className="flex w-full max-w-3xl flex-col items-center">
+            <AnimatePresence mode="wait">
+              {view.phase === 'ready' && !song ? (
+                <NextUp key={`next-${view.round}`} view={view} left={left} />
+              ) : (
+                <motion.div
+                  key={`q-${view.round}`}
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                  className="flex w-full flex-col items-center"
+                >
+                  {song ? <SongStage view={view} clip={clip} left={left} onUnlock={() => setUnlock((n) => n + 1)} /> : <QuestionCard view={view} />}
+
+                  {item.options.length > 0 && (
+                    <>
+                      <p className="mt-5 self-start text-[0.78rem] font-semibold uppercase tracking-[0.18em] text-white/55">{revealed ? 'The answer' : mine ? 'Locked in' : 'Your answer'}</p>
+                      <div className="mt-2.5 grid w-full grid-cols-2 gap-3">
+                        {item.options.map((option, i) => (
+                          <Tile
+                            key={`${view.round}-${i}`}
+                            index={i}
+                            text={option}
+                            view={view}
+                            mine={mine?.option}
+                            locked={mine !== undefined || !playing || view.phase !== 'question'}
+                            onPick={() => act('answer', { option: i })}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  <AnimatePresence>
+                    {revealed && playing && (
+                      <Verdict
+                        key={`v-${view.round}`}
+                        view={view}
+                        gain={myGain ?? 0}
+                        skipped={mine?.option === -1}
+                        answered={mine !== undefined}
+                        streak={selfId ? (view.streaks[selfId] ?? 0) : 0}
+                      />
+                    )}
+                  </AnimatePresence>
+                  {revealed && !playing && view.fact && <p className="mt-4 max-w-xl text-center text-[0.95rem] text-white/80">{view.fact}</p>}
+
+                  {view.phase === 'question' && (
+                    <p className="mt-4 text-[0.8rem] text-white/50">
+                      {view.answered.length} of {view.players.length} answered
+                    </p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {!playing && (
+              <button type="button" onClick={onJoin} className="mt-4 rounded-full bg-lime-300 px-6 py-2.5 text-[0.86rem] font-bold text-[#0d1206]">
+                Join in
+              </button>
+            )}
+            {error && (
+              <p role="alert" className="mt-3 text-[0.82rem] text-signal-bright">
+                {error}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <aside data-lenis-prevent className="hidden min-h-0 flex-col gap-3 overflow-y-auto lg:flex">
+          <Side view={view} selfId={selfId} playing={playing} act={act} />
+        </aside>
+      </div>
+
+      {/* Phones: the power-ups stay on screen; the board slides up. */}
+      {playing && (
+        <div className="flex shrink-0 items-center justify-center gap-4 border-t border-white/[0.06] bg-black/30 px-4 py-3 backdrop-blur lg:hidden">
+          <PowerUps view={view} act={act} answered={mine !== undefined} compact />
+        </div>
+      )}
+      <AnimatePresence>
+        {sheet && (
+          <motion.div className="fixed inset-0 z-[150] flex items-end bg-black/60 backdrop-blur-sm lg:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSheet(false)}>
+            <motion.div
+              data-lenis-prevent
+              className="flex max-h-[80dvh] w-full flex-col gap-3 overflow-y-auto rounded-t-[1.6rem] border-t border-white/10 bg-[#0c1020] p-4 pb-8"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mx-auto mb-1 h-1 w-10 shrink-0 rounded-full bg-white/20" />
+              <Side view={view} selfId={selfId} playing={playing} act={act} showPowers={false} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
 
-function Countdown({ left }: { left: number }) {
-  const n = Math.max(1, Math.ceil(left / 1000))
+/** A ring that drains with the clock — calm, then amber, then red. */
+function Clock({ left, total, active }: { left: number; total: number; active: boolean }) {
+  const secs = Math.ceil(left / 1000)
+  const share = total > 0 ? Math.min(1, left / total) : 0
+  const tone = share > 0.5 ? '#86efac' : share > 0.25 ? '#fbbf24' : '#f87171'
+  const r = 26
+  const c = 2 * Math.PI * r
   return (
-    <div className="relative mb-3 grid size-16 place-items-center">
-      <AnimatePresence mode="popLayout">
+    <div className="relative grid size-16 shrink-0 place-items-center" role="timer" aria-label={active ? `${secs} seconds left` : 'Waiting'}>
+      <svg viewBox="0 0 64 64" className="absolute inset-0 -rotate-90" aria-hidden>
+        <circle cx="32" cy="32" r={r} fill="rgba(0,0,0,.45)" stroke="rgba(255,255,255,.12)" strokeWidth="5" />
+        <circle
+          cx="32"
+          cy="32"
+          r={r}
+          fill="none"
+          stroke={tone}
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - (active ? share : 0))}
+          style={{ transition: 'stroke-dashoffset .1s linear, stroke .3s', filter: `drop-shadow(0 0 6px ${tone})` }}
+        />
+      </svg>
+      {active ? (
         <motion.span
-          key={n}
-          initial={{ scale: 1.8, opacity: 0 }}
+          key={secs}
+          initial={{ scale: secs <= 3 ? 1.6 : 1.15, opacity: 0.4 }}
           animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.6, opacity: 0 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 22 }}
-          className="absolute font-display text-[2.8rem] font-semibold tabular-nums text-chalk"
+          className="relative font-display text-[1.35rem] font-bold tabular-nums"
+          style={{ color: secs <= 3 ? '#fca5a5' : '#fff' }}
         >
-          {n}
+          {secs}
         </motion.span>
+      ) : (
+        <Timer aria-hidden className="relative size-5 text-white/40" />
+      )}
+    </div>
+  )
+}
+
+function CategoryChip({ item }: { item: NonNullable<QuizView['item']> }) {
+  const meta = item.category ? CATEGORY[item.category] : undefined
+  const Icon = meta?.icon ?? Globe2
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3.5 py-1.5 text-[0.72rem] font-bold uppercase tracking-[0.18em] text-white/90">
+      <Icon aria-hidden className={cn('size-4', meta?.tint ?? 'text-sky-300')} /> {item.tag}
+    </span>
+  )
+}
+
+/** The question, on glass, above a lit pedestal. */
+function QuestionCard({ view }: { view: QuizView }) {
+  const item = view.item!
+  return (
+    <div className="flex w-full flex-col items-center">
+      <div className="relative w-full overflow-hidden rounded-[1.6rem] border border-white/12 bg-[linear-gradient(170deg,rgba(255,255,255,.09),rgba(255,255,255,.02))] px-6 py-7 text-center shadow-[0_30px_80px_-30px_rgba(0,0,0,.9)] backdrop-blur-md sm:px-10">
+        <BorderBeam size={150} duration={9} colorFrom="#fcd34d" colorTo="#60a5fa" />
+        <CategoryChip item={item} />
+        <h2 className="mt-4 text-balance font-display text-[clamp(1.35rem,3.2vw,2.1rem)] font-semibold leading-snug tracking-[-0.015em] text-white">{item.prompt}</h2>
+      </div>
+      <Pedestal />
+    </div>
+  )
+}
+
+function Pedestal() {
+  return (
+    <div aria-hidden className="relative -mt-3 h-9 w-[min(26rem,80%)]">
+      <div className="absolute inset-0 rounded-[50%] border border-amber-300/40 bg-[radial-gradient(ellipse_at_center,rgba(251,191,36,.35),rgba(251,146,60,.12)_50%,transparent_72%)] shadow-[0_0_40px_-6px_rgba(251,191,36,.7)]" />
+      <div className="absolute inset-x-[18%] top-[35%] h-3 rounded-[50%] bg-amber-200/30 blur-sm" />
+    </div>
+  )
+}
+
+/** "Next up": what kind of question is coming, and a count to it. */
+function NextUp({ view, left }: { view: QuizView; left: number }) {
+  const item = view.item!
+  const n = Math.max(1, Math.ceil(left / 1000))
+  const meta = item.category ? CATEGORY[item.category] : undefined
+  const Icon = meta?.icon ?? Globe2
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.92, rotate: -4 }}
+      animate={{ opacity: 1, scale: 1, rotate: -2 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ type: 'spring', stiffness: 200, damping: 18 }}
+      className="flex flex-col items-center py-6"
+    >
+      <Marker className="text-[2.4rem] text-white">Next up…</Marker>
+      <div className="mt-4 rotate-1 rounded-2xl bg-[#f5ecd7] px-8 py-5 text-center text-[#2b2116] shadow-[0_24px_60px_-20px_rgba(0,0,0,.9)]">
+        <p className="font-display text-[1.3rem] font-bold">
+          Question {view.round + 1}/{view.rounds}
+        </p>
+        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500 px-3 py-1 text-[0.72rem] font-bold uppercase tracking-[0.14em] text-white">
+          <Icon aria-hidden className="size-3.5" /> {item.tag}
+        </span>
+      </div>
+      <p className="mt-7 text-[0.9rem] text-white/70">Starting in…</p>
+      <div className="relative mt-2 grid size-20 place-items-center rounded-full border-4 border-white/80 shadow-[0_0_30px_-6px_rgba(255,255,255,.6)]">
+        <AnimatePresence mode="popLayout">
+          <motion.span key={n} initial={{ scale: 1.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 380, damping: 20 }} className="absolute font-display text-[2.4rem] font-bold text-white">
+            {n}
+          </motion.span>
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  )
+}
+
+function Tile({ index, text, view, mine, locked, onPick }: { index: number; text: string; view: QuizView; mine: number | undefined; locked: boolean; onPick: () => void }) {
+  const revealed = view.phase === 'reveal'
+  const right = revealed && view.item?.answer === index
+  const wrong = revealed && mine === index && !right
+  const picked = mine === index
+  const ruledOut = (view.hidden ?? []).includes(index)
+  const pickers = revealed ? view.players.filter((p) => view.picks[p.id]?.option === index) : []
+  const live = !locked && !ruledOut
+  return (
+    <motion.button
+      type="button"
+      disabled={!live}
+      onClick={onPick}
+      initial={{ opacity: 0, y: 16, scale: 0.96 }}
+      animate={{ opacity: ruledOut ? 0.22 : revealed && !right && !picked ? 0.42 : 1, y: 0, scale: right ? 1.03 : 1 }}
+      whileHover={live ? { y: -4, scale: 1.02 } : undefined}
+      whileTap={live ? { scale: 0.97 } : undefined}
+      transition={{ type: 'spring', stiffness: 260, damping: 20, delay: view.phase === 'question' && mine === undefined ? index * 0.05 : 0 }}
+      aria-label={`${'ABCD'[index]}: ${text}${right ? ', correct' : ''}${ruledOut ? ', ruled out' : ''}`}
+      className={cn(
+        'relative flex min-h-[5.5rem] items-end overflow-hidden rounded-[1.2rem] border-2 p-4 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-default sm:min-h-[7rem]',
+        TILE_ART[index],
+        right
+          ? 'border-lime-300 shadow-[0_0_40px_-6px_rgba(190,242,100,.85)]'
+          : wrong
+            ? 'border-rose-400 shadow-[0_0_30px_-8px_rgba(251,113,133,.8)]'
+            : picked
+              ? 'border-lime-300 shadow-[0_0_34px_-8px_rgba(190,242,100,.75)]'
+              : 'border-white/12',
+      )}
+    >
+      <span className="absolute right-3 top-3 grid size-7 place-items-center rounded-full bg-black/40 text-[0.72rem] font-bold text-white/80">{'ABCD'[index]}</span>
+      {right && (
+        <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute left-3 top-3 grid size-8 place-items-center rounded-full bg-lime-300 text-[#0d1206]">
+          <Check aria-hidden className="size-5" strokeWidth={3} />
+        </motion.span>
+      )}
+      {wrong && (
+        <span className="absolute left-3 top-3 grid size-8 place-items-center rounded-full bg-rose-400 text-white">
+          <X aria-hidden className="size-5" strokeWidth={3} />
+        </span>
+      )}
+      <span className={cn('relative pr-6 font-display text-[clamp(1rem,2.4vw,1.3rem)] font-semibold leading-tight text-white [text-shadow:0_2px_12px_rgba(0,0,0,.7)]', ruledOut && 'line-through')}>{text}</span>
+      {pickers.length > 0 && (
+        <span className="absolute bottom-3 right-3 flex -space-x-2">
+          {pickers.slice(0, 4).map((p) => (
+            <Avatar key={p.id} person={p} size="sm" ring="ring-black/60" />
+          ))}
+        </span>
+      )}
+    </motion.button>
+  )
+}
+
+/** The verdict, in marker pen: what happened, a line about it, and the points. */
+function Verdict({ view, gain, skipped, answered, streak }: { view: QuizView; gain: number; skipped: boolean; answered: boolean; streak: number }) {
+  const good = gain > 0
+  const title = good ? 'Correct!' : skipped ? 'Skipped' : answered ? 'Not quite' : 'Too slow!'
+  /* On a phone the verdict lands below the tiles — bring it up to where the eyes are. */
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const timer = setTimeout(() => box.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 450)
+    return () => clearTimeout(timer)
+  }, [])
+  return (
+    <motion.div
+      ref={box}
+      initial={{ opacity: 0, y: 14, scale: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.15 }}
+      className="mt-5 flex flex-col items-center px-2 text-center"
+    >
+      <Marker className={cn('-rotate-3 px-2 text-[2.6rem]', good ? 'text-lime-300 [text-shadow:0_0_24px_rgba(190,242,100,.6)]' : skipped ? 'text-white/80' : 'text-rose-300')}>{title}</Marker>
+      {view.fact && <p className="mt-2 max-w-xl text-[0.95rem] leading-relaxed text-white/85">{view.fact}</p>}
+      {good && (
+        <span className="relative mt-3 inline-grid place-items-center px-8 py-2">
+          <svg viewBox="0 0 200 64" className="absolute inset-0 size-full text-lime-300" aria-hidden preserveAspectRatio="none">
+            <motion.path
+              d="M14 34 C 18 10, 176 4, 188 28 C 198 52, 40 64, 12 42 C 2 32, 30 16, 60 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ delay: 0.35, duration: 0.6 }}
+            />
+          </svg>
+          <Marker className="relative text-[1.4rem] text-lime-200">+{gain} points</Marker>
+        </span>
+      )}
+      {good && streak >= 2 && <p className="mt-1 text-[0.82rem] font-semibold text-orange-200">🔥 {streak} in a row</p>}
+    </motion.div>
+  )
+}
+
+function PowerUps({ view, act, answered, compact }: { view: QuizView; act: Act; answered: boolean; compact?: boolean }) {
+  const can = view.phase === 'question' && !answered
+  const powers = view.powers ?? []
+  const list: { kind: Power; label: string; icon: typeof Timer; tint: string }[] = [
+    { kind: 'fifty', label: '50/50', icon: Binoculars, tint: 'text-sky-300 border-sky-400/50' },
+    { kind: 'skip', label: 'Skip', icon: FastForward, tint: 'text-violet-300 border-violet-400/50' },
+    { kind: 'time', label: '+10s', icon: Timer, tint: 'text-amber-300 border-amber-400/50' },
+  ]
+  return (
+    <div className={cn('flex', compact ? 'gap-5' : 'justify-around gap-2')}>
+      {list.map(({ kind, label, icon: Icon, tint }) => {
+        const has = powers.includes(kind)
+        return (
+          <motion.button
+            key={kind}
+            type="button"
+            disabled={!has || !can}
+            onClick={() => act('power', { kind })}
+            whileHover={has && can ? { y: -3 } : undefined}
+            whileTap={has && can ? { scale: 0.92 } : undefined}
+            aria-label={`${label}${has ? '' : ' (used)'}`}
+            className={cn('flex flex-col items-center gap-1 outline-none focus-visible:outline-2 focus-visible:outline-white disabled:cursor-not-allowed', !has && 'opacity-30', has && !can && 'opacity-55')}
+          >
+            <span className={cn('grid place-items-center rounded-full border-2 bg-black/40 shadow-[0_0_20px_-6px_currentColor]', compact ? 'size-11' : 'size-14', tint)}>
+              <Icon aria-hidden className={compact ? 'size-5' : 'size-6'} />
+            </span>
+            <span className="text-[0.72rem] font-semibold text-white/85">{label}</span>
+            {!compact && <span className="text-[0.62rem] text-white/45">{has ? '1 left' : 'used'}</span>}
+          </motion.button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Board, power-ups and reactions. */
+function Side({ view, selfId, playing, act, showPowers = true }: { view: QuizView; selfId: string | undefined; playing: boolean; act: Act; showPowers?: boolean }) {
+  const mine = selfId ? view.picks[selfId] : undefined
+  return (
+    <>
+      <div className="rounded-[1.3rem] border border-white/10 bg-white/[0.04] p-4 backdrop-blur-md">
+        <div className="flex items-center justify-between">
+          <Marker className="text-[1.35rem] text-white">Live leaderboard</Marker>
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[0.7rem] font-semibold text-white/80">
+            Q{view.round + 1}/{view.rounds}
+          </span>
+        </div>
+        <Leaderboard view={view} selfId={selfId} />
+      </div>
+      {playing && showPowers && (
+        <div className="rounded-[1.3rem] border border-white/10 bg-white/[0.04] p-4 backdrop-blur-md">
+          <div className="flex items-center justify-between">
+            <Marker className="text-[1.2rem] text-white">⚡ Power-ups</Marker>
+            <span className="font-marker text-[0.8rem] text-white/45">use wisely!</span>
+          </div>
+          <div className="mt-3">
+            <PowerUps view={view} act={act} answered={mine !== undefined} />
+          </div>
+        </div>
+      )}
+      <div className="rounded-[1.3rem] border border-white/10 bg-white/[0.04] p-3 backdrop-blur-md">
+        <p className="px-1 pb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-white/45">Reactions</p>
+        <div className="grid grid-cols-8 gap-0.5">
+          {REACTIONS.map((emoji) => (
+            <motion.button
+              key={emoji}
+              type="button"
+              disabled={!playing || view.phase === 'over'}
+              onClick={() => act('react', { emoji })}
+              whileHover={{ scale: 1.2, y: -2 }}
+              whileTap={{ scale: 0.85 }}
+              aria-label={`React ${emoji}`}
+              className="grid aspect-square place-items-center rounded-full text-[1.15rem] outline-none hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white disabled:opacity-40"
+            >
+              {emoji}
+            </motion.button>
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
+
+const MEDAL = ['bg-gradient-to-br from-amber-200 to-amber-500 text-[#3b2a05]', 'bg-gradient-to-br from-slate-100 to-slate-400 text-[#1f2430]', 'bg-gradient-to-br from-orange-300 to-orange-700 text-[#2d1404]']
+const BAR = ['from-amber-300 to-yellow-400', 'from-violet-400 to-fuchsia-400', 'from-orange-400 to-rose-400']
+
+function Leaderboard({ view, selfId }: { view: QuizView; selfId: string | undefined }) {
+  const ranked = [...view.players].sort((a, b) => (view.scores[b.id] ?? 0) - (view.scores[a.id] ?? 0))
+  const top = Math.max(1, ...ranked.map((p) => view.scores[p.id] ?? 0))
+  return (
+    <LayoutGroup>
+      <ol className="mt-3 space-y-1.5">
+        {ranked.map((p, i) => {
+          const score = view.scores[p.id] ?? 0
+          const gain = view.phase === 'reveal' ? (view.gains[p.id] ?? 0) : 0
+          const answered = view.phase === 'question' && view.answered.includes(p.id)
+          return (
+            <motion.li layout key={p.id} transition={{ type: 'spring', stiffness: 300, damping: 30 }} className={cn('flex items-center gap-2.5 rounded-xl px-2 py-1.5', p.id === selfId && 'bg-white/[0.07]')}>
+              <span className={cn('grid size-6 shrink-0 place-items-center rounded-full text-[0.68rem] font-bold', MEDAL[i] ?? 'bg-white/10 text-white/70')}>{i + 1}</span>
+              <span className="relative">
+                <Avatar person={p} size="sm" />
+                {answered && <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-[#0c1020] bg-lime-300" aria-label="answered" />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="truncate text-[0.82rem] text-white">{p.id === selfId ? 'You' : p.name}</span>
+                  <span className="relative font-display text-[0.95rem] font-bold tabular-nums text-white">
+                    {score}
+                    <AnimatePresence>
+                      {gain > 0 && (
+                        <motion.span initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute -top-3.5 right-0 text-[0.62rem] font-bold text-lime-300">
+                          +{gain}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </span>
+                </span>
+                <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <motion.span className={cn('block h-full rounded-full bg-gradient-to-r', BAR[i] ?? 'from-slate-300 to-slate-400')} animate={{ width: `${(score / top) * 100}%` }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} />
+                </span>
+              </span>
+            </motion.li>
+          )
+        })}
+      </ol>
+    </LayoutGroup>
+  )
+}
+
+/** Reactions rise over the stage as they arrive. */
+function Floaters({ reactions }: { reactions: NonNullable<QuizView['reactions']> }) {
+  const seen = useRef<Set<number> | null>(null)
+  const [flying, setFlying] = useState<{ id: number; emoji: string; by: string; x: number }[]>([])
+  useEffect(() => {
+    /* The ones already there when the table opened are history, not news. */
+    if (!seen.current) {
+      seen.current = new Set(reactions.map((r) => r.id))
+      return
+    }
+    const known = seen.current
+    const fresh = reactions.filter((r) => !known.has(r.id))
+    if (fresh.length === 0) return
+    fresh.forEach((r) => known.add(r.id))
+    setFlying((f) => [...f, ...fresh.map((r) => ({ ...r, x: 12 + ((r.id * 41) % 76) }))].slice(-16))
+  }, [reactions])
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
+      <AnimatePresence>
+        {flying.map((f) => (
+          <motion.span
+            key={f.id}
+            className="absolute bottom-4 flex flex-col items-center"
+            style={{ left: `${f.x}%` }}
+            initial={{ opacity: 0, y: 0, scale: 0.6 }}
+            animate={{ opacity: [0, 1, 1, 0], y: -240, scale: [0.6, 1.2, 1, 0.9], x: [0, 12, -10, 6] }}
+            transition={{ duration: 2.3, ease: 'easeOut' }}
+            onAnimationComplete={() => setFlying((all) => all.filter((x) => x.id !== f.id))}
+          >
+            <span className="text-[1.9rem]">{f.emoji}</span>
+            <span className="rounded-full bg-black/50 px-1.5 text-[0.6rem] text-white/80">{f.by}</span>
+          </motion.span>
+        ))}
       </AnimatePresence>
     </div>
   )
@@ -519,25 +943,22 @@ function SongStage({ view, clip, left, onUnlock }: { view: QuizView; clip: ClipS
         <Disc spinning={live && clip === 'playing'} artwork={reveal?.artwork ?? null} className="size-44" />
         {view.phase === 'ready' && (
           <div className="absolute inset-0 grid place-items-center">
-            <span className="grid size-16 place-items-center rounded-full bg-black/70 backdrop-blur">
-              <Countdown left={left} />
-            </span>
+            <span className="grid size-16 place-items-center rounded-full bg-black/70 font-display text-[2rem] font-bold text-white backdrop-blur">{Math.max(1, Math.ceil(left / 1000))}</span>
           </div>
         )}
       </div>
+      <Pedestal />
       <AnimatePresence mode="wait">
         {reveal ? (
-          <motion.div key="reveal" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-5">
-            <h2 className="text-balance font-display text-[clamp(1.5rem,3.2vw,2.2rem)] font-semibold leading-tight tracking-[-0.025em] text-chalk">{reveal.title}</h2>
-            {reveal.artist && <p className="mt-1 text-[0.95rem] text-mist">{reveal.artist}</p>}
+          <motion.div key="reveal" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-3 text-center">
+            <h2 className="text-balance font-display text-[clamp(1.5rem,3.2vw,2.2rem)] font-semibold leading-tight tracking-[-0.025em] text-white">{reveal.title}</h2>
+            {reveal.artist && <p className="mt-1 text-[0.95rem] text-white/70">{reveal.artist}</p>}
           </motion.div>
         ) : (
-          <motion.div key="listen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-5 flex flex-col items-center">
-            <h2 className="font-display text-[clamp(1.4rem,3vw,2rem)] font-semibold tracking-[-0.025em] text-chalk">
-              {view.phase === 'ready' ? 'Get ready…' : 'Name that song'}
-            </h2>
+          <motion.div key="listen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex flex-col items-center">
+            <Marker className="px-2 text-[2rem] text-white">{view.phase === 'ready' ? 'Get ready…' : 'Name that song'}</Marker>
             {view.phase === 'question' && clip === 'blocked' ? (
-              <button type="button" onClick={onUnlock} className="mt-3 flex items-center gap-2 rounded-full bg-chalk px-5 py-2 text-[0.85rem] font-semibold text-void">
+              <button type="button" onClick={onUnlock} className="mt-3 flex items-center gap-2 rounded-full bg-lime-300 px-5 py-2 text-[0.85rem] font-bold text-[#0d1206]">
                 <Volume2 className="size-4" aria-hidden /> Tap to hear it
               </button>
             ) : view.phase === 'question' && clip === 'error' ? (
@@ -565,7 +986,7 @@ function Disc({ spinning, artwork = null, className }: { spinning: boolean; artw
         }}
       >
         <div className="absolute inset-0 rounded-full bg-[conic-gradient(from_30deg,transparent_0deg,rgba(255,255,255,.12)_40deg,transparent_80deg,transparent_200deg,rgba(255,255,255,.08)_230deg,transparent_270deg)]" />
-        <div className="absolute inset-[30%] overflow-hidden rounded-full bg-gradient-to-br from-signal to-fuchsia-600 ring-4 ring-black/60">
+        <div className="absolute inset-[30%] overflow-hidden rounded-full bg-gradient-to-br from-amber-400 to-fuchsia-600 ring-4 ring-black/60">
           {artwork && <img src={artwork} alt="" className="size-full scale-[1.35] object-cover" />}
           <div className="absolute inset-[38%] rounded-full border border-white/25" />
         </div>
@@ -575,35 +996,13 @@ function Disc({ spinning, artwork = null, className }: { spinning: boolean; artw
   )
 }
 
-/** A little pop of confetti, for the moment you got it right. */
-function Burst({ seed, count = 14, spread = 1 }: { seed: string; count?: number; spread?: number }) {
-  return (
-    <span className="pointer-events-none absolute left-1/2 top-1/2" aria-hidden>
-      {Array.from({ length: count }, (_, i) => {
-        const angle = (i / count) * Math.PI * 2 + 0.3
-        const dist = (44 + (i % 3) * 18) * spread
-        return (
-          <motion.span
-            key={`${seed}-${i}`}
-            className={cn('absolute -ml-[3px] -mt-[3px] size-1.5', i % 2 ? 'rounded-full' : 'rounded-[1px]', CONFETTI[i % CONFETTI.length])}
-            initial={{ x: 0, y: 0, opacity: 1, scale: 0.4, rotate: 0 }}
-            /* Out, then a little gravity. */
-            animate={{ x: Math.cos(angle) * dist, y: [0, Math.sin(angle) * dist * 0.75, Math.sin(angle) * dist * 0.75 + 18], opacity: [1, 1, 0], scale: 1, rotate: 140 + i * 25 }}
-            transition={{ duration: 1, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
-          />
-        )
-      })}
-    </span>
-  )
-}
-
 function Bars({ on }: { on: boolean }) {
   return (
     <div className="mt-3 flex h-6 items-end gap-1" aria-hidden>
       {[0.9, 0.5, 1, 0.65, 0.8, 0.45, 0.95].map((h, i) => (
         <motion.span
           key={i}
-          className="w-1.5 rounded-full bg-chalk/80"
+          className="w-1.5 rounded-full bg-white/80"
           animate={on ? { height: [`${h * 30}%`, `${h * 100}%`, `${h * 45}%`, `${h * 85}%`] } : { height: '18%' }}
           transition={on ? { repeat: Infinity, repeatType: 'mirror', duration: 0.5 + i * 0.07, ease: 'easeInOut' } : { duration: 0.3 }}
         />
@@ -612,195 +1011,96 @@ function Bars({ on }: { on: boolean }) {
   )
 }
 
-function Leaderboard({ view, selfId, compact, name }: { view: QuizView; selfId: string | undefined; compact?: boolean; name?: (p: Person) => string }) {
-  const ranked = [...view.players].sort((a, b) => (view.scores[b.id] ?? 0) - (view.scores[a.id] ?? 0))
-  const label = name ?? ((p: Person) => (p.id === selfId ? 'You' : p.name))
-  if (compact) {
-    return (
-      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[0.8rem]">
-        {ranked.map((p) => (
-          <li key={p.id} className="text-mist">
-            <span className="text-chalk">{label(p)}</span> <span className="tabular-nums">{view.scores[p.id] ?? 0}</span>
-          </li>
-        ))}
-      </ul>
-    )
-  }
-  /* Where everyone stood before this round's points, so a climb can show as one. */
-  const reveal = view.phase === 'reveal'
-  const before = reveal
-    ? [...view.players].sort((a, b) => (view.scores[b.id] ?? 0) - (view.gains[b.id] ?? 0) - ((view.scores[a.id] ?? 0) - (view.gains[a.id] ?? 0))).map((p) => p.id)
-    : []
-  return (
-    <LayoutGroup>
-      <ol className="space-y-1.5">
-        {ranked.map((p, i) => {
-          const gain = reveal ? (view.gains[p.id] ?? 0) : 0
-          const climbed = reveal ? before.indexOf(p.id) - i : 0
-          const leader = i === 0 && (view.scores[p.id] ?? 0) > 0
-          return (
-            <motion.li
-              layout
-              key={p.id}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className={cn(
-                'relative flex items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors duration-500',
-                p.id === selfId ? 'bg-white/[0.09] ring-1 ring-white/15' : 'bg-white/[0.035]',
-                gain > 0 && 'bg-emerald-400/[0.09]',
-              )}
-            >
-              <span className={cn('w-4 text-center text-[0.75rem] tabular-nums', leader ? 'text-amber-200' : 'text-dusk')}>{leader ? '👑' : i + 1}</span>
-              <span className={cn('grid size-6 shrink-0 place-items-center rounded-full bg-gradient-to-br text-[0.62rem] font-bold text-white', hue(p.id))} aria-hidden>
-                {p.name.slice(0, 1).toUpperCase()}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[0.85rem] text-chalk">{label(p)}</span>
-              <AnimatePresence>
-                {climbed > 0 && (
-                  <motion.span
-                    initial={{ opacity: 0, y: 6, scale: 0.7 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ type: 'spring', stiffness: 500, damping: 22, delay: 0.35 }}
-                    className="rounded-full bg-emerald-400/15 px-1.5 py-0.5 text-[0.6rem] font-bold tabular-nums text-emerald-300"
-                    aria-label={`up ${climbed}`}
-                  >
-                    ▲{climbed}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-              {(view.streaks[p.id] ?? 0) >= 2 && <Flame className="size-3.5 text-orange-300" aria-label={`${view.streaks[p.id]} in a row`} />}
-              <span className="relative text-[0.88rem] font-semibold tabular-nums text-chalk">
-                {view.scores[p.id] ?? 0}
-                <AnimatePresence>
-                  {gain > 0 && (
-                    <motion.span
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      className="absolute -top-3.5 right-0 text-[0.65rem] font-semibold text-emerald-300"
-                    >
-                      +{gain}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </span>
-            </motion.li>
-          )
-        })}
-      </ol>
-    </LayoutGroup>
-  )
-}
-
-function Podium({ view, selfId, onLeaveTable }: { view: QuizView; selfId: string | undefined; onLeaveTable: () => void }) {
+/** Game over: a podium with trophies, the rest below, and another go. */
+function Podium({ view, selfId, onLeaveTable, onPlayAgain }: { view: QuizView; selfId: string | undefined; onLeaveTable: () => void; onPlayAgain?: () => void }) {
   const ranked = [...view.players].sort((a, b) => (view.scores[b.id] ?? 0) - (view.scores[a.id] ?? 0))
   const top = ranked.slice(0, 3)
-  /* Second, first, third — the shape of a podium. */
   const order = [top[1], top[0], top[2]].filter(Boolean) as Person[]
-  const height = (p: Person) => (p === top[0] ? 'h-36' : p === top[1] ? 'h-24' : 'h-16')
+  const [full, setFull] = useState(false)
   const label = (p: Person) => (p.id === selfId ? 'You' : p.name)
-  const streaker = [...view.players].sort((a, b) => (view.best[b.id] ?? 0) - (view.best[a.id] ?? 0))[0]
-  const bestStreak = streaker ? (view.best[streaker.id] ?? 0) : 0
+  useEffect(() => {
+    void confetti({ particleCount: 140, spread: 100, startVelocity: 42, origin: { y: 0.4 }, colors: ['#fcd34d', '#bef264', '#c4b5fd', '#f9a8d4'], disableForReducedMotion: true })
+  }, [])
+  const height = (p: Person) => (p === top[0] ? 'h-32' : p === top[1] ? 'h-24' : 'h-16')
+  const cup = (p: Person) => (p === top[0] ? 'text-amber-300' : p === top[1] ? 'text-slate-200' : 'text-orange-400')
 
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col items-center px-5 pt-6 text-center">
-      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-signal-bright">Final scores</p>
-      <h2 className="mt-2 font-display text-[2.1rem] font-semibold tracking-[-0.03em] text-chalk">
-        {top[0] ? (top[0].id === selfId ? 'You win! 🏆' : `${top[0].name} wins 🏆`) : 'Game over'}
-      </h2>
-      <div className="mt-10 flex w-full items-end justify-center gap-2 sm:gap-3">
-        {order.map((p) => {
-          const first = p === top[0]
-          /* Third steps up first, then second, then the winner — the order a ceremony goes in. */
-          const delay = first ? 0.75 : p === top[1] ? 0.45 : 0.15
-          return (
+    <div data-lenis-prevent className="relative isolate h-full w-full overflow-y-auto">
+      <Studio />
+      <div className="mx-auto flex min-h-full w-full max-w-lg flex-col items-center justify-center px-5 pb-10 pt-6 text-center">
+        <span className="text-[1.6rem]" aria-hidden>
+          👑
+        </span>
+        <Marker className="px-2 text-[clamp(2.6rem,7vw,3.6rem)] text-white [text-shadow:0_0_30px_rgba(251,191,36,.4)]">Game over</Marker>
+        <div className="mt-8 flex w-full items-end justify-center gap-3">
+          {order.map((p, i) => (
             <motion.div
               key={p.id}
-              initial={{ opacity: 0, y: 30 }}
+              initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay, type: 'spring', stiffness: 200, damping: 20 }}
-              className="flex w-[30%] max-w-28 flex-col items-center"
+              transition={{ delay: 0.2 + (p === top[0] ? 0.5 : i * 0.2), type: 'spring', stiffness: 180, damping: 18 }}
+              className="flex w-28 min-w-0 flex-col items-center"
             >
-              <div className="relative">
-                {first && (
-                  <>
-                    <motion.span
-                      aria-hidden
-                      className="absolute -inset-5 rounded-full bg-amber-300/35 blur-2xl"
-                      animate={{ opacity: [0.5, 1, 0.5], scale: [0.95, 1.08, 0.95] }}
-                      transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-                    />
-                    <motion.span
-                      aria-hidden
-                      className="absolute -top-7 left-1/2 -ml-[0.7rem] text-[1.4rem] leading-none"
-                      initial={{ y: -16, opacity: 0, rotate: -20 }}
-                      animate={{ y: [-16, 0, -3, 0], opacity: 1, rotate: [-20, 8, -4, 0] }}
-                      transition={{ delay: delay + 0.35, duration: 0.7 }}
-                    >
-                      👑
-                    </motion.span>
-                    <Burst seed="podium" count={22} spread={1.6} />
-                  </>
-                )}
-                <span
-                  className={cn(
-                    'relative grid place-items-center rounded-full bg-gradient-to-br font-display font-semibold text-white',
-                    hue(p.id),
-                    first ? 'size-16 text-[1.5rem] ring-[3px] ring-amber-200/80' : 'size-12 text-[1.2rem] ring-2 ring-white/30',
-                  )}
-                >
-                  {p.name.slice(0, 1).toUpperCase()}
-                </span>
-              </div>
-              <span className={cn('mt-2 max-w-full truncate text-chalk', first ? 'text-[0.95rem] font-semibold' : 'text-[0.85rem]')}>{label(p)}</span>
-              <span className={cn('text-[0.8rem] font-semibold tabular-nums', first ? 'text-amber-200' : 'text-mist')}>{view.scores[p.id] ?? 0}</span>
-              {/* The step itself grows up out of the floor. */}
-              <motion.div
-                initial={{ scaleY: 0 }}
-                animate={{ scaleY: 1 }}
-                transition={{ delay: delay - 0.1, type: 'spring', stiffness: 160, damping: 20 }}
-                style={{ originY: 1 }}
+              <Trophy aria-hidden className={cn('mb-1 drop-shadow-[0_0_14px_currentColor]', cup(p), p === top[0] ? 'size-10' : 'size-7')} />
+              <Avatar person={p} size={p === top[0] ? 'lg' : 'md'} ring={p === top[0] ? 'ring-amber-300' : 'ring-white/30'} />
+              <span className="mt-2 max-w-full truncate text-[0.88rem] font-semibold text-white">{label(p)}</span>
+              <span className="font-display text-[1.3rem] font-bold tabular-nums text-white">{view.scores[p.id] ?? 0}</span>
+              <div
                 className={cn(
-                  'mt-2 grid w-full place-items-start justify-center rounded-t-xl pt-2 font-display text-[1.3rem] font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,.25)]',
+                  'mt-2 grid w-full place-items-start justify-center rounded-t-xl pt-2 font-display text-[1.3rem] font-bold',
                   height(p),
-                  first ? 'bg-gradient-to-b from-amber-300/55 to-amber-300/5 text-amber-100' : 'bg-gradient-to-b from-white/15 to-white/[0.02] text-chalk/80',
+                  p === top[0] ? 'bg-gradient-to-b from-amber-300/50 to-amber-300/5 text-amber-100' : 'bg-gradient-to-b from-white/15 to-white/[0.02] text-white/80',
                 )}
               >
                 {ranked.indexOf(p) + 1}
-              </motion.div>
+              </div>
             </motion.div>
-          )
-        })}
-      </div>
-      <div className="h-px w-full bg-gradient-to-r from-transparent via-white/20 to-transparent" aria-hidden />
-      {ranked.length > 3 && (
-        <ol className="mt-4 w-full space-y-1.5 text-left" start={4}>
-          {ranked.slice(3).map((p, i) => (
-            <li key={p.id} className="flex items-center justify-between rounded-xl bg-white/[0.04] px-4 py-2 text-[0.85rem] text-chalk">
-              <span className="flex min-w-0 items-center">
-                <span className="mr-3 w-4 tabular-nums text-dusk">{i + 4}</span>
-                <span className={cn('mr-2.5 grid size-6 shrink-0 place-items-center rounded-full bg-gradient-to-br text-[0.62rem] font-bold text-white', hue(p.id))} aria-hidden>
-                  {p.name.slice(0, 1).toUpperCase()}
-                </span>
-                <span className="truncate">{label(p)}</span>
-              </span>
-              <span className="tabular-nums">{view.scores[p.id] ?? 0}</span>
-            </li>
           ))}
-        </ol>
-      )}
-      {bestStreak >= 3 && streaker && (
-        <p className="mt-5 flex items-center gap-1.5 text-[0.85rem] text-orange-200">
-          <Flame className="size-4" aria-hidden /> Best streak: {label(streaker)}, {bestStreak} in a row
-        </p>
-      )}
-      <button
-        type="button"
-        onClick={onLeaveTable}
-        className="mt-7 rounded-full bg-chalk px-7 py-3 text-[0.88rem] font-semibold text-void outline-none transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal active:scale-[0.97]"
-      >
-        Back to games
-      </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setFull((f) => !f)}
+          aria-expanded={full}
+          className="mt-5 flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-[0.86rem] text-white/85 hover:bg-white/[0.07]"
+        >
+          View full results
+          <ChevronDown aria-hidden className={cn('size-4 transition-transform', full && 'rotate-180')} />
+        </button>
+        <AnimatePresence>
+          {full && (
+            <motion.ol initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mt-2 w-full space-y-1.5 overflow-hidden text-left">
+              {ranked.map((p, i) => (
+                <li key={p.id} className="flex items-center gap-3 rounded-xl bg-white/[0.04] px-4 py-2 text-[0.86rem] text-white">
+                  <span className="w-5 text-white/50">{i + 1}</span>
+                  <Avatar person={p} size="sm" />
+                  <span className="flex-1 truncate">{label(p)}</span>
+                  {(view.best[p.id] ?? 0) >= 3 && <span className="text-[0.75rem] text-orange-200">🔥{view.best[p.id]}</span>}
+                  <span className="font-bold tabular-nums">{view.scores[p.id] ?? 0}</span>
+                </li>
+              ))}
+            </motion.ol>
+          )}
+        </AnimatePresence>
+
+        <div className="mt-6 flex w-full flex-col gap-2.5 sm:flex-row">
+          {onPlayAgain && (
+            <motion.button
+              type="button"
+              onClick={onPlayAgain}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              className="relative flex flex-1 items-center justify-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-violet-400 to-purple-500 px-6 py-3.5 text-[0.95rem] font-bold text-white shadow-[0_16px_40px_-12px_rgba(167,139,250,.9)]"
+            >
+              <BorderBeam size={70} duration={5} colorFrom="#ffffff" colorTo="#e9d5ff" />
+              Play again <ArrowRight aria-hidden className="size-4" />
+            </motion.button>
+          )}
+          <button type="button" onClick={onLeaveTable} className="flex-1 rounded-full border border-white/15 px-6 py-3.5 text-[0.9rem] font-semibold text-white hover:bg-white/10">
+            Back to games
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

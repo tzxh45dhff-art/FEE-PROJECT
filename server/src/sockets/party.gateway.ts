@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type { Server, Socket } from 'socket.io'
 
 import { isError, liveCtx, type GameDef, type Player } from '../games/engine.js'
@@ -68,6 +70,8 @@ export function registerGame(game: AnyGame) {
 type Session = {
   game: AnyGame
   state: unknown
+  /** Which game this is — a rematch of the same game restarts `seq`. */
+  id: string
   seq: number
   startedBy: Player
   saved: boolean
@@ -99,6 +103,7 @@ function publish(io: Server, roomId: string) {
             roomId,
             game: session.game.id,
             label: session.game.label,
+            session: session.id,
             seq: session.seq,
             startedBy: session.startedBy,
             /* Deadlines are server time; this lets a client count down
@@ -172,7 +177,8 @@ export function attachPartyGateway(io: Server) {
               roomId,
               game: session.game.id,
               label: session.game.label,
-              seq: session.seq,
+              session: session.id,
+            seq: session.seq,
               startedBy: session.startedBy,
               serverTime: Date.now(),
               view: session.game.view(session.state, self.id),
@@ -221,6 +227,7 @@ export function attachPartyGateway(io: Server) {
       const session = {
         game,
         state: game.start(players, options, ctx),
+        id: randomUUID(),
         seq: 1,
         startedBy: self,
         saved: false,
@@ -231,7 +238,7 @@ export function attachPartyGateway(io: Server) {
       ack({ ok: true })
 
       /* Whatever the game wants to do after it has started, without anyone waiting on it. */
-      game.background?.(roomId, options)
+      game.background?.(roomId, options, session.state)
         .then((result) => {
           if (result && sessions.get(roomId) === session) apply(io, roomId, null, result.action, result.payload)
         })

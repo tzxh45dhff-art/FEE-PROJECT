@@ -193,3 +193,66 @@ describe('quiz over sockets', () => {
     await ask(x, 'party:act', { roomId, action: 'end' })
   })
 })
+
+describe('quiz power-ups, reactions and facts', () => {
+  type PView = { hidden: number[]; powers: string[]; deadline: number | null; fact: string | null; item: { answer: number | null } }
+  const open = (rounds = 5) => act(start(rounds), null, 'open', { round: 0 })
+
+  it('a 50/50 hides two wrong answers, from that player only, once', () => {
+    let s = open()
+    s = act(s, a, 'power', { kind: 'fifty' })
+    const mine = trivia.view(s, 'a') as PView
+    const theirs = trivia.view(s, 'r') as PView
+    assert.equal(mine.hidden.length, 2)
+    assert.ok(!mine.hidden.includes(s.items[0]!.answer), 'never hides the right answer')
+    assert.deepEqual(theirs.hidden, [])
+    assert.deepEqual(mine.powers, ['skip', 'time'])
+    assert.throws(() => act(s, a, 'power', { kind: 'fifty' }), /used/)
+    assert.throws(() => act(s, a, 'answer', { option: mine.hidden[0] }), /ruled out/)
+  })
+
+  it('a skip passes the question without breaking a streak', () => {
+    let s = open()
+    for (let round = 0; round < 2; round++) {
+      if (round) s = act(s, null, 'open', { round })
+      s = act(s, a, 'answer', { option: s.items[round]!.answer })
+      s = act(s, r, 'answer', { option: (s.items[round]!.answer + 1) % 4 })
+      s = act(s, null, 'next', { round })
+    }
+    assert.equal(s.streaks.a, 2)
+    s = act(s, null, 'open', { round: 2 })
+    s = act(s, a, 'power', { kind: 'skip' })
+    s = act(s, r, 'answer', { option: 0 })
+    assert.equal(s.phase, 'reveal')
+    assert.equal(s.gains.a, 0)
+    assert.equal(s.streaks.a, 2, 'the streak survives a skip')
+  })
+
+  it('extra time lets only its owner answer after the clock', () => {
+    let s = open()
+    s = act(s, a, 'power', { kind: 'time' })
+    const mine = trivia.view(s, 'a') as PView
+    const theirs = trivia.view(s, 'r') as PView
+    assert.equal(mine.deadline! - theirs.deadline!, 10_000)
+    clock += 11_000
+    s = act(s, null, 'timeup', { round: 0 })
+    assert.equal(s.phase, 'question', 'the clock waits for whoever bought time')
+    assert.throws(() => act(s, r, 'answer', { option: 0 }), /Too late/)
+    s = act(s, a, 'answer', { option: s.items[0]!.answer })
+    assert.equal(s.phase, 'reveal', 'and reveals as soon as they answer — nobody else can')
+  })
+
+  it('reactions from players, facts at the reveal, and late joiners only when allowed', () => {
+    let s = open()
+    s = act(s, r, 'react', { emoji: '🔥' })
+    assert.deepEqual(s.reactions.map((x) => x.emoji), ['🔥'])
+    assert.throws(() => act(s, r, 'react', { emoji: 'nope' }))
+    s = act(s, null, 'facts', { facts: ['The first fact.', 'Second.'] })
+    assert.equal((trivia.view(s, 'a') as PView).fact, null, 'not before the reveal')
+    s = act(s, null, 'timeup', { round: 0 })
+    assert.equal((trivia.view(s, 'a') as PView).fact, 'The first fact.')
+    assert.ok(trivia.join!(s, { id: 'm', name: 'Meera' }))
+    const closed = trivia.start([a, r], { ...(trivia.options({ lateJoin: false }) as never) }, ctx())
+    assert.equal(trivia.join!(closed, { id: 'm', name: 'Meera' }), null)
+  })
+})

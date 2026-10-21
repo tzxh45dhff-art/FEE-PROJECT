@@ -10,18 +10,21 @@ export function Segmented({
   value,
   onChange,
   format = String,
+  compact = false,
 }: {
   label: string
   values: number[]
   value: number
   onChange: (v: number) => void
   format?: (v: number) => string
+  /** Inline in a settings row: no label above, smaller pills. */
+  compact?: boolean
 }) {
   /* Each row slides its own pill, so two rows on one screen don't swap pills. */
   const pill = useId()
   return (
-    <div className="mt-6 flex flex-col items-center gap-2">
-      <span className="text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-mist">{label}</span>
+    <div className={cn('flex flex-col items-center gap-2', !compact && 'mt-6')}>
+      {!compact && <span className="text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-mist">{label}</span>}
       <div className="flex gap-1 rounded-full bg-white/[0.06] p-1 ring-1 ring-inset ring-white/[0.06]" role="radiogroup" aria-label={label}>
         {values.map((v) => (
           <button
@@ -31,7 +34,8 @@ export function Segmented({
             aria-checked={value === v}
             onClick={() => onChange(v)}
             className={cn(
-              'relative min-w-14 rounded-full px-4 py-1.5 text-[0.85rem] font-semibold tabular-nums outline-none transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-signal active:scale-95',
+              'relative rounded-full font-semibold tabular-nums outline-none transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-signal active:scale-95',
+              compact ? 'min-w-10 px-3 py-1 text-[0.8rem]' : 'min-w-14 px-4 py-1.5 text-[0.85rem]',
               value === v ? 'text-void' : 'text-mist hover:text-chalk',
             )}
           >

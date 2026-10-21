@@ -45,7 +45,7 @@ export interface GameDef<S, O = unknown> {
    * Runs once the game is under way; what it returns is applied as an action
    * from the server, if the same game is still running.
    */
-  background?: (roomId: string, options: O) => Promise<{ action: string; payload: Record<string, unknown> } | null>
+  background?: (roomId: string, options: O, state: S) => Promise<{ action: string; payload: Record<string, unknown> } | null>
   start: (players: Player[], options: O, ctx: Ctx) => S
   /**
    * Apply an action. `by` is null for the server's own timers. Return the next
