@@ -983,14 +983,9 @@ export async function recheckProblem(req: Request, res: Response) {
     include: { testCases: { orderBy: { position: 'asc' } } },
   })
   if (!problem) throw HttpError.notFound('That problem is not here.')
-  if (!judge.configured()) {
-    throw HttpError.unavailable('There is no judge configured, so the cases cannot be checked.')
-  }
 
   const kept = await generate.verifyCases(
     `${problem.title}\n\n${problem.description}`,
-    /* The hidden flag goes with them: `verifyCases` uses the visible cases as
-       its yardstick for whether to believe its own reference solution. */
     problem.testCases.map((testCase) => ({
       input: testCase.input,
       expected: testCase.expected,
@@ -1007,9 +1002,15 @@ export async function recheckProblem(req: Request, res: Response) {
   )
 
   if (doomed.length > 0) {
-    await prisma.codingTestCase.deleteMany({
-      where: { id: { in: doomed.map((testCase) => testCase.id) } },
-    })
+    /* Re-split what is left, so a wrong example that was removed is replaced
+       by a hidden case moving up — a problem keeps its examples. */
+    const rows = generate.splitCases(kept)
+    await prisma.$transaction([
+      prisma.codingTestCase.deleteMany({ where: { problemId: problem.id } }),
+      prisma.codingTestCase.createMany({
+        data: rows.map((row, position) => ({ ...row, position, problemId: problem.id })),
+      }),
+    ])
   }
 
   res.json({

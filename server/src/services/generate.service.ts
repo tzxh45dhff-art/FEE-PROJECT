@@ -1,7 +1,6 @@
 import { prisma } from '../models/prisma.js'
 import * as azure from './azure.service.js'
-import { checkPython } from './pyRunner.service.js'
-import * as judge from './judge.service.js'
+import { runPython } from './pyRunner.service.js'
 import * as retrieval from './retrieval.service.js'
 import * as syllabus from './syllabus.service.js'
 import { HttpError } from '../utils/HttpError.js'
@@ -378,91 +377,60 @@ Rules:
 - Return only the JSON object.`
 
 /**
- * Throw away the cases a reference solution disagrees with.
+ * Throw away the test cases that are wrong.
  *
- * Generated test cases are the part of this feature most able to be quietly
- * wrong. A model writing ten cases by hand will, sooner or later, write a
- * header for rows it never supplies and then invent the answer — and a
- * fabricated case is worse than a missing one, because it fails a correct
- * submission and sends somebody looking for a bug they do not have.
- *
- * So the cases are checked the only way that actually settles it: write a
- * solution, run it against them, and believe the run.
- *
- * The reference can be wrong too, which is why disagreement alone is not
- * enough to delete anything. If it fails most of them, the reference is the
- * broken one and everything is kept; only when it agrees with a clear
- * majority is it trusted to condemn the rest. Without a judge, nothing here
- * can be checked and everything is kept — unverified, and not pretending
- * otherwise.
+ * Generated cases are the part of this feature most able to be quietly wrong:
+ * a model writing ten cases by hand will sooner or later miscount, or write a
+ * header for rows it never supplies, and invent the answer. A wrong case is
+ * worse than a missing one — it fails a correct submission and sends somebody
+ * hunting for a bug they do not have. So the cases are checked the only way
+ * that settles it: by running programs on them. Bounded, because a problem
+ * with more than a dozen cases is not made better by a slower check.
  */
 const MAX_VERIFIED = 12
 
-/**
- * How much of the reference has to be right before it is allowed to condemn
- * a case.
- *
- * The visible cases are the yardstick, not a percentage of the whole. They
- * are the worked examples printed in the problem statement — the ones a human
- * reads, checks by hand, and would notice were wrong — so a reference that
- * reproduces every one of them is almost certainly correct, and anything it
- * then disagrees with is the disagreement's fault.
- *
- * A share of all cases was the first rule here and it was the wrong one. On
- * the problem that prompted this, three of six cases were fabricated: the
- * reference agreed with exactly half, fell under a 60% bar, and was thrown
- * out as broken — leaving every bad case in place. The proportion of cases
- * that are wrong is precisely what is unknown, so it cannot be the thing the
- * test depends on.
- *
- * With no visible case to check against there is no yardstick, and a bare
- * majority is the most that can be claimed.
- */
-const FALLBACK_AGREEMENT = 0.6
-
-export async function verifyCases(
+export async function verifyCases<T extends { input: string; expected: string; hidden?: boolean }>(
   statement: string,
-  cases: { input: string; expected: string; hidden?: boolean }[],
-) {
-  /* Bounded because every case is a round trip to the judge, and a problem
-     with more than a dozen is not made better by a slower generation. */
+  cases: T[],
+): Promise<T[]> {
+  /*
+   * Two references, written apart, from the statement alone.
+   *
+   * The first version of this showed one reference every case, answers
+   * included, and then trusted it only if it reproduced every example. That
+   * had two flaws, and a real problem hit both: the reference was being told
+   * the answers it was meant to check, and a wrong *example* — "3 even, 2
+   * odd" for four even numbers and one odd — made it untrustworthy by
+   * definition, so the one case that most needed catching never could be.
+   *
+   * Now neither reference sees an expected output. Each reads the problem and
+   * the inputs and writes its own solution; both are run on every input. Where
+   * the two agree with each other and not with a case, the case is the odd
+   * one out — two programs written separately do not usually make the same
+   * mistake. Where they disagree with each other, nothing is known, and
+   * nothing is removed on it.
+   */
   const subject = cases.slice(0, MAX_VERIFIED)
+  const inputs = subject.map((c) => c.input)
 
-  /* Where the split is already decided, the visible ones are the yardstick.
-     Where it is not — during generation, before this function's own result
-     decides it — the model's leading cases are its examples, and those are
-     the same rows. */
-  const vetted = subject.some((entry) => entry.hidden !== undefined)
-    ? subject.map((entry, index) => (entry.hidden === false ? index : -1)).filter((i) => i >= 0)
-    : subject.slice(0, 3).map((_, index) => index)
-
-  const isTrusted = (results: boolean[]) =>
-    vetted.length > 0
-      ? vetted.every((index) => results[index])
-      : results.filter(Boolean).length >= Math.ceil(subject.length * FALLBACK_AGREEMENT)
-
-  async function writeReference(previous?: { code: string; failed: number[] }) {
+  const write = async (temperature: number) => {
     try {
       const written = await azure.chat(
         [
           {
             role: 'system',
-            content: `Write a correct Python 3 solution. It reads from standard input and writes to standard output. Output only the program — no markdown fence, no commentary, no explanation.`,
+            content:
+              'Write a correct Python 3 solution. It reads from standard input and writes to standard output exactly as the problem specifies. Output only the program — no markdown fence, no commentary.',
           },
           {
             role: 'user',
-            content:
-              `Problem: ${statement}\n\nIt must turn each of these inputs into exactly its output:\n\n${subject
-                .map((c, i) => `Case ${i + 1}\nstdin:\n${c.input}\nstdout:\n${c.expected}`)
-                .join('\n\n')}` +
-              (previous
-                ? `\n\nYour previous attempt did not produce the stated output for case${
-                    previous.failed.length === 1 ? '' : 's'
-                  } ${previous.failed.map((i) => i + 1).join(', ')}. Read those cases again and write a version that handles them. If one of those cases looks impossible — its input does not contain the data the problem says it will — still write the solution the problem describes, and let that case fail.\n\nPrevious attempt:\n${previous.code}`
-                : ''),
+            content: `Problem:\n${statement}\n\nIt will be run on inputs like these:\n\n${inputs
+              .slice(0, 4)
+              .map((input, i) => `Input ${i + 1}:\n${input}`)
+              .join('\n\n')}`,
           },
         ],
-        { temperature: 0, maxTokens: 1200 },
+        { temperature, maxTokens: 1500 },
       )
       return (written.content ?? '').replace(/^```[a-z]*\n?|```$/gm, '').trim()
     } catch {
@@ -470,49 +438,38 @@ export async function verifyCases(
     }
   }
 
+  const [first, second] = await Promise.all([write(0), write(0.6)])
+  if (!first || !second) return cases
+  const [a, b] = await Promise.all([runPython(first, inputs), runPython(second, inputs)])
+  if (!a || !b) return cases
+
+  const same = (x: string, y: string) => tidyOutput(x) === tidyOutput(y)
+  /* Cases where the two references give one and the same answer. */
+  const agreed = subject.map((_, i) => !a[i]!.error && !b[i]!.error && same(a[i]!.stdout, b[i]!.stdout))
+  const wrong = subject.map((c, i) => agreed[i]! && !same(a[i]!.stdout, c.expected))
+
   /*
-   * Two attempts at a reference, not one.
-   *
-   * This used to give up the moment the first reference disagreed with a
-   * visible case, and "give up" meant returning every case unchecked —
-   * including any that were malformed. So whether a broken case survived came
-   * down to whether one model call got the problem right first time, which is
-   * a coin flip, and a lost toss ships a test nobody's code can pass.
-   *
-   * A second attempt is told which cases it missed, and told explicitly that a
-   * case whose input does not contain what the problem promises is allowed to
-   * fail — otherwise the obliging thing for it to do is contort the solution
-   * until the broken case passes, which is how a bad case gets ratified
-   * instead of caught.
+   * The references have to have understood the problem before they get to
+   * overrule it: they must agree with each other on most cases, and with the
+   * cases themselves on at least half. Otherwise the likelier story is that
+   * both misread the statement the same way.
    */
-  let results: boolean[] | null = null
-  let solution = await writeReference()
+  const agreedCount = agreed.filter(Boolean).length
+  const confirmed = subject.filter((_, i) => agreed[i] && !wrong[i]).length
+  if (agreedCount < Math.ceil(subject.length * 0.6) || confirmed < Math.ceil(subject.length / 2)) return cases
 
-  for (let attempt = 0; attempt < 2 && solution; attempt += 1) {
-    /* On this machine first — milliseconds — and the judge only if that
-       could not run at all. */
-    const run =
-      (await checkPython(solution, subject)) ??
-      (judge.configured() ? await judge.check({ language: 'python', code: solution, cases: subject }) : null)
-    if (!run) return cases
-    if (isTrusted(run)) {
-      results = run
-      break
-    }
-    if (attempt === 0) {
-      const failed = run.map((ok, index) => (ok ? -1 : index)).filter((i) => i >= 0)
-      solution = await writeReference({ code: solution, failed })
-    }
-  }
-
-  /* Both references disagreed with cases the problem itself presents as
-     correct. That is a statement about this function's confidence, not about
-     the cases, so nothing is removed on it. */
-  if (!results) return cases
-
-  const kept = cases.filter((_, index) => index >= subject.length || results[index])
-  /* Never strip a problem down to nothing on the word of one program. */
+  const kept = cases.filter((_, index) => index >= subject.length || !wrong[index])
+  /* Never strip a problem down to nothing. */
   return kept.length > 0 ? kept : cases
+}
+
+function tidyOutput(text: string) {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/\s+$/, ''))
+    .join('\n')
+    .replace(/\n+$/, '')
 }
 
 /**

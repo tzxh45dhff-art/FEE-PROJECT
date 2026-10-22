@@ -1450,3 +1450,11 @@ body::-webkit-scrollbar {
   font-family: 'Permanent Marker', 'Marker Felt', 'Comic Sans MS', cursive;
   letter-spacing: 0.01em;
 }
+
+/* A fresh run result arrives visibly, even when it reads the same as the last. */
+@keyframes study-ran {
+  from { opacity: 0; transform: translateY(4px); filter: brightness(1.6); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+.study-ran { animation: study-ran 0.45s cubic-bezier(0.16, 1, 0.3, 1); }
+@media (prefers-reduced-motion: reduce) { .study-ran { animation: none; } }

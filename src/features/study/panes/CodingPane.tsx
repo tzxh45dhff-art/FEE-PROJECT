@@ -248,6 +248,9 @@ function Workspace({
   const [rechecking, setRechecking] = useState(false)
   const [recheck, setRecheck] = useState<string | null>(null)
   const [focus, setFocus] = useState(false)
+  /* Which run the panel is showing — so a new run that fails the same way as
+     the last one is still visibly a new run, not the old result left up. */
+  const [ran, setRan] = useState<{ count: number; at: Date; ms: number; kind: 'samples' | 'submit' } | null>(null)
   const tutor = useTutor()
   const dark = useStudyDark()
   const local = runsOnDevice(language)
@@ -285,6 +288,7 @@ function Workspace({
        longer on screen. */
     setRemarks(null)
     setRecheck(null)
+    const started = performance.now()
     try {
       if (local && samplesOnly) {
         /* The examples and their answers are already on this page, so a Run
@@ -314,6 +318,12 @@ function Workspace({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'That did not run.')
     } finally {
+      setRan((last) => ({
+        count: (last?.count ?? 0) + 1,
+        at: new Date(),
+        ms: Math.round(performance.now() - started),
+        kind: samplesOnly ? 'samples' : 'submit',
+      }))
       setRunning(null)
     }
   }
@@ -562,7 +572,17 @@ function Workspace({
               )}
 
               {error && <Problem message={error} />}
-              {verdict && <Result verdict={verdict} />}
+              {verdict && ran && (
+                <p key={ran.count} className="study-ran flex items-center gap-1.5 text-[0.7rem] text-[var(--study-faint)]">
+                  {ran.kind === 'samples' ? 'Examples' : 'Submission'} run #{ran.count} · {ran.ms < 1000 ? `${ran.ms} ms` : `${(ran.ms / 1000).toFixed(1)} s`} ·{' '}
+                  {ran.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}
+                </p>
+              )}
+              {verdict && (
+                <div key={ran?.count ?? 0} className="study-ran">
+                  <Result verdict={verdict} />
+                </div>
+              )}
 
               {/*
                 * Offered when the evidence points at the cases rather than at
@@ -576,14 +596,13 @@ function Workspace({
                 * to tell those two apart rather than a claim about which it
                 * is.
                 */}
-              {(recheck || (verdict?.status === 'error' && verdict.passedCount > 0 && canRun)) && (
+              {(recheck || (verdict && verdict.status !== 'passed' && (verdict.status === 'failed' || verdict.passedCount > 0))) && (
                 <div className="study-card p-3">
                   {verdict && (
                     <p className="text-[0.78rem] leading-relaxed text-[var(--study-soft)]">
-                      It ran on {verdict.passedCount} case
-                      {verdict.passedCount === 1 ? '' : 's'} and then stopped. If a test case is
-                      itself faulty — one that asks for more input than it provides — this finds
-                      it.
+                      {verdict.status === 'failed'
+                        ? 'Sure your answer is right? Generated test cases can be wrong. This has two independent solutions check every case and removes any they both disagree with.'
+                        : `It ran on ${verdict.passedCount} case${verdict.passedCount === 1 ? '' : 's'} and then stopped. If a test case is itself faulty — one that asks for more input than it provides — this finds it.`}
                     </p>
                   )}
                   {recheck ? (
