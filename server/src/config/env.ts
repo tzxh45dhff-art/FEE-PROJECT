@@ -206,6 +206,12 @@ export const env = {
     apiKey: process.env.JUDGE_API_KEY ?? '',
     /** RapidAPI-style host header, when the provider wants one. */
     apiHost: process.env.JUDGE_API_HOST ?? '',
+    /**
+     * A Docker image to run code in on this machine — the one built from
+     * server/judge (start-server.sh builds it and sets this). Fast, and the
+     * code never leaves the machine; the URL above is then only a fallback.
+     */
+    dockerImage: process.env.JUDGE_DOCKER_IMAGE ?? '',
   },
 }
 

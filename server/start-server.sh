@@ -18,7 +18,8 @@
 #      another machine. A node_modules folder copied over from a Mac contains
 #      macOS binaries (Prisma's query engine among them) that cannot run here,
 #      so this detects that and rebuilds rather than failing at the first query.
-#   5. Backs up the database, applies the schema, builds the server.
+#   5. Backs up the database, applies the schema, builds the server, and
+#      builds the code judge's Docker image if Docker is available.
 #   6. Starts the API and the tunnel and watches both. Either one dying is
 #      restarted after a short pause; the API is also health-checked, so a
 #      process that is alive but stuck gets restarted too.
@@ -187,10 +188,13 @@ fi
 # Stamped with the platform and Node they were built for. A folder copied from
 # the Mac carries macOS binaries, which is the one thing guaranteed to break.
 say "Dependencies"
-want_stamp="$OS-$(uname -m)-node$(node -p 'process.versions.modules')"
+# The lockfile is part of the stamp, so a pull that adds or updates a package
+# reinstalls instead of starting with it missing.
+lock_hash="$(sha256sum package-lock.json | cut -c1-12)"
+want_stamp="$OS-$(uname -m)-node$(node -p 'process.versions.modules')-lock$lock_hash"
 have_stamp="$(cat node_modules/.huddle-platform 2>/dev/null || true)"
 if [[ ! -d node_modules || "$have_stamp" != "$want_stamp" ]]; then
-  [[ -d node_modules ]] && warn "node_modules was built for ${have_stamp:-another machine} — reinstalling for $want_stamp"
+  [[ -d node_modules ]] && warn "packages changed or were built for another machine — reinstalling"
   npm ci --no-audit --no-fund --loglevel=error
   echo "$want_stamp" > node_modules/.huddle-platform
 fi
@@ -223,6 +227,27 @@ ok "schema up to date"
 say "Build"
 npm run --silent build >"$LOGS/build.log" 2>&1 || { tail -n 20 "$LOGS/build.log" >&2; die "TypeScript build failed (see logs/build.log)"; }
 ok "dist/ built"
+
+# ── the code judge ───────────────────────────────────────────────────────────
+# Java, C++, C, Python and Node run on this machine in throwaway, locked-down
+# containers built from ./judge — about a second a submission, against half a
+# minute on the public judge. Optional: without Docker, the public judge is
+# used as before. The image is rebuilt only when ./judge changes.
+say "Code judge"
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  judge_hash="$(cat judge/Dockerfile judge/run.py | sha256sum | cut -c1-12)"
+  if [[ "$(docker image inspect huddle-judge --format '{{ index .Config.Labels "huddle.hash" }}' 2>/dev/null)" != "$judge_hash" ]]; then
+    warn "building the judge image (first time takes a few minutes)"
+    docker build -q -t huddle-judge --label "huddle.hash=$judge_hash" judge >"$LOGS/judge-build.log" 2>&1 \
+      || { tail -n 15 "$LOGS/judge-build.log" >&2; die "The judge image did not build (see logs/judge-build.log)"; }
+  fi
+  export JUDGE_DOCKER_IMAGE="${JUDGE_DOCKER_IMAGE:-huddle-judge}"
+  ok "local judge ready ($JUDGE_DOCKER_IMAGE)"
+elif command -v docker >/dev/null 2>&1; then
+  warn "Docker is installed but not usable by $(whoami) — add yourself to the docker group (sudo usermod -aG docker $(whoami)) and log in again. Using the public judge."
+else
+  warn "no Docker — Java and C++ use the public judge (slow). Install Docker to run them here."
+fi
 
 # ── 6. run and watch ─────────────────────────────────────────────────────────
 health() { curl -fsS -m 4 "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; }

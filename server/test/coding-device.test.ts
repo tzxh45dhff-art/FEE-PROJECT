@@ -4,6 +4,7 @@
  * Python run on this machine instead of a remote judge.
  */
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { after, describe, it } from 'node:test'
 
 import express from 'express'
@@ -12,6 +13,7 @@ import { z } from 'zod'
 import { errorHandler } from '../src/middleware/errorHandler.js'
 import { splitCases } from '../src/services/generate.service.js'
 import { grade } from '../src/services/judge.service.js'
+import { runLocally } from '../src/services/localJudge.service.js'
 import { checkPython, runPython } from '../src/services/pyRunner.service.js'
 
 const cases = [
@@ -107,5 +109,45 @@ describe('a request that fails validation', () => {
     const response = await fetch(`http://127.0.0.1:${port}/`)
     assert.equal(response.status, 400)
     assert.match(((await response.json()) as { error: string }).error, /^difficulty: /)
+  })
+})
+
+describe('the local judge, in a container', () => {
+  const image = 'huddle-judge'
+  const ready = (() => {
+    try {
+      execFileSync('docker', ['image', 'inspect', image], { stdio: 'ignore' })
+      return true
+    } catch {
+      return false
+    }
+  })()
+  const skip = ready ? false : 'needs Docker and the huddle-judge image'
+
+  it('compiles Java once and runs every case', { skip }, async () => {
+    const done = await runLocally(
+      'java',
+      'import java.util.*;\npublic class Main { public static void main(String[] a) { System.out.println(new Scanner(System.in).nextInt() * 2); } }',
+      ['2', '21'],
+    )
+    assert.equal(done.compileError, null)
+    assert.deepEqual(
+      done.results.map((r) => r.stdout.trim()),
+      ['4', '42'],
+    )
+  })
+
+  it('reports a compile error as one, and stops a loop at the time limit', { skip }, async () => {
+    assert.match((await runLocally('cpp', 'int main( {', ['']))?.compileError ?? '', /error/)
+    const [loop] = (await runLocally('cpp', 'int main(){ for(;;); }', [''])).results
+    assert.match(loop?.error ?? '', /longer than/)
+  })
+
+  it('has no network', { skip }, async () => {
+    const [attempt] = (
+      await runLocally('python', 'import socket\nsocket.create_connection(("1.1.1.1", 80), timeout=2)\nprint("reached")', [''])
+    ).results
+    assert.ok(attempt?.error, 'connecting out must fail')
+    assert.ok(!attempt?.stdout.includes('reached'))
   })
 })

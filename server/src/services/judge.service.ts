@@ -1,8 +1,14 @@
 import { env } from '../config/env.js'
 import { HttpError } from '../utils/HttpError.js'
+import * as local from './localJudge.service.js'
 
 /**
- * Running somebody else's code, somewhere that is not this machine.
+ * Running somebody else's code.
+ *
+ * On this machine first, when it has the judge image (see localJudge): a
+ * throwaway, locked-down container per submission, about a second for Java.
+ * What follows is the fallback — a remote Judge0, and the reasoning for
+ * having one at all.
  *
  * This is the one thing in the project deliberately handed to a third party.
  * Executing a stranger's program safely means a sandbox, a filesystem it
@@ -30,7 +36,9 @@ const LANGUAGE_IDS: Record<string, number> = {
   rust: 73,
 }
 
-export const JUDGE_LANGUAGES = Object.keys(LANGUAGE_IDS)
+export const JUDGE_LANGUAGES = [
+  ...new Set([...(local.available() ? local.LOCAL_LANGUAGES : []), ...(env.judge.url ? Object.keys(LANGUAGE_IDS) : [])]),
+]
 
 /** Ceilings applied per case, on top of whatever the service enforces. */
 const CPU_SECONDS = 5
@@ -43,7 +51,7 @@ const MAX_CODE_BYTES = 64 * 1024
 const CHECK_PARALLEL = 4
 
 export function configured() {
-  return Boolean(env.judge.url)
+  return Boolean(env.judge.url) || local.available()
 }
 
 export type CaseResult = {
@@ -182,6 +190,26 @@ export async function run(input: {
   }
   if (input.cases.length === 0) throw HttpError.badRequest('There is nothing to run against.')
 
+  if (local.supports(input.language)) {
+    try {
+      const done = await local.runLocally(input.language, input.code, input.cases.map((c) => c.input))
+      if (done.compileError) {
+        return { status: 'error', passedCount: 0, totalCount: input.cases.length, detail: done.compileError.slice(0, 2000), shown: null }
+      }
+      const cases = input.cases.map((c, index) => ({ ...c, id: String(index) }))
+      return grade(
+        cases,
+        done.results.map((result, index) => ({ id: String(index), stdout: result.stdout, error: result.error })),
+      )
+    } catch (cause) {
+      /* No docker here after all: the remote judge, if there is one. */
+      if (!(cause instanceof local.JudgeUnavailable) || !env.judge.url) {
+        throw HttpError.unavailable(cause instanceof Error ? cause.message : 'The judge is not available.')
+      }
+    }
+  }
+  if (!env.judge.url) throw HttpError.badRequest(`This judge cannot run ${input.language}.`)
+
   const controller = new AbortController()
   const deadline = setTimeout(() => controller.abort(), TOTAL_TIMEOUT_MS)
 
@@ -293,7 +321,19 @@ export async function check(input: {
   code: string
   cases: { input: string; expected: string }[]
 }): Promise<boolean[] | null> {
-  if (!configured()) return null
+  if (local.supports(input.language)) {
+    try {
+      const done = await local.runLocally(input.language, input.code, input.cases.map((c) => c.input))
+      if (done.compileError) return input.cases.map(() => false)
+      return input.cases.map((testCase, index) => {
+        const result = done.results[index]
+        return Boolean(result && !result.error && matches(result.stdout, testCase.expected))
+      })
+    } catch {
+      if (!env.judge.url) return null
+    }
+  }
+  if (!env.judge.url) return null
 
   const languageId = LANGUAGE_IDS[input.language]
   if (!languageId) return null
