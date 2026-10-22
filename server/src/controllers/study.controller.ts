@@ -5,7 +5,6 @@ import { env } from '../config/env.js'
 import { prisma } from '../models/prisma.js'
 import * as assistant from '../services/assistant.service.js'
 import * as azure from '../services/azure.service.js'
-import { checkLater, isChecking } from '../services/caseCheck.service.js'
 import * as embeddings from '../services/embeddings.service.js'
 import * as explainer from '../services/explainer.service.js'
 import * as generate from '../services/generate.service.js'
@@ -749,7 +748,8 @@ export async function createProblem(req: Request, res: Response) {
    * Several at once are written side by side, not one after another — five
    * problems take as long as one. Each is told which of the set it is, so the
    * set is five different problems rather than five wordings of the same one.
-   * The cases are checked after the problems are saved; see caseCheck.
+   * Each problem's cases are settled by running code before it is saved, so
+   * nobody is ever shown an unchecked case.
    */
   const settled = await Promise.allSettled(
     Array.from({ length: input.count }, (_, index) =>
@@ -764,7 +764,6 @@ export async function createProblem(req: Request, res: Response) {
             : input.difficulty,
         resourceIds,
         variant: input.count > 1 ? { index, of: input.count } : undefined,
-        verify: false,
       }),
     ),
   )
@@ -795,7 +794,6 @@ export async function createProblem(req: Request, res: Response) {
         },
       },
     })
-    checkLater(row.id, `${problem.title}\n\n${problem.description}`, problem.cases)
     problems.push({ id: row.id, title: row.title, difficulty: row.difficulty })
   }
 
@@ -829,8 +827,6 @@ export async function getProblem(req: Request, res: Response) {
         .filter((testCase) => !testCase.hidden)
         .map((testCase) => ({ input: testCase.input, expected: testCase.expected })),
       hiddenCount: problem.testCases.filter((testCase) => testCase.hidden).length,
-      /* Its cases are still being checked against a reference solution. */
-      checking: isChecking(problem.id),
     },
   })
 }
@@ -1000,6 +996,11 @@ export async function recheckProblem(req: Request, res: Response) {
   const doomed = problem.testCases.filter(
     (testCase) => !survivors.has(`${testCase.input}\u0000${testCase.expected}`),
   )
+  /* Cases whose input survived with a different, agreed answer were fixed rather than dropped. */
+  const original = new Set(problem.testCases.map((testCase) => testCase.input))
+  const corrected = kept.filter(
+    (entry) => original.has(entry.input) && !problem.testCases.some((t) => t.input === entry.input && t.expected === entry.expected),
+  ).length
 
   if (doomed.length > 0) {
     /* Re-split what is left, so a wrong example that was removed is replaced
@@ -1014,8 +1015,9 @@ export async function recheckProblem(req: Request, res: Response) {
   }
 
   res.json({
-    removed: doomed.length,
-    remaining: problem.testCases.length - doomed.length,
+    removed: problem.testCases.length - kept.length,
+    corrected,
+    remaining: kept.length,
   })
 }
 

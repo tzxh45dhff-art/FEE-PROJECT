@@ -260,16 +260,6 @@ function Workspace({
      Run does not sit through the download. */
   useEffect(() => warmUp(language), [language])
 
-  /* A new problem's cases are checked just after it is written. Look again
-     until that is done, so the hidden-case count settles. */
-  useEffect(() => {
-    if (!problem.checking) return
-    const timer = setTimeout(() => {
-      void studyApi.problem(roomId, problem.id).then(({ problem: fresh }) => onRefresh(fresh)).catch(() => undefined)
-    }, 2500)
-    return () => clearTimeout(timer)
-  }, [problem, roomId, onRefresh])
-
   /* Switching language swaps the starter, but only when nothing has been
      written — silently discarding somebody's half-finished solution because
      they wanted to see the Java scaffold would be unforgivable. */
@@ -332,13 +322,17 @@ function Workspace({
     setRechecking(true)
     setError(null)
     try {
-      const { removed, remaining } = await studyApi.recheckCases(roomId, problem.id)
+      const { removed, corrected = 0, remaining } = await studyApi.recheckCases(roomId, problem.id)
+      const changes = [
+        corrected > 0 && `fixed the expected output of ${corrected} case${corrected === 1 ? '' : 's'}`,
+        removed > 0 && `removed ${removed} that could not be confirmed`,
+      ].filter(Boolean)
       setRecheck(
-        removed === 0
+        changes.length === 0
           ? `All ${remaining} cases check out. The fault is in the code, not in them.`
-          : `Removed ${removed} case${removed === 1 ? '' : 's'} that a reference solution could not satisfy. ${remaining} left — run it again.`,
+          : `Two independent solutions ${changes.join(' and ')}. ${remaining} cases now — run it again.`,
       )
-      if (removed > 0) {
+      if (removed > 0 || corrected > 0) {
         setVerdict(null)
         /* The header counts hidden cases, and it has just changed. Refetched
            rather than adjusted by hand so the count comes from the same place
@@ -478,12 +472,7 @@ function Workspace({
               <Lock aria-hidden className="size-3" />
               {problem.hiddenCount} hidden cases
             </span>
-            {problem.checking && (
-              <span className="inline-flex items-center gap-1 text-[var(--study-faint)]">
-                <Loader2 aria-hidden className="size-3 animate-spin" />
-                checking them
-              </span>
-            )}
+
           </p>
 
           <div className="study-prose mt-4">

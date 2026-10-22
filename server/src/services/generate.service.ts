@@ -328,8 +328,11 @@ Return JSON of exactly this shape:
   "cases": [ { "input": "...", "expected": "...", "hidden": false } ] }
 
 Rules:
-- The description states the problem, the input format, the output format, the
-  constraints, and two worked examples with their explanations. Markdown.
+- The description states the problem, the input format, the output format and
+  the constraints. Markdown. Do NOT include worked examples or sample
+  input/output in it — the first three cases are shown as the examples, after
+  their outputs have been checked by running code, so examples written into
+  the description could disagree with them.
 - Solutions read from standard input and write to standard output. Say exactly
   what the input looks like and exactly what should be printed, because the
   answer is checked by comparing output text.
@@ -389,27 +392,25 @@ Rules:
  */
 const MAX_VERIFIED = 12
 
+/**
+ * Settle every case's expected output by running code — two of three must agree.
+ *
+ * Each case has three answers: the one the model worked out by hand, and the
+ * outputs of two solutions written separately from the statement alone, never
+ * shown an expected output. A case is kept only if at least two of the three
+ * agree, and it keeps the answer they agree on — so a miscounted "3 2" that
+ * both programs print as "4 1" is corrected, not shipped, and a case nobody
+ * agrees on (usually an input that does not contain what the format promises)
+ * is dropped.
+ *
+ * If the two programs cannot be written or run at all, or disagree with each
+ * other on most cases, the check has nothing solid to stand on and the cases
+ * come back as they were.
+ */
 export async function verifyCases<T extends { input: string; expected: string; hidden?: boolean }>(
   statement: string,
   cases: T[],
 ): Promise<T[]> {
-  /*
-   * Two references, written apart, from the statement alone.
-   *
-   * The first version of this showed one reference every case, answers
-   * included, and then trusted it only if it reproduced every example. That
-   * had two flaws, and a real problem hit both: the reference was being told
-   * the answers it was meant to check, and a wrong *example* — "3 even, 2
-   * odd" for four even numbers and one odd — made it untrustworthy by
-   * definition, so the one case that most needed catching never could be.
-   *
-   * Now neither reference sees an expected output. Each reads the problem and
-   * the inputs and writes its own solution; both are run on every input. Where
-   * the two agree with each other and not with a case, the case is the odd
-   * one out — two programs written separately do not usually make the same
-   * mistake. Where they disagree with each other, nothing is known, and
-   * nothing is removed on it.
-   */
   const subject = cases.slice(0, MAX_VERIFIED)
   const inputs = subject.map((c) => c.input)
 
@@ -444,21 +445,23 @@ export async function verifyCases<T extends { input: string; expected: string; h
   if (!a || !b) return cases
 
   const same = (x: string, y: string) => tidyOutput(x) === tidyOutput(y)
-  /* Cases where the two references give one and the same answer. */
-  const agreed = subject.map((_, i) => !a[i]!.error && !b[i]!.error && same(a[i]!.stdout, b[i]!.stdout))
-  const wrong = subject.map((c, i) => agreed[i]! && !same(a[i]!.stdout, c.expected))
+  const programsAgree = subject.filter((_, i) => !a[i]!.error && !b[i]!.error && same(a[i]!.stdout, b[i]!.stdout)).length
+  if (programsAgree < Math.ceil(subject.length * 0.6)) return cases
 
-  /*
-   * The references have to have understood the problem before they get to
-   * overrule it: they must agree with each other on most cases, and with the
-   * cases themselves on at least half. Otherwise the likelier story is that
-   * both misread the statement the same way.
-   */
-  const agreedCount = agreed.filter(Boolean).length
-  const confirmed = subject.filter((_, i) => agreed[i] && !wrong[i]).length
-  if (agreedCount < Math.ceil(subject.length * 0.6) || confirmed < Math.ceil(subject.length / 2)) return cases
-
-  const kept = cases.filter((_, index) => index >= subject.length || !wrong[index])
+  const settled: T[] = []
+  for (const [i, testCase] of subject.entries()) {
+    const fromA = a[i]!.error ? null : a[i]!.stdout
+    const fromB = b[i]!.error ? null : b[i]!.stdout
+    if (fromA !== null && fromB !== null && same(fromA, fromB)) {
+      /* Both programs agree: theirs is the answer, whatever was written. */
+      settled.push(same(fromA, testCase.expected) ? testCase : { ...testCase, expected: tidyOutput(fromA) })
+    } else if ((fromA !== null && same(fromA, testCase.expected)) || (fromB !== null && same(fromB, testCase.expected))) {
+      /* One program confirms the written answer. */
+      settled.push(testCase)
+    }
+    /* Otherwise no two agree, and the case goes. */
+  }
+  const kept = [...settled, ...cases.slice(subject.length)]
   /* Never strip a problem down to nothing. */
   return kept.length > 0 ? kept : cases
 }

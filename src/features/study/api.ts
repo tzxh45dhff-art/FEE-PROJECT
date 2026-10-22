@@ -144,8 +144,6 @@ export type Problem = {
   samples: { input: string; expected: string }[]
   /** How many cases are held back — shown, but never their contents. */
   hiddenCount: number
-  /** Its cases are still being checked against a reference solution. */
-  checking?: boolean
 }
 
 /** One case, in pieces, so your output can sit next to the right one. */
@@ -353,7 +351,7 @@ export const reviewCode = (
 
 /** Re-run the generator's own check over an existing problem's cases. */
 export const recheckCases = (roomId: string, problemId: string) =>
-  api.post<{ removed: number; remaining: number }>(
+  api.post<{ removed: number; corrected?: number; remaining: number }>(
     `${base(roomId)}/coding/${problemId}/recheck`,
   )
 
