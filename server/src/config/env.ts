@@ -111,8 +111,8 @@ export const env = {
   azure: {
     endpoint: (process.env.AZURE_OPENAI_ENDPOINT ?? '').replace(/\/$/, ''),
     apiKey: process.env.AZURE_OPENAI_API_KEY ?? '',
-    /** Deployment name of the chat model — a GPT-4o deployment. */
-    chatDeployment: process.env.AZURE_OPENAI_CHAT_DEPLOYMENT ?? 'gpt-4o',
+    /** Deployment name of the chat model — gpt-6-luna: fast, cheap, and better than gpt-4o. */
+    chatDeployment: process.env.AZURE_OPENAI_CHAT_DEPLOYMENT ?? 'gpt-6-luna',
     /** Deployment name of the embedding model. */
     embeddingDeployment:
       process.env.AZURE_OPENAI_EMBEDDING_DEPLOYMENT ?? 'text-embedding-3-small',

@@ -200,8 +200,11 @@ export async function chat(
   const body: Record<string, unknown> = {
     messages,
     temperature: options.temperature ?? 0.4,
-    max_tokens: options.maxTokens ?? 4000,
+    max_completion_tokens: options.maxTokens ?? 4000,
   }
+  /* The GPT-5 and later families think before answering unless told not to.
+     Every call here wants the fast path — and tool calls require it. */
+  if (/^(gpt-[5-9]|o\d)/.test(env.azure.chatDeployment)) body.reasoning_effort = 'none'
   if (options.json) body.response_format = { type: 'json_object' }
   if (options.tools?.length) {
     body.tools = options.tools

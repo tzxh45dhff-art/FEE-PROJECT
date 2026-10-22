@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express'
+import { ZodError } from 'zod'
 
 import { HttpError } from '../utils/HttpError.js'
 
@@ -19,6 +20,15 @@ export function errorHandler(
 ) {
   if (error instanceof HttpError) {
     res.status(error.status).json({ error: error.message })
+    return
+  }
+
+  /* A request that did not pass validation is the caller's mistake, and it
+     should say which part — not arrive as a 500 that reads like a crash. */
+  if (error instanceof ZodError) {
+    const issue = error.issues[0]
+    const where = issue?.path.length ? `${issue.path.join('.')}: ` : ''
+    res.status(400).json({ error: issue ? `${where}${issue.message}` : 'That request was not valid.' })
     return
   }
 

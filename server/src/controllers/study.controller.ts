@@ -5,6 +5,7 @@ import { env } from '../config/env.js'
 import { prisma } from '../models/prisma.js'
 import * as assistant from '../services/assistant.service.js'
 import * as azure from '../services/azure.service.js'
+import { checkLater, isChecking } from '../services/caseCheck.service.js'
 import * as embeddings from '../services/embeddings.service.js'
 import * as explainer from '../services/explainer.service.js'
 import * as generate from '../services/generate.service.js'
@@ -702,7 +703,10 @@ const codingInput = z.object({
      slides". Validated against the subject rather than trusted, so an id from
      another room cannot be read through this. */
   resourceIds: z.array(z.string()).max(50).optional(),
-  difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
+  /* Mixed is what the picker offers by default — a spread across a set. */
+  difficulty: z.enum(['easy', 'medium', 'hard', 'mixed']).default('medium'),
+  /** How many problems to write at once — in parallel, each a different take. */
+  count: z.number().int().min(1).max(5).default(1),
 }).refine(hasSubjectMatter, { message: NEEDS_SUBJECT_MATTER, path: ['topic'] })
 
 export async function listProblems(req: Request, res: Response) {
@@ -739,38 +743,63 @@ export async function createProblem(req: Request, res: Response) {
   const roomId = await gate(req)
   const input = codingInput.parse(req.body)
   const subject = await subjectIn(roomId, input.subjectId)
+  const resourceIds = await pickable(subject.id, input.resourceIds)
 
-  const written = await generate.coding({
-    subjectId: subject.id,
-    topic: input.topic,
-    difficulty: input.difficulty,
-    resourceIds: await pickable(subject.id, input.resourceIds),
-  })
+  /*
+   * Several at once are written side by side, not one after another — five
+   * problems take as long as one. Each is told which of the set it is, so the
+   * set is five different problems rather than five wordings of the same one.
+   * The cases are checked after the problems are saved; see caseCheck.
+   */
+  const settled = await Promise.allSettled(
+    Array.from({ length: input.count }, (_, index) =>
+      generate.coding({
+        subjectId: subject.id,
+        topic: input.topic,
+        difficulty:
+          input.difficulty === 'mixed'
+            ? input.count === 1
+              ? 'medium'
+              : (['easy', 'medium', 'hard'] as const)[index % 3]!
+            : input.difficulty,
+        resourceIds,
+        variant: input.count > 1 ? { index, of: input.count } : undefined,
+        verify: false,
+      }),
+    ),
+  )
+  const written = settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))
+  if (written.length === 0) {
+    throw (settled[0] as PromiseRejectedResult).reason
+  }
 
-  const problem = await prisma.codingProblem.create({
-    data: {
-      roomId,
-      subjectId: subject.id,
-      createdById: req.userId!,
-      title: written.title,
-      description: written.description,
-      difficulty: written.difficulty,
-      languages: JSON.stringify(Object.keys(written.starters)),
-      starters: JSON.stringify(written.starters),
-      testCases: {
-        create: written.cases.map((testCase, index) => ({
-          input: testCase.input,
-          expected: testCase.expected,
-          hidden: testCase.hidden,
-          position: index,
-        })),
+  const problems = []
+  for (const problem of written) {
+    const row = await prisma.codingProblem.create({
+      data: {
+        roomId,
+        subjectId: subject.id,
+        createdById: req.userId!,
+        title: problem.title,
+        description: problem.description,
+        difficulty: problem.difficulty,
+        languages: JSON.stringify(Object.keys(problem.starters)),
+        starters: JSON.stringify(problem.starters),
+        testCases: {
+          create: problem.cases.map((testCase, index) => ({
+            input: testCase.input,
+            expected: testCase.expected,
+            hidden: testCase.hidden,
+            position: index,
+          })),
+        },
       },
-    },
-  })
+    })
+    checkLater(row.id, `${problem.title}\n\n${problem.description}`, problem.cases)
+    problems.push({ id: row.id, title: row.title, difficulty: row.difficulty })
+  }
 
-  res.status(201).json({
-    problem: { id: problem.id, title: problem.title, difficulty: problem.difficulty },
-  })
+  res.status(201).json({ problem: problems[0], problems })
 }
 
 /**
@@ -800,6 +829,8 @@ export async function getProblem(req: Request, res: Response) {
         .filter((testCase) => !testCase.hidden)
         .map((testCase) => ({ input: testCase.input, expected: testCase.expected })),
       hiddenCount: problem.testCases.filter((testCase) => testCase.hidden).length,
+      /* Its cases are still being checked against a reference solution. */
+      checking: isChecking(problem.id),
     },
   })
 }
@@ -809,7 +840,28 @@ const submitInput = z.object({
   code: z.string().min(1, 'There is nothing to run.'),
   /** Sample cases only — the "Run" button, as distinct from "Submit". */
   samplesOnly: z.boolean().default(false),
+  /** What the program printed for each case, when it ran on the person's own device. */
+  outputs: z
+    .array(z.object({ id: z.string(), stdout: z.string().max(200_000), error: z.string().max(4000).nullable() }))
+    .max(100)
+    .optional(),
 })
+
+/**
+ * Every case's input, for running on the person's own device — never the
+ * expected outputs, which stay here to mark against.
+ */
+export async function problemInputs(req: Request, res: Response) {
+  const roomId = await gate(req)
+  const problem = await prisma.codingProblem.findFirst({
+    where: { id: req.params.problemId!, roomId },
+    include: { testCases: { orderBy: { position: 'asc' } } },
+  })
+  if (!problem) throw HttpError.notFound('That problem is not here.')
+  res.json({
+    cases: problem.testCases.map((testCase) => ({ id: testCase.id, input: testCase.input, hidden: testCase.hidden })),
+  })
+}
 
 export async function submitProblem(req: Request, res: Response) {
   const roomId = await gate(req)
@@ -825,15 +877,17 @@ export async function submitProblem(req: Request, res: Response) {
     ? problem.testCases.filter((testCase) => !testCase.hidden)
     : problem.testCases
 
-  const verdict = await judge.run({
-    language: input.language,
-    code: input.code,
-    cases: cases.map((testCase) => ({
-      input: testCase.input,
-      expected: testCase.expected,
-      hidden: testCase.hidden,
-    })),
-  })
+  const verdict = input.outputs
+    ? judge.grade(cases, input.outputs)
+    : await judge.run({
+        language: input.language,
+        code: input.code,
+        cases: cases.map((testCase) => ({
+          input: testCase.input,
+          expected: testCase.expected,
+          hidden: testCase.hidden,
+        })),
+      })
 
   /* A sample run is a check, not an attempt — recording it would make the
      progress page count every experiment as a failed submission. */

@@ -1,5 +1,6 @@
 import { prisma } from '../models/prisma.js'
 import * as azure from './azure.service.js'
+import { checkPython } from './pyRunner.service.js'
 import * as judge from './judge.service.js'
 import * as retrieval from './retrieval.service.js'
 import * as syllabus from './syllabus.service.js'
@@ -423,8 +424,6 @@ export async function verifyCases(
   statement: string,
   cases: { input: string; expected: string; hidden?: boolean }[],
 ) {
-  if (!judge.configured()) return cases
-
   /* Bounded because every case is a round trip to the judge, and a problem
      with more than a dozen is not made better by a slower generation. */
   const subject = cases.slice(0, MAX_VERIFIED)
@@ -490,7 +489,11 @@ export async function verifyCases(
   let solution = await writeReference()
 
   for (let attempt = 0; attempt < 2 && solution; attempt += 1) {
-    const run = await judge.check({ language: 'python', code: solution, cases: subject })
+    /* On this machine first — milliseconds — and the judge only if that
+       could not run at all. */
+    const run =
+      (await checkPython(solution, subject)) ??
+      (judge.configured() ? await judge.check({ language: 'python', code: solution, cases: subject }) : null)
     if (!run) return cases
     if (isTrusted(run)) {
       results = run
@@ -512,9 +515,39 @@ export async function verifyCases(
   return kept.length > 0 ? kept : cases
 }
 
+/**
+ * Which cases are examples and which are marked against: the first three are
+ * shown, the rest hidden. Decided here, not taken from the model — asked for
+ * three visible and the rest hidden, it has returned one hidden case and
+ * marked the two largest as examples.
+ */
+export function splitCases<T extends { input: string; expected: string }>(list: T[]) {
+  const VISIBLE = 3
+  return list.map((entry, index) => ({
+    input: entry.input,
+    expected: entry.expected,
+    /* The last case stays visible when that is all there is, so a problem
+       never arrives with nothing to read. */
+    hidden: list.length > 1 && index >= Math.min(VISIBLE, list.length - 1),
+  }))
+}
+
+/* What makes each problem in a set different from its neighbours. */
+const VARIANT_ANGLES = [
+  'a direct application of the core idea',
+  'a problem where the core idea is needed but not obvious from the wording',
+  'a problem built around tricky edge cases',
+  'a counting or optimisation variant',
+  'a problem that combines the topic with one other basic technique',
+]
+
 export async function coding(input: {
   subjectId: string
   topic: string
+  /** False to skip checking the cases here, because the caller does it later. */
+  verify?: boolean
+  /** One of a set written together — so each can be told to be different. */
+  variant?: { index: number; of: number }
   /** Draw only from these documents. Empty means the whole shelf. */
   resourceIds?: string[]
   difficulty: string
@@ -539,7 +572,13 @@ export async function coding(input: {
       { role: 'system', content: CODING_SYSTEM },
       {
         role: 'user',
-        content: `${promptContext(grounding)}\n\n---\n\nWrite one ${input.difficulty} problem on: ${subjectMatter(input.topic, grounding)}`,
+        content: `${promptContext(grounding)}\n\n---\n\nWrite one ${input.difficulty} problem on: ${subjectMatter(input.topic, grounding)}${
+          input.variant
+            ? `\n\nThis is problem ${input.variant.index + 1} of ${input.variant.of} written on this topic at the same time. Make it ${
+                VARIANT_ANGLES[input.variant.index % VARIANT_ANGLES.length]
+              } — a genuinely different task from the others, not a rewording.`
+            : ''
+        }`,
       },
     ],
     { temperature: 0.7, maxTokens: 8000 },
@@ -578,20 +617,19 @@ export async function coding(input: {
     throw HttpError.badGateway('The model returned no usable test cases. Try again.')
   }
 
-  const checked = await verifyCases(
-    `${typeof parsed.title === 'string' ? parsed.title : input.topic}\n\n${
-      typeof parsed.description === 'string' ? parsed.description : ''
-    }`,
-    collected,
-  )
+  /* Checking is the slow part — a reference solution, run on the judge — so
+     a caller that can do it afterwards (and show the problem first) says so. */
+  const checked =
+    input.verify === false
+      ? collected
+      : await verifyCases(
+          `${typeof parsed.title === 'string' ? parsed.title : input.topic}\n\n${
+            typeof parsed.description === 'string' ? parsed.description : ''
+          }`,
+          collected,
+        )
 
-  const VISIBLE = 3
-  const cases: GeneratedCase[] = checked.map((entry, index) => ({
-    ...entry,
-    /* The last case stays visible when that is all there is, so a problem
-       never arrives with nothing to read. */
-    hidden: checked.length > 1 && index >= Math.min(VISIBLE, checked.length - 1),
-  }))
+  const cases = splitCases(checked)
 
   const description = typeof parsed.description === 'string' ? parsed.description.trim() : ''
   if (!description) throw HttpError.badGateway('The model returned an empty problem. Try again.')

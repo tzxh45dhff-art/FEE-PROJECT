@@ -40,6 +40,8 @@ const TOTAL_TIMEOUT_MS = 60_000
 /** Nobody solves a homework problem in half a megabyte of source. */
 const MAX_CODE_BYTES = 64 * 1024
 
+const CHECK_PARALLEL = 4
+
 export function configured() {
   return Boolean(env.judge.url)
 }
@@ -299,9 +301,16 @@ export async function check(input: {
   const controller = new AbortController()
   const deadline = setTimeout(() => controller.abort(), TOTAL_TIMEOUT_MS)
 
-  try {
-    const results: boolean[] = []
-    for (const testCase of input.cases) {
+  /* A few at a time. Checking is a background job nobody is watching, and one
+     case after another was most of a minute and a half per problem; four in
+     flight is quick without leaning on a shared judge hard enough to be
+     rate limited. */
+  const results: boolean[] = new Array(input.cases.length)
+  let nextIndex = 0
+  const worker = async () => {
+    while (nextIndex < input.cases.length) {
+      const index = nextIndex++
+      const testCase = input.cases[index]!
       try {
         const result = await runOne(languageId, input.code, testCase.input, controller.signal)
         /* A case the reference could not complete counts as a disagreement.
@@ -312,15 +321,71 @@ export async function check(input: {
           !(result.compile_output ?? '').trim() &&
           !(result.stderr ?? '').trim() &&
           matches(result.stdout ?? '', testCase.expected)
-        results.push(ok)
+        results[index] = ok
       } catch {
         /* The judge itself failed. Unknown, not wrong — reported as agreement
            so a flaky judge cannot delete a room's test cases. */
-        results.push(true)
+        results[index] = true
       }
     }
+  }
+
+  try {
+    await Promise.all(Array.from({ length: Math.min(CHECK_PARALLEL, input.cases.length) }, worker))
     return results
   } finally {
     clearTimeout(deadline)
   }
+}
+
+/**
+ * Mark output that somebody's own device produced.
+ *
+ * Code is run where it was written, in the browser — instant, and nobody
+ * else's machine. The device is given the hidden cases' inputs but never
+ * their expected outputs; it sends back what the program printed, and the
+ * comparison happens here, where the answers are. Reported exactly as `run`
+ * reports, first failure first, hidden cases kept hidden.
+ */
+export function grade(
+  cases: { id: string; input: string; expected: string; hidden: boolean }[],
+  outputs: { id: string; stdout: string; error: string | null }[],
+): JudgeVerdict {
+  const byId = new Map(outputs.map((output) => [output.id, output]))
+  let passed = 0
+  let shown: CaseView | null = null
+
+  for (const testCase of cases) {
+    const output = byId.get(testCase.id)
+    if (!output) {
+      return { status: 'error', passedCount: passed, totalCount: cases.length, detail: 'The program did not finish every case.', shown }
+    }
+    if (output.error) {
+      return { status: 'error', passedCount: passed, totalCount: cases.length, detail: output.error.slice(0, 2000), shown }
+    }
+
+    const ok = matches(output.stdout, testCase.expected)
+    const view: CaseView | null = testCase.hidden
+      ? null
+      : {
+          input: testCase.input.slice(0, 2000),
+          expected: testCase.expected.slice(0, 2000),
+          got: output.stdout.slice(0, 2000),
+          passed: ok,
+        }
+    if (ok) {
+      passed += 1
+      if (view && !shown) shown = view
+      continue
+    }
+    return {
+      status: 'failed',
+      passedCount: passed,
+      totalCount: cases.length,
+      detail: testCase.hidden ? `Failed on a hidden case (${passed + 1} of ${cases.length}).` : null,
+      shown: view ?? shown,
+    }
+  }
+
+  return { status: 'passed', passedCount: passed, totalCount: cases.length, detail: null, shown }
 }

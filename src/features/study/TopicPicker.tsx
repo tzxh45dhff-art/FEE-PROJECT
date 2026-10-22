@@ -23,6 +23,7 @@ export function TopicPicker({
   busy,
   onSubmit,
   showCount = false,
+  countOptions,
   showDifficulty = false,
   showDepth = false,
   label = 'Write questions',
@@ -38,6 +39,8 @@ export function TopicPicker({
     options: { count: number; difficulty: string; depth: string; resourceIds?: string[] },
   ) => void
   showCount?: boolean
+  /** The choices for "how many", when they are not quiz-question counts. */
+  countOptions?: [number, string][]
   showDifficulty?: boolean
   showDepth?: boolean
   label?: string
@@ -45,7 +48,7 @@ export function TopicPicker({
   seed?: string | null
 }) {
   const [topic, setTopic] = useState(seed ?? '')
-  const [count, setCount] = useState(8)
+  const [count, setCount] = useState(countOptions?.[0]?.[0] ?? 8)
   const [difficulty, setDifficulty] = useState('mixed')
   const [depth, setDepth] = useState('standard')
   const [suggestions, setSuggestions] = useState<studyApi.Suggestion[]>([])
@@ -123,7 +126,7 @@ export function TopicPicker({
           <Select
             value={String(count)}
             onChange={(value) => setCount(Number(value))}
-            options={[
+            options={countOptions?.map(([value, text]) => [String(value), text] as [string, string]) ?? [
               ['5', '5 questions'],
               ['8', '8 questions'],
               ['12', '12 questions'],

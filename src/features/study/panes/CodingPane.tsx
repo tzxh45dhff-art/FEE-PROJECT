@@ -5,6 +5,9 @@ import {
   LifeBuoy,
   Loader2,
   Lock,
+  Maximize2,
+  Minimize2,
+  Cpu,
   Play,
   ShieldQuestion,
   Sparkles,
@@ -26,6 +29,7 @@ import {
 } from '@/features/study/panes/shared'
 import { gateReason } from '@/features/study/useCapabilities'
 import { TopicPicker } from '@/features/study/TopicPicker'
+import { runCases, runsOnDevice, sameOutput, warmUp } from '@/features/study/runner/device'
 import { cn } from '@/lib/utils'
 import { lazyChunk } from '@/lib/lazyChunk'
 
@@ -67,7 +71,7 @@ export default function CodingPane({ roomId, subject, caps, capsProblem, announc
     void load()
   }, [load])
 
-  const generate = async (topic: string, difficulty: string, resourceIds?: string[]) => {
+  const generate = async (topic: string, difficulty: string, count: number, resourceIds?: string[]) => {
     if (!subjectId) return
     setBusy(true)
     setError(null)
@@ -77,6 +81,7 @@ export default function CodingPane({ roomId, subject, caps, capsProblem, announc
         topic,
         difficulty,
         resourceIds,
+        count,
       })
       await load()
       announce('coding', subjectId)
@@ -120,9 +125,16 @@ export default function CodingPane({ roomId, subject, caps, capsProblem, announc
         reason={gateReason(caps, capsProblem, 'ai') ?? undefined}
         busy={busy}
         seed={seed}
-        label="Write a problem"
+        label="Write problems"
         showDifficulty
-        onSubmit={(topic, options) => void generate(topic, options.difficulty, options.resourceIds)}
+        showCount
+        countOptions={[
+          [1, '1 problem'],
+          [2, '2 problems'],
+          [3, '3 problems'],
+          [5, '5 problems'],
+        ]}
+        onSubmit={(topic, options) => void generate(topic, options.difficulty, options.count, options.resourceIds)}
       />
 
       {caps && caps.ai && !caps.judge && (
@@ -224,7 +236,8 @@ function Workspace({
   onBack: () => void
   onRefresh: (problem: studyApi.Problem) => void
 }) {
-  const offered = problem.languages.filter((entry) => languages.includes(entry))
+  /* Python and JavaScript run on this device, judge or no judge. */
+  const offered = problem.languages.filter((entry) => runsOnDevice(entry) || languages.includes(entry))
   const [language, setLanguage] = useState(offered[0] ?? problem.languages[0] ?? 'python')
   const [code, setCode] = useState(problem.starters[language] ?? '')
   const [verdict, setVerdict] = useState<studyApi.Verdict | null>(null)
@@ -234,8 +247,25 @@ function Workspace({
   const [reviewing, setReviewing] = useState(false)
   const [rechecking, setRechecking] = useState(false)
   const [recheck, setRecheck] = useState<string | null>(null)
+  const [focus, setFocus] = useState(false)
   const tutor = useTutor()
   const dark = useStudyDark()
+  const local = runsOnDevice(language)
+  const runnable = local || canRun
+
+  /* Start Python's interpreter while the problem is being read, so the first
+     Run does not sit through the download. */
+  useEffect(() => warmUp(language), [language])
+
+  /* A new problem's cases are checked just after it is written. Look again
+     until that is done, so the hidden-case count settles. */
+  useEffect(() => {
+    if (!problem.checking) return
+    const timer = setTimeout(() => {
+      void studyApi.problem(roomId, problem.id).then(({ problem: fresh }) => onRefresh(fresh)).catch(() => undefined)
+    }, 2500)
+    return () => clearTimeout(timer)
+  }, [problem, roomId, onRefresh])
 
   /* Switching language swaps the starter, but only when nothing has been
      written — silently discarding somebody's half-finished solution because
@@ -256,12 +286,31 @@ function Workspace({
     setRemarks(null)
     setRecheck(null)
     try {
-      const { verdict: got } = await studyApi.submitCode(roomId, problem.id, {
-        language,
-        code,
-        samplesOnly,
-      })
-      setVerdict(got)
+      if (local && samplesOnly) {
+        /* The examples and their answers are already on this page, so a Run
+           never leaves the device. */
+        const outputs = await runCases(language, code, problem.samples.map((sample) => sample.input))
+        setVerdict(localVerdict(problem.samples, outputs))
+      } else if (local) {
+        /* Run here on every case's input; the server, which alone has the
+           hidden answers, marks what came out. */
+        const { cases } = await studyApi.problemInputs(roomId, problem.id)
+        const results = await runCases(language, code, cases.map((entry) => entry.input))
+        const { verdict: got } = await studyApi.submitCode(roomId, problem.id, {
+          language,
+          code,
+          samplesOnly: false,
+          outputs: results.map((result, index) => ({ id: cases[index]!.id, stdout: result.stdout, error: result.error })),
+        })
+        setVerdict(got)
+      } else {
+        const { verdict: got } = await studyApi.submitCode(roomId, problem.id, {
+          language,
+          code,
+          samplesOnly,
+        })
+        setVerdict(got)
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'That did not run.')
     } finally {
@@ -371,8 +420,8 @@ function Workspace({
           <button
             type="button"
             onClick={() => void run(true)}
-            disabled={!canRun || running !== null}
-            title={canRun ? undefined : 'No judge configured on this server'}
+            disabled={!runnable || running !== null}
+            title={runnable ? undefined : 'No judge configured on this server'}
             className="flex h-9 items-center gap-2 rounded-full border border-[var(--study-line)] bg-[var(--study-card)] px-3.5 text-[0.78rem] text-[var(--study-text)] outline-none transition-colors hover:bg-[var(--study-card-strong)] disabled:opacity-40"
           >
             {running === 'samples' ? (
@@ -386,17 +435,27 @@ function Workspace({
           <button
             type="button"
             onClick={() => void run(false)}
-            disabled={!canRun || running !== null}
-            title={canRun ? undefined : 'No judge configured on this server'}
+            disabled={!runnable || running !== null}
+            title={runnable ? undefined : 'No judge configured on this server'}
             className="h-9 rounded-full bg-[var(--study-accent)] px-4 text-[0.78rem] font-medium text-[var(--study-on-accent)] outline-none transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             {running === 'submit' ? 'Running…' : 'Submit'}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setFocus((on) => !on)}
+            aria-pressed={focus}
+            title={focus ? 'Show the problem' : 'Hide the problem and give the editor the room'}
+            className="hidden size-9 place-items-center rounded-full border border-[var(--study-line)] bg-[var(--study-card)] text-[var(--study-text)] outline-none transition-colors hover:bg-[var(--study-card-strong)] lg:grid"
+          >
+            {focus ? <Minimize2 aria-hidden className="size-3.5" /> : <Maximize2 aria-hidden className="size-3.5" />}
+          </button>
         </span>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
-        <div data-lenis-prevent className="min-h-0 overflow-y-auto pr-1">
+      <div className={cn('grid min-h-0 flex-1 gap-4', focus ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(18rem,2fr)_minmax(0,3fr)]')}>
+        <div data-lenis-prevent className={cn('min-h-0 overflow-y-auto pr-1', focus && 'lg:hidden')}>
           <h3 className="font-display text-[1.15rem] font-semibold tracking-[-0.02em] text-[var(--study-text)]">
             {problem.title}
           </h3>
@@ -409,6 +468,12 @@ function Workspace({
               <Lock aria-hidden className="size-3" />
               {problem.hiddenCount} hidden cases
             </span>
+            {problem.checking && (
+              <span className="inline-flex items-center gap-1 text-[var(--study-faint)]">
+                <Loader2 aria-hidden className="size-3 animate-spin" />
+                checking them
+              </span>
+            )}
           </p>
 
           <div className="study-prose mt-4">
@@ -432,8 +497,18 @@ function Workspace({
         </div>
 
         <div className="flex min-h-0 flex-col gap-3">
-          {/* Keeps a workable minimum however much output there is below. */}
-          <div className="min-h-[12rem] flex-1 overflow-hidden rounded-[0.9rem] border border-[var(--study-line)]">
+          {/* The editor is the work surface: it takes most of the column and
+              keeps a generous minimum however much output there is below. */}
+          <div className="relative min-h-[26rem] flex-[3] overflow-hidden rounded-[0.9rem] border border-[var(--study-line)] lg:min-h-[22rem]">
+            <span
+              className={cn(
+                'pointer-events-none absolute bottom-2 right-3 z-10 flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.66rem]',
+                local ? 'bg-emerald-500/15 text-emerald-500' : 'bg-[var(--study-card)] text-[var(--study-faint)]',
+              )}
+            >
+              <Cpu aria-hidden className="size-3" />
+              {local ? 'Runs on this device' : 'Runs on the server'}
+            </span>
             <Suspense
               fallback={
                 <div className="grid h-full place-items-center">
@@ -451,7 +526,7 @@ function Workspace({
                 onChange={(next) => setCode(next ?? '')}
                 options={{
                   minimap: { enabled: false },
-                  fontSize: 13,
+                  fontSize: 14,
                   lineNumbers: 'on',
                   scrollBeyondLastLine: false,
                   automaticLayout: true,
@@ -470,12 +545,12 @@ function Workspace({
               its minimum, and the column had no overflow to catch the rest.
               Sharing the space and scrolling inside is what makes a review of
               any length readable without pushing the code off screen. */}
-          {(!canRun || error || verdict || recheck) && (
+          {(!runnable || error || verdict || recheck) && (
             <div
               data-lenis-prevent
-              className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1"
+              className="min-h-0 flex-[2] space-y-3 overflow-y-auto pr-1"
             >
-              {!canRun && (
+              {!runnable && (
                 /* Said here, not only as a tooltip on a greyed button. A
                    disabled control with no visible reason reads as broken,
                    and the reason is one a person can act on. */
@@ -574,6 +649,26 @@ function Workspace({
       </div>
     </div>
   )
+}
+
+/** The same verdict the server gives, for a Run that never left this device. */
+function localVerdict(
+  samples: { input: string; expected: string }[],
+  outputs: { stdout: string; error: string | null }[],
+): studyApi.Verdict {
+  let passed = 0
+  let shown: studyApi.CaseView | null = null
+  for (const [index, sample] of samples.entries()) {
+    const output = outputs[index]
+    if (!output || output.error) {
+      return { status: 'error', passedCount: passed, totalCount: samples.length, detail: output?.error ?? 'The program did not finish.', shown }
+    }
+    const view = { input: sample.input, expected: sample.expected, got: output.stdout, passed: sameOutput(output.stdout, sample.expected) }
+    if (!view.passed) return { status: 'failed', passedCount: passed, totalCount: samples.length, detail: null, shown: view }
+    passed += 1
+    shown ??= view
+  }
+  return { status: 'passed', passedCount: passed, totalCount: samples.length, detail: null, shown }
 }
 
 /** Judge language ids and Monaco's grammar names are not quite the same set. */

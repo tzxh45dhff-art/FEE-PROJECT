@@ -144,6 +144,8 @@ export type Problem = {
   samples: { input: string; expected: string }[]
   /** How many cases are held back — shown, but never their contents. */
   hiddenCount: number
+  /** Its cases are still being checked against a reference solution. */
+  checking?: boolean
 }
 
 /** One case, in pieces, so your output can sit next to the right one. */
@@ -310,8 +312,12 @@ export const problems = (roomId: string, subjectId: string) =>
 
 export const createProblem = (
   roomId: string,
-  input: { subjectId: string; topic: string; difficulty: string; resourceIds?: string[] },
-) => api.post<{ problem: { id: string; title: string; difficulty: string } }>(`${base(roomId)}/coding`, input)
+  input: { subjectId: string; topic: string; difficulty: string; resourceIds?: string[]; count?: number },
+) =>
+  api.post<{
+    problem: { id: string; title: string; difficulty: string }
+    problems?: { id: string; title: string; difficulty: string }[]
+  }>(`${base(roomId)}/coding`, input)
 
 export const problem = (roomId: string, problemId: string) =>
   api.get<{ problem: Problem }>(`${base(roomId)}/coding/${problemId}`)
@@ -319,8 +325,18 @@ export const problem = (roomId: string, problemId: string) =>
 export const submitCode = (
   roomId: string,
   problemId: string,
-  input: { language: string; code: string; samplesOnly: boolean },
+  input: {
+    language: string
+    code: string
+    samplesOnly: boolean
+    /** What the program printed for each case, when it ran on this device. */
+    outputs?: { id: string; stdout: string; error: string | null }[]
+  },
 ) => api.post<{ verdict: Verdict }>(`${base(roomId)}/coding/${problemId}/submissions`, input)
+
+/** Every case's input — never the expected output — for running on this device. */
+export const problemInputs = (roomId: string, problemId: string) =>
+  api.get<{ cases: { id: string; input: string; hidden: boolean }[] }>(`${base(roomId)}/coding/${problemId}/inputs`)
 
 /**
  * Remarks on a run that already happened.
