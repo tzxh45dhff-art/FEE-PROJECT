@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -14,6 +14,7 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react'
+import { useDefaultLayout, type PanelImperativeHandle } from 'react-resizable-panels'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -29,7 +30,9 @@ import {
 } from '@/features/study/panes/shared'
 import { gateReason } from '@/features/study/useCapabilities'
 import { TopicPicker } from '@/features/study/TopicPicker'
+import { ResizableGroup, ResizableHandle, ResizablePanel } from '@/components/ui/resizable'
 import { runCases, runsOnDevice, sameOutput, warmUp } from '@/features/study/runner/device'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { cn } from '@/lib/utils'
 import { lazyChunk } from '@/lib/lazyChunk'
 
@@ -248,6 +251,12 @@ function Workspace({
   const [rechecking, setRechecking] = useState(false)
   const [recheck, setRecheck] = useState<string | null>(null)
   const [focus, setFocus] = useState(false)
+  /* Drag-to-resize needs the width for it; below that it is one column. */
+  const wide = useMediaQuery('(min-width: 1024px)')
+  const problemPanel = useRef<PanelImperativeHandle | null>(null)
+  /* Each person's sizes, remembered in this browser. */
+  const outer = useDefaultLayout({ id: 'huddle.coding.columns', storage: safeStorage })
+  const inner = useDefaultLayout({ id: 'huddle.coding.rows', storage: safeStorage })
   /* Which run the panel is showing — so a new run that fails the same way as
      the last one is still visibly a new run, not the old result left up. */
   const [ran, setRan] = useState<{ count: number; at: Date; ms: number; kind: 'samples' | 'submit' } | null>(null)
@@ -365,6 +374,211 @@ function Workspace({
     }
   }
 
+  const problemPane = (
+    <div data-lenis-prevent className="h-full min-h-0 overflow-y-auto pr-2">
+      <h3 className="font-display text-[1.15rem] font-semibold tracking-[-0.02em] text-[var(--study-text)]">
+        {problem.title}
+      </h3>
+      <p className="mt-1 flex items-center gap-2 text-[0.74rem]">
+        <span className={cn('capitalize', DIFFICULTY[problem.difficulty] ?? 'text-[var(--study-faint)]')}>
+          {problem.difficulty}
+        </span>
+        <span aria-hidden className="text-[var(--study-faint)]">·</span>
+        <span className="inline-flex items-center gap-1 text-[var(--study-faint)]">
+          <Lock aria-hidden className="size-3" />
+          {problem.hiddenCount} hidden cases
+        </span>
+
+      </p>
+
+      <div className="study-prose mt-4">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{problem.description}</ReactMarkdown>
+      </div>
+
+      <div className="mt-5 space-y-2">
+        <p className="text-[0.78rem] text-[var(--study-soft)]">Examples</p>
+        {problem.samples.map((sample, index) => (
+          <div
+            key={index}
+            className="rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-3 font-mono text-[0.74rem] leading-relaxed"
+          >
+            <p className="text-[var(--study-faint)]">input</p>
+            <pre className="overflow-x-auto whitespace-pre-wrap text-[var(--study-text)]">{sample.input}</pre>
+            <p className="mt-2 text-[var(--study-faint)]">expected</p>
+            <pre className="overflow-x-auto whitespace-pre-wrap text-[var(--study-text)]">{sample.expected}</pre>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  /* The editor is the work surface. */
+  const editorPane = (
+    <div className="relative h-full min-h-[22rem] overflow-hidden rounded-[0.9rem] border border-[var(--study-line)] lg:min-h-0">
+      <span
+        className={cn(
+          'pointer-events-none absolute bottom-2 right-3 z-10 flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.66rem]',
+          local ? 'bg-emerald-500/15 text-emerald-500' : 'bg-[var(--study-card)] text-[var(--study-faint)]',
+        )}
+      >
+        <Cpu aria-hidden className="size-3" />
+        {local ? 'Runs on this device' : 'Runs on the server'}
+      </span>
+      <Suspense
+        fallback={
+          <div className="grid h-full place-items-center">
+            <Loader2 aria-hidden className="size-4 animate-spin text-[var(--study-soft)]" />
+          </div>
+        }
+      >
+        <Editor
+          height="100%"
+          language={monacoLanguage(language)}
+          /* Follows the page. A black editor punched into a light page
+             is the single most jarring thing a themed tab can do. */
+          theme={dark ? 'vs-dark' : 'light'}
+          value={code}
+          onChange={(next) => setCode(next ?? '')}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 14,
+            lineNumbers: 'on',
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            tabSize: 2,
+            padding: { top: 12, bottom: 12 },
+          }}
+        />
+      </Suspense>
+    </div>
+  )
+
+  /* What the run said: the verdict, and the offer to check the cases. */
+  const resultsPane = (
+    <div data-lenis-prevent className="h-full min-h-0 space-y-3 overflow-y-auto pr-1">
+      {!runnable && (
+        /* Said here, not only as a tooltip on a greyed button. A
+           disabled control with no visible reason reads as broken,
+           and the reason is one a person can act on. */
+        <p className="rounded-[0.9rem] border border-[var(--study-line)] px-3 py-2.5 text-[0.76rem] leading-relaxed text-[var(--study-soft)]">
+          No judge is configured on this server, so this cannot be run. Set{' '}
+          <code className="text-[var(--study-text)]">JUDGE_URL</code> to a
+          Judge0-compatible API and the buttons above come alive.
+        </p>
+      )}
+
+      {error && <Problem message={error} />}
+      {verdict && ran && (
+        <p key={ran.count} className="study-ran flex items-center gap-1.5 text-[0.7rem] text-[var(--study-faint)]">
+          {ran.kind === 'samples' ? 'Examples' : 'Submission'} run #{ran.count} · {ran.ms < 1000 ? `${ran.ms} ms` : `${(ran.ms / 1000).toFixed(1)} s`} ·{' '}
+          {ran.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}
+        </p>
+      )}
+      {verdict && (
+        <div key={ran?.count ?? 0} className="study-ran">
+          <Result verdict={verdict} />
+        </div>
+      )}
+
+      {/*
+        * Offered when the evidence points at the cases rather than at
+        * the code: earlier cases ran, then one stopped the program.
+        * That is what a case declaring rows it never supplies looks
+        * like from in here — the examples pass, so the code looks
+        * right, and then a hidden case kills it.
+        *
+        * Offered, not asserted. A later case can also be bigger than
+        * the earlier ones and find a genuine bug, and this is the way
+        * to tell those two apart rather than a claim about which it
+        * is.
+        */}
+      {(recheck || (verdict && verdict.status !== 'passed' && (verdict.status === 'failed' || verdict.passedCount > 0))) && (
+        <div className="study-card p-3">
+          {verdict && (
+            <p className="text-[0.78rem] leading-relaxed text-[var(--study-soft)]">
+              {verdict.status === 'failed'
+                ? 'Sure your answer is right? Generated test cases can be wrong. This has two independent solutions check every case and removes any they both disagree with.'
+                : `It ran on ${verdict.passedCount} case${verdict.passedCount === 1 ? '' : 's'} and then stopped. If a test case is itself faulty — one that asks for more input than it provides — this finds it.`}
+            </p>
+          )}
+          {recheck ? (
+            <p className="text-[0.8rem] leading-relaxed text-[var(--study-text)]">
+              {recheck}
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void recheckCases()}
+              disabled={rechecking}
+              className="study-btn mt-2.5 w-full"
+            >
+              {rechecking ? (
+                <Loader2 aria-hidden className="size-4 animate-spin" />
+              ) : (
+                <ShieldQuestion aria-hidden className="size-4" />
+              )}
+              {rechecking ? 'Checking the cases…' : 'Check the test cases'}
+            </button>
+          )}
+        </div>
+      )}
+      {runnable && !error && !verdict && !recheck && (
+        <Empty icon={<Play aria-hidden className="size-4" />} text={running ? 'Running…' : 'Run the examples or submit — the result shows up here.'} />
+      )}
+    </div>
+  )
+
+  /* What the model makes of it, once there is a run to talk about. */
+  const insightsPane = (
+    <div data-lenis-prevent className="h-full min-h-0 space-y-3 overflow-y-auto pr-1">
+      <p className="flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.07em] text-[var(--study-faint)]">
+        <Sparkles aria-hidden className="size-3.5" />
+        AI insights
+      </p>
+      {/* Offered after a run rather than before one, and never
+          automatically: a review is a billed call, and one written
+          without knowing whether the code even compiles is guesswork
+          dressed as feedback. */}
+      {verdict && canReview && (
+        remarks ? (
+          <div className="study-card p-3.5">
+            <p className="mb-2 flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.07em] text-[var(--study-faint)]">
+              <Sparkles aria-hidden className="size-3.5" />
+              Review
+            </p>
+            <div className="study-prose study-prose-tight">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{remarks}</ReactMarkdown>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void review()}
+            disabled={reviewing}
+            className="study-btn w-full"
+          >
+            {reviewing ? (
+              <Loader2 aria-hidden className="size-4 animate-spin" />
+            ) : (
+              <Sparkles aria-hidden className="size-4" />
+            )}
+            {reviewing
+              ? 'Reading your code…'
+              : verdict.status === 'passed'
+                ? 'What could be better?'
+                : 'Why did this fail?'}
+          </button>
+        )
+      )}
+      {!verdict && (
+        <Empty
+          icon={<Sparkles aria-hidden className="size-4" />}
+          text={canReview ? 'After a run, ask why it failed or what could be better.' : 'AI review is not available on this server.'}
+        />
+      )}
+    </div>
+  )
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 pb-3">
@@ -377,7 +591,7 @@ function Workspace({
           All problems
         </button>
 
-        <span className="flex items-center gap-2">
+        <span className="flex flex-wrap items-center gap-2">
           {/* Sends what has been typed so far along with the statement. Help
               with a half-written attempt is help with *that* attempt — where
               it went wrong, not a fresh lecture on the topic. The server's
@@ -448,7 +662,12 @@ function Workspace({
 
           <button
             type="button"
-            onClick={() => setFocus((on) => !on)}
+            onClick={() => {
+              const panel = problemPanel.current
+              if (!panel) return
+              if (panel.isCollapsed()) panel.expand()
+              else panel.collapse()
+            }}
             aria-pressed={focus}
             title={focus ? 'Show the problem' : 'Hide the problem and give the editor the room'}
             className="hidden size-9 place-items-center rounded-full border border-[var(--study-line)] bg-[var(--study-card)] text-[var(--study-text)] outline-none transition-colors hover:bg-[var(--study-card-strong)] lg:grid"
@@ -458,203 +677,75 @@ function Workspace({
         </span>
       </div>
 
-      <div className={cn('grid min-h-0 flex-1 gap-4', focus ? 'lg:grid-cols-1' : 'lg:grid-cols-[minmax(18rem,2fr)_minmax(0,3fr)]')}>
-        <div data-lenis-prevent className={cn('min-h-0 overflow-y-auto pr-1', focus && 'lg:hidden')}>
-          <h3 className="font-display text-[1.15rem] font-semibold tracking-[-0.02em] text-[var(--study-text)]">
-            {problem.title}
-          </h3>
-          <p className="mt-1 flex items-center gap-2 text-[0.74rem]">
-            <span className={cn('capitalize', DIFFICULTY[problem.difficulty] ?? 'text-[var(--study-faint)]')}>
-              {problem.difficulty}
-            </span>
-            <span aria-hidden className="text-[var(--study-faint)]">·</span>
-            <span className="inline-flex items-center gap-1 text-[var(--study-faint)]">
-              <Lock aria-hidden className="size-3" />
-              {problem.hiddenCount} hidden cases
-            </span>
-
-          </p>
-
-          <div className="study-prose mt-4">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{problem.description}</ReactMarkdown>
-          </div>
-
-          <div className="mt-5 space-y-2">
-            <p className="text-[0.78rem] text-[var(--study-soft)]">Examples</p>
-            {problem.samples.map((sample, index) => (
-              <div
-                key={index}
-                className="rounded-[0.9rem] border border-[var(--study-line)] bg-[var(--study-card)] p-3 font-mono text-[0.74rem] leading-relaxed"
-              >
-                <p className="text-[var(--study-faint)]">input</p>
-                <pre className="overflow-x-auto whitespace-pre-wrap text-[var(--study-text)]">{sample.input}</pre>
-                <p className="mt-2 text-[var(--study-faint)]">expected</p>
-                <pre className="overflow-x-auto whitespace-pre-wrap text-[var(--study-text)]">{sample.expected}</pre>
-              </div>
-            ))}
-          </div>
+      {wide ? (
+        <ResizableGroup orientation="horizontal" className="min-h-0 flex-1" {...outer}>
+          <ResizablePanel
+            id="problem"
+            defaultSize="40%"
+            minSize="18%"
+            collapsible
+            collapsedSize="0%"
+            panelRef={problemPanel}
+            onResize={(size) => setFocus(size.asPercentage === 0)}
+          >
+            {problemPane}
+          </ResizablePanel>
+          <ResizableHandle />
+          <ResizablePanel id="work" minSize="35%">
+            <ResizableGroup orientation="vertical" {...inner}>
+              <ResizablePanel id="editor" defaultSize="62%" minSize="20%">
+                {editorPane}
+              </ResizablePanel>
+              <ResizableHandle vertical />
+              <ResizablePanel id="results" defaultSize="23%" minSize="8%">
+                {resultsPane}
+              </ResizablePanel>
+              <ResizableHandle vertical />
+              <ResizablePanel id="insights" defaultSize="15%" minSize="8%">
+                {insightsPane}
+              </ResizablePanel>
+            </ResizableGroup>
+          </ResizablePanel>
+        </ResizableGroup>
+      ) : (
+        /* Phones and narrow windows: one column, no dragging. */
+        <div data-lenis-prevent className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+          <div className="max-h-[45vh] shrink-0">{problemPane}</div>
+          <div className="h-[60vh] shrink-0">{editorPane}</div>
+          <div className="shrink-0">{resultsPane}</div>
+          <div className="shrink-0 pb-4">{insightsPane}</div>
         </div>
+      )}
+    </div>
+  )
+}
 
-        <div className="flex min-h-0 flex-col gap-3">
-          {/* The editor is the work surface: it takes most of the column and
-              keeps a generous minimum however much output there is below. */}
-          <div className="relative min-h-[26rem] flex-[3] overflow-hidden rounded-[0.9rem] border border-[var(--study-line)] lg:min-h-[22rem]">
-            <span
-              className={cn(
-                'pointer-events-none absolute bottom-2 right-3 z-10 flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.66rem]',
-                local ? 'bg-emerald-500/15 text-emerald-500' : 'bg-[var(--study-card)] text-[var(--study-faint)]',
-              )}
-            >
-              <Cpu aria-hidden className="size-3" />
-              {local ? 'Runs on this device' : 'Runs on the server'}
-            </span>
-            <Suspense
-              fallback={
-                <div className="grid h-full place-items-center">
-                  <Loader2 aria-hidden className="size-4 animate-spin text-[var(--study-soft)]" />
-                </div>
-              }
-            >
-              <Editor
-                height="100%"
-                language={monacoLanguage(language)}
-                /* Follows the page. A black editor punched into a light page
-                   is the single most jarring thing a themed tab can do. */
-                theme={dark ? 'vs-dark' : 'light'}
-                value={code}
-                onChange={(next) => setCode(next ?? '')}
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 14,
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  tabSize: 2,
-                  padding: { top: 12, bottom: 12 },
-                }}
-              />
-            </Suspense>
-          </div>
+/** localStorage, or nothing — a private window must not break the page. */
+const safeStorage = {
+  getItem(key: string) {
+    try {
+      return window.localStorage.getItem(key)
+    } catch {
+      return null
+    }
+  },
+  setItem(key: string, value: string) {
+    try {
+      window.localStorage.setItem(key, value)
+    } catch {
+      /* Sizes are a convenience; not remembering them is fine. */
+    }
+  },
+}
 
-          {/* One scroller for everything the run produces.
-              
-              These used to be loose siblings of the editor with no height of
-              their own, so a long review simply grew past the bottom of the
-              window with nothing to scroll: the editor could only shrink to
-              its minimum, and the column had no overflow to catch the rest.
-              Sharing the space and scrolling inside is what makes a review of
-              any length readable without pushing the code off screen. */}
-          {(!runnable || error || verdict || recheck) && (
-            <div
-              data-lenis-prevent
-              className="min-h-0 flex-[2] space-y-3 overflow-y-auto pr-1"
-            >
-              {!runnable && (
-                /* Said here, not only as a tooltip on a greyed button. A
-                   disabled control with no visible reason reads as broken,
-                   and the reason is one a person can act on. */
-                <p className="rounded-[0.9rem] border border-[var(--study-line)] px-3 py-2.5 text-[0.76rem] leading-relaxed text-[var(--study-soft)]">
-                  No judge is configured on this server, so this cannot be run. Set{' '}
-                  <code className="text-[var(--study-text)]">JUDGE_URL</code> to a
-                  Judge0-compatible API and the buttons above come alive.
-                </p>
-              )}
-
-              {error && <Problem message={error} />}
-              {verdict && ran && (
-                <p key={ran.count} className="study-ran flex items-center gap-1.5 text-[0.7rem] text-[var(--study-faint)]">
-                  {ran.kind === 'samples' ? 'Examples' : 'Submission'} run #{ran.count} · {ran.ms < 1000 ? `${ran.ms} ms` : `${(ran.ms / 1000).toFixed(1)} s`} ·{' '}
-                  {ran.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}
-                </p>
-              )}
-              {verdict && (
-                <div key={ran?.count ?? 0} className="study-ran">
-                  <Result verdict={verdict} />
-                </div>
-              )}
-
-              {/*
-                * Offered when the evidence points at the cases rather than at
-                * the code: earlier cases ran, then one stopped the program.
-                * That is what a case declaring rows it never supplies looks
-                * like from in here — the examples pass, so the code looks
-                * right, and then a hidden case kills it.
-                *
-                * Offered, not asserted. A later case can also be bigger than
-                * the earlier ones and find a genuine bug, and this is the way
-                * to tell those two apart rather than a claim about which it
-                * is.
-                */}
-              {(recheck || (verdict && verdict.status !== 'passed' && (verdict.status === 'failed' || verdict.passedCount > 0))) && (
-                <div className="study-card p-3">
-                  {verdict && (
-                    <p className="text-[0.78rem] leading-relaxed text-[var(--study-soft)]">
-                      {verdict.status === 'failed'
-                        ? 'Sure your answer is right? Generated test cases can be wrong. This has two independent solutions check every case and removes any they both disagree with.'
-                        : `It ran on ${verdict.passedCount} case${verdict.passedCount === 1 ? '' : 's'} and then stopped. If a test case is itself faulty — one that asks for more input than it provides — this finds it.`}
-                    </p>
-                  )}
-                  {recheck ? (
-                    <p className="text-[0.8rem] leading-relaxed text-[var(--study-text)]">
-                      {recheck}
-                    </p>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => void recheckCases()}
-                      disabled={rechecking}
-                      className="study-btn mt-2.5 w-full"
-                    >
-                      {rechecking ? (
-                        <Loader2 aria-hidden className="size-4 animate-spin" />
-                      ) : (
-                        <ShieldQuestion aria-hidden className="size-4" />
-                      )}
-                      {rechecking ? 'Checking the cases…' : 'Check the test cases'}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Offered after a run rather than before one, and never
-                  automatically: a review is a billed call, and one written
-                  without knowing whether the code even compiles is guesswork
-                  dressed as feedback. */}
-              {verdict && canReview && (
-                remarks ? (
-                  <div className="study-card p-3.5">
-                    <p className="mb-2 flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.07em] text-[var(--study-faint)]">
-                      <Sparkles aria-hidden className="size-3.5" />
-                      Review
-                    </p>
-                    <div className="study-prose study-prose-tight">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{remarks}</ReactMarkdown>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => void review()}
-                    disabled={reviewing}
-                    className="study-btn w-full"
-                  >
-                    {reviewing ? (
-                      <Loader2 aria-hidden className="size-4 animate-spin" />
-                    ) : (
-                      <Sparkles aria-hidden className="size-4" />
-                    )}
-                    {reviewing
-                      ? 'Reading your code…'
-                      : verdict.status === 'passed'
-                        ? 'What could be better?'
-                        : 'Why did this fail?'}
-                  </button>
-                )
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+/** What a panel says before there is anything in it. */
+function Empty({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="flex h-full min-h-[4rem] items-center justify-center gap-2 rounded-[0.9rem] border border-dashed border-[var(--study-line)] px-4 text-center text-[0.76rem] text-[var(--study-faint)]">
+      <span aria-hidden className="shrink-0 opacity-70">
+        {icon}
+      </span>
+      {text}
     </div>
   )
 }
