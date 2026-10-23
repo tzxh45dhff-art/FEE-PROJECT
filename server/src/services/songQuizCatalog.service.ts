@@ -1,7 +1,7 @@
 import { randomInt } from 'node:crypto'
 import { env } from '../config/env.js'
 import { excluded, officialTier, rankSongs } from './musicRank.js'
-import { searchYouTube, type SearchResult } from './sources.service.js'
+import { searchViaPiped, searchYouTube, type SearchResult } from './sources.service.js'
 import { catalogueCacheGet, catalogueCacheSet } from './songQuizCache.js'
 import { discoverSongs } from './songMetadata.service.js'
 import { normaliseSongText, type SongCategory, type SongIdentity } from './songQuizPacks.js'
@@ -16,6 +16,15 @@ export type VideoDetails = { duration: number; embeddable: boolean }
 type Inspect = (results: SearchResult[]) => Promise<Map<string, VideoDetails>>
 const WEEK = 7 * 86_400_000
 const inFlight = new Map<string, Promise<SearchResult[]>>()
+
+/**
+ * Up to two dozen lookups per new game. Through the API key that is 2,400 of
+ * its 10,000 daily units, so a few games would leave Watch and Listen with no
+ * search for the rest of the day. The free instances answer first; the key is
+ * only the fallback when they are all down.
+ */
+const quizSearch: typeof searchYouTube = (query, options) =>
+  searchViaPiped(query, options?.music ?? false).catch(() => searchYouTube(query, options))
 
 function shuffled<T>(values: T[], random: (max: number) => number) {
   const out = [...values]
@@ -79,7 +88,7 @@ async function inspectVideos(results: SearchResult[]): Promise<Map<string, Video
 
 async function candidates(song: SongIdentity, search: typeof searchYouTube) {
   const key = identityKey(song)
-  if (search !== searchYouTube) return search(`${song.title} ${song.artist} official audio`, { music: true })
+  if (search !== quizSearch) return search(`${song.title} ${song.artist} official audio`, { music: true })
   const pending = inFlight.get(key)
   if (pending) return pending
   const job = search(`${song.title} ${song.artist} official audio`, { music: true }).finally(() => inFlight.delete(key))
@@ -99,8 +108,8 @@ export type PoolDependencies = {
  * Upload titles are never used as answers. Caches hold public metadata only.
  */
 export async function freshSongPool(categories: SongCategory[], dependencies: PoolDependencies = {}): Promise<CatalogSong[]> {
-  const { discover = discoverSongs, search = searchYouTube, inspect = inspectVideos, random = randomInt, limit = 15 } = dependencies
-  const cacheable = search === searchYouTube && inspect === inspectVideos
+  const { discover = discoverSongs, search = quizSearch, inspect = inspectVideos, random = randomInt, limit = 15 } = dependencies
+  const cacheable = search === quizSearch && inspect === inspectVideos
   const libraries = await Promise.allSettled(categories.map(discover))
   const piles = libraries.map((result) => artistBalanced(result.status === 'fulfilled' ? result.value : [], random))
   const identities: SongIdentity[] = []

@@ -237,7 +237,7 @@ function pipedVideoId(url: string | undefined): string | null {
  * abandoned. They are volunteer servers being asked one small question, which
  * is the case where racing is courteous rather than greedy.
  */
-async function searchViaPiped(query: string, music = false): Promise<SearchResult[]> {
+export async function searchViaPiped(query: string, music = false): Promise<SearchResult[]> {
   const attempts = PIPED_INSTANCES.map((instance) => askPiped(instance, query, music))
 
   try {
@@ -300,10 +300,18 @@ async function askPiped(instance: string, query: string, music: boolean): Promis
   return results
 }
 
+/**
+ * When YouTube last refused the key for quota or rate. Until this passes the
+ * key is not tried at all: every search would fail the same way, and making
+ * each one wait for that refusal before the fallback is pure delay.
+ */
+let youtubeRestingUntil = 0
+const RESTING_MS = 15 * 60 * 1000
+
 export async function searchYouTube(query: string, options: { music?: boolean } = {}): Promise<SearchResult[]> {
   const music = options.music ?? false
-  /* No key: fall back to a keyless instance rather than refusing outright. */
-  if (!env.youtubeApiKey) return searchViaPiped(query, music)
+  /* No key, or the key is out of quota: a keyless instance rather than refusing outright. */
+  if (!env.youtubeApiKey || Date.now() < youtubeRestingUntil) return searchViaPiped(query, music)
 
   const url = new URL('https://www.googleapis.com/youtube/v3/search')
   url.searchParams.set('part', 'snippet')
@@ -317,18 +325,26 @@ export async function searchYouTube(query: string, options: { music?: boolean } 
   url.searchParams.set('q', query)
   url.searchParams.set('key', env.youtubeApiKey)
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(8000) })
+  /*
+   * A dead key should not mean a dead search box.
+   *
+   * YouTube refuses an exhausted or throttled key with 403 *or* 429 (a search
+   * costs 100 of the free tier's 10,000 daily units), and can also just time
+   * out. Whatever the reason, the keyless instances can still answer, so any
+   * failure falls through to them instead of ending at an error.
+   */
+  let response: Response
+  try {
+    response = await fetch(url, { signal: AbortSignal.timeout(8000) })
+  } catch {
+    return searchViaPiped(query, music)
+  }
   if (!response.ok) {
-    /*
-     * A dead key should not mean a dead search box.
-     *
-     * 403 covers both a misconfigured key and the daily quota running out —
-     * and quota exhaustion is the common one, since a search costs 100 of the
-     * free tier's 10,000 daily units. Falling through keeps the feature
-     * working on the day it matters most.
-     */
-    if (response.status === 403) return searchViaPiped(query, music)
-    throw HttpError.badRequest('YouTube search is unavailable right now.')
+    if (response.status === 403 || response.status === 429) {
+      youtubeRestingUntil = Date.now() + RESTING_MS
+      console.warn(`[sources] YouTube search refused the key (${response.status}); using keyless search for 15 minutes`)
+    }
+    return searchViaPiped(query, music)
   }
 
   const body = (await response.json()) as {
