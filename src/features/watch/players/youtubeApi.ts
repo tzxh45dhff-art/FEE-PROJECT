@@ -16,6 +16,7 @@ export type YTPlayer = {
   getCurrentTime: () => number
   getDuration: () => number
   getPlayerState: () => number
+  getVideoUrl: () => string
   loadVideoById: (options: { videoId: string; startSeconds?: number }) => void
   mute: () => void
   unMute: () => void
@@ -35,7 +36,8 @@ export type YTNamespace = {
       events?: {
         onReady?: (event: { target: YTPlayer }) => void
         onStateChange?: (event: { data: number; target: YTPlayer }) => void
-        onError?: (event: { data: number }) => void
+        onError?: (event: { data: number; target: YTPlayer }) => void
+        onAutoplayBlocked?: () => void
       }
     },
   ) => YTPlayer

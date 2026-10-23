@@ -12,6 +12,7 @@ import { QuizTable, SongQuizSetup, TriviaSetup, type QuizView } from '@/features
 import { GamePicker, type GameId } from '@/features/party/GamePicker'
 import { TruthDareSetup, TruthDareTable, type TruthDareView } from '@/features/party/TruthDare'
 import { useParty, type PartyState } from '@/features/party/useParty'
+import { EndGameButton } from '@/features/party/EndGameButton'
 import { usePageVisible } from '@/hooks/usePageVisible'
 import { cn } from '@/lib/utils'
 import { lazyChunk } from '@/lib/lazyChunk'
@@ -56,6 +57,7 @@ export function GamesStage({
   const visible = usePageVisible()
   const party = useParty(roomId)
   const [screen, setScreen] = useState<GameId | 'picker'>('picker')
+  const [songQuizStarting, setSongQuizStarting] = useState(false)
 
   /*
    * When somebody starts a party game, everyone in Play is taken to it — the
@@ -79,6 +81,9 @@ export function GamesStage({
      already together, and two people playing is three people watching. */
   const spectating = snapshot !== null && seat === null
   const myTurn = seat !== null && snapshot?.turn === seat && snapshot.winner === null
+  const partyView = party.party?.view as { phase?: string; players?: GamePlayer[] } | undefined
+  const partyRunning = !!party.party && partyView?.phase !== 'over'
+  const penRunning = screen === 'penfight' && !!snapshot && snapshot.winner === null
 
   const opponents = members.filter((member) => !member.you)
   /* What each quiz was last started with, so "Play again" is one tap. */
@@ -141,6 +146,26 @@ export function GamesStage({
         </span>
 
         <span className="flex shrink-0 items-center gap-2">
+          {penRunning ? (
+            <EndGameButton
+              key={`pen-${snapshot.epoch}`}
+              label="Pen fight"
+              connected={connected}
+              allowed={seat !== null}
+              onEnd={async () => {
+                send('game:end')
+                return {}
+              }}
+            />
+          ) : partyRunning ? (
+            <EndGameButton
+              key={`party-${party.party!.session ?? party.party!.game}`}
+              label={party.party!.label}
+              connected={connected}
+              allowed={!!selfId && !!partyView?.players?.some((player) => player.id === selfId)}
+              onEnd={() => party.act('end')}
+            />
+          ) : null}
           {onTogglePanel && (
             <button
               type="button"
@@ -275,9 +300,15 @@ export function GamesStage({
               people={members.length}
               players={members}
               error={party.error}
-              onStart={(options) => {
+              starting={songQuizStarting}
+              onStart={async (options) => {
                 quizOptions.current.songquiz = options
-                void party.start('songquiz', options)
+                setSongQuizStarting(true)
+                try {
+                  await party.start('songquiz', options)
+                } finally {
+                  setSongQuizStarting(false)
+                }
               }}
             />
           ))}

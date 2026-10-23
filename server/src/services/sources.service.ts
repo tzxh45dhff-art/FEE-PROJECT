@@ -194,6 +194,7 @@ export type SearchResult = {
   thumbnail: string
   /** The uploader carries YouTube's verified badge, when the source says. */
   verified?: boolean
+  duration?: number
 }
 
 /**
@@ -280,6 +281,7 @@ async function askPiped(instance: string, query: string, music: boolean): Promis
     .slice(0, music ? 25 : 12)
     .map((item) => ({
       id: item.id,
+      duration: item.duration,
       title: item.title ?? 'Untitled',
       channel: item.uploaderName ?? '',
       verified: item.uploaderVerified ?? false,

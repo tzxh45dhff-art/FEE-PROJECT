@@ -63,10 +63,15 @@ export function useParty<V = unknown>(roomId: string) {
     (event: string, payload: Record<string, unknown>) =>
       new Promise<Reply>((resolve) => {
         setError(null)
-        getSocket().emit(event, { roomId, ...payload }, (reply: Reply) => {
-          if (reply?.error) setError(reply.error)
-          resolve(reply ?? {})
-        })
+        /* Generous: building a fresh song mix can take a while the first
+           time. But a server restart mid-call must not leave a spinner forever. */
+        getSocket()
+          .timeout(90_000)
+          .emit(event, { roomId, ...payload }, (err: Error | null, reply: Reply) => {
+            const result = err ? { error: 'The server didn’t answer — check your connection and try again' } : (reply ?? {})
+            if (result.error) setError(result.error)
+            resolve(result)
+          })
       }),
     [roomId],
   )

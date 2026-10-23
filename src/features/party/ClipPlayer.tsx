@@ -6,7 +6,7 @@ import { apiUrl } from '@/lib/config'
 /**
  * Plays guess-the-song clips, in step with everyone else.
  *
- * During "get ready" the clip is loaded muted and parked at its start, so when
+ * During "get ready" the clip is sound-checked and parked at its start, so when
  * the options open the sound can begin at once on every screen rather than
  * whenever each connection gets around to buffering. If the options opened a
  * moment ago (a slow join, a tab that was asleep) the clip starts that far in,
@@ -17,7 +17,7 @@ import { apiUrl } from '@/lib/config'
  * playback is refused the screen offers a tap to hear instead of silence.
  */
 
-export type ClipMedia = { source: string; ref: string; start: number }
+export type ClipMedia = { source: string; ref: string; start: number; attempt?: number }
 export type ClipStatus = 'loading' | 'ready' | 'playing' | 'blocked' | 'error'
 
 export function ClipPlayer({
@@ -26,6 +26,10 @@ export function ClipPlayer({
   elapsedMs,
   onStatus,
   unlock,
+  onUnavailable,
+  preparing = false,
+  syncAt = 0,
+  confirming = false,
 }: {
   media: ClipMedia | null
   playing: boolean
@@ -34,15 +38,23 @@ export function ClipPlayer({
   onStatus: (status: ClipStatus) => void
   /** Bumped by a tap when playback was blocked; try again with that gesture. */
   unlock: number
+  onUnavailable?: (ref: string, code: number) => void
+  preparing?: boolean
+  /** Re-sync once the server has confirmed audible playback for everyone. */
+  syncAt?: number
+  /** Prove playback, then park until the whole room can start together. */
+  confirming?: boolean
 }) {
   const statusRef = useRef(onStatus)
   statusRef.current = onStatus
   const elapsedRef = useRef(elapsedMs)
   elapsedRef.current = elapsedMs
+  const unavailableRef = useRef(onUnavailable)
+  unavailableRef.current = onUnavailable
 
   if (!media) return null
   return media.source === 'youtube' ? (
-    <YouTubeClip key="yt" media={media} playing={playing} elapsed={elapsedRef} status={statusRef} unlock={unlock} />
+    <YouTubeClip key={`yt-${media.attempt ?? 0}`} media={media} playing={playing} preparing={preparing} confirming={confirming} syncAt={syncAt} elapsed={elapsedRef} status={statusRef} unlock={unlock} unavailable={unavailableRef} />
   ) : (
     <FileClip key="file" media={media} playing={playing} elapsed={elapsedRef} status={statusRef} unlock={unlock} />
   )
@@ -54,6 +66,9 @@ type Inner = {
   elapsed: React.RefObject<() => number>
   status: React.RefObject<(s: ClipStatus) => void>
   unlock: number
+  preparing?: boolean
+  syncAt?: number
+  confirming?: boolean
 }
 
 function FileClip({ media, playing, elapsed, status, unlock }: Inner) {
@@ -99,17 +114,21 @@ function FileClip({ media, playing, elapsed, status, unlock }: Inner) {
   return <audio ref={audio} preload="auto" className="hidden" />
 }
 
-function YouTubeClip({ media, playing, elapsed, status, unlock }: Inner) {
+function YouTubeClip({ media, playing, preparing, confirming, syncAt, elapsed, status, unlock, unavailable }: Inner & { unavailable: React.RefObject<((ref: string, code: number) => void) | undefined> }) {
   const mount = useRef<HTMLDivElement>(null)
   const player = useRef<YTPlayer | null>(null)
   const ready = useRef(false)
-  const wanted = useRef({ media, playing })
-  wanted.current = { media, playing }
+  const wanted = useRef({ media, playing, preparing, confirming })
+  wanted.current = { media, playing, preparing, confirming }
   /** The clip the player is parked on, so a repeat render doesn't reload it. */
   const loaded = useRef<string | null>(null)
   const parked = useRef(false)
+  const confirmed = useRef(false)
+  const failed = useRef(false)
+  const blocked = useRef(false)
 
-  /* One player for the whole game; re-pointed per round. */
+  /* Keep the same audio-enabled iframe across rounds. Recreating it throws
+     away the browser's playback permission and causes repeated play prompts. */
   useEffect(() => {
     let disposed = false
     let host: HTMLDivElement | null = null
@@ -120,7 +139,8 @@ function YouTubeClip({ media, playing, elapsed, status, unlock }: Inner) {
         mount.current.append(host)
         try {
           player.current = new YT.Player(host, {
-            playerVars: { controls: 0, disablekb: 1, playsinline: 1, rel: 0, iv_load_policy: 3, origin: window.location.origin },
+            videoId: wanted.current.media.ref,
+            playerVars: { autoplay: 1, controls: 0, disablekb: 1, playsinline: 1, rel: 0, iv_load_policy: 3, origin: window.location.origin },
             events: {
               onReady: () => {
                 if (disposed) return
@@ -130,14 +150,25 @@ function YouTubeClip({ media, playing, elapsed, status, unlock }: Inner) {
               onStateChange: ({ data, target }) => {
                 if (disposed) return
                 try {
+                  const ref = new URL(target.getVideoUrl(), window.location.origin).searchParams.get('v')
+                  if (ref !== wanted.current.media.ref || loaded.current !== `${ref}@${wanted.current.media.start}`) return
                   if (data === YT.PlayerState.PLAYING) {
                     if (!wanted.current.playing) {
-                      /* The muted preload got going: park it at the start. */
                       target.pauseVideo()
                       target.seekTo(wanted.current.media.start, true)
-                      parked.current = true
-                      status.current('ready')
+                      if (wanted.current.preparing && !parked.current && !target.isMuted()) {
+                        parked.current = true
+                        blocked.current = false
+                        status.current('ready')
+                      }
                     } else if (!target.isMuted()) {
+                      blocked.current = false
+                      if (wanted.current.confirming) {
+                        target.pauseVideo()
+                        target.seekTo(wanted.current.media.start, true)
+                        if (confirmed.current) return
+                        confirmed.current = true
+                      }
                       status.current('playing')
                     }
                   }
@@ -145,8 +176,27 @@ function YouTubeClip({ media, playing, elapsed, status, unlock }: Inner) {
                   /* The player went away mid-event. */
                 }
               },
-              onError: () => {
-                if (!disposed) status.current('error')
+              onError: ({ data, target }) => {
+                if (disposed || failed.current) return
+                // The SDK can report an error from the previous load after a
+                // new round arrived. Never blame wanted.current for that error.
+                let ref: string | null
+                try {
+                  ref = new URL(target.getVideoUrl(), window.location.origin).searchParams.get('v')
+                } catch {
+                  return // The iframe was destroyed while its SDK callback was queued.
+                }
+                if (!ref || ref !== wanted.current.media.ref || loaded.current !== `${ref}@${wanted.current.media.start}`) return
+                if (import.meta.env.DEV) console.warn('[songquiz] YouTube playback error', { code: data, ref })
+                failed.current = true
+                status.current('error')
+                if ([2, 5, 100, 101, 150].includes(data)) unavailable.current?.(ref, data)
+              },
+              onAutoplayBlocked: () => {
+                if (!disposed && !failed.current && (wanted.current.playing || wanted.current.preparing)) {
+                  blocked.current = true
+                  status.current('blocked')
+                }
               },
             },
           })
@@ -154,10 +204,22 @@ function YouTubeClip({ media, playing, elapsed, status, unlock }: Inner) {
           status.current('error')
         }
       })
-      .catch(() => status.current('error'))
+      .catch(() => { if (!disposed) status.current('error') })
 
+    // A browser may require a real gesture. Reuse the person's next normal
+    // interaction, synchronously, instead of making each round a manual player.
+    const resumeOnGesture = () => {
+      if (blocked.current && !failed.current) sync()
+    }
+    document.addEventListener('pointerdown', resumeOnGesture)
+    document.addEventListener('keydown', resumeOnGesture)
     return () => {
       disposed = true
+      document.removeEventListener('pointerdown', resumeOnGesture)
+      document.removeEventListener('keydown', resumeOnGesture)
+      loaded.current = null
+      parked.current = false
+      failed.current = false
       ready.current = false
       try {
         player.current?.destroy()
@@ -173,33 +235,30 @@ function YouTubeClip({ media, playing, elapsed, status, unlock }: Inner) {
   const sync = () => {
     const p = player.current
     if (!p || !ready.current) return
-    const { media: m, playing: on } = wanted.current
+    const { media: m, playing: on, preparing: preload } = wanted.current
     try {
       const id = `${m.ref}@${m.start}`
       if (loaded.current !== id) {
         loaded.current = id
         parked.current = false
+        confirmed.current = false
+        failed.current = false
+        blocked.current = false
         status.current('loading')
-        p.mute()
+        p.unMute()
+        p.setVolume(90)
         p.loadVideoById({ videoId: m.ref, startSeconds: m.start })
-        if (!on) return
+        return
       }
-      if (on) {
+      if (failed.current) return
+      if ((on && !(wanted.current.confirming && confirmed.current)) || (preload && !parked.current)) {
         p.seekTo(m.start + elapsed.current() / 1000, true)
         p.unMute()
         p.setVolume(90)
         p.playVideo()
-        /* If the browser refuses sound, the player sits paused or muted. */
-        window.setTimeout(() => {
-          try {
-            if (!wanted.current.playing) return
-            if (p.getPlayerState() !== 1 || p.isMuted()) status.current('blocked')
-            else status.current('playing')
-          } catch {
-            /* Gone. */
-          }
-        }, 1500)
-      } else if (parked.current) {
+        // Buffering is not an autoplay rejection. Only the SDK's explicit
+        // onAutoplayBlocked event is allowed to show the sound-permission UI.
+      } else {
         p.pauseVideo()
       }
     } catch {
@@ -207,7 +266,7 @@ function YouTubeClip({ media, playing, elapsed, status, unlock }: Inner) {
     }
   }
 
-  useEffect(sync, [media.ref, media.start, playing, unlock]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(sync, [media.ref, media.start, playing, preparing, confirming, syncAt, unlock]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Off-screen, not display:none — a hidden iframe does not play. */
   return <div ref={mount} aria-hidden className="pointer-events-none fixed -left-[9999px] top-0 size-px overflow-hidden opacity-0" />

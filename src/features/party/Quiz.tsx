@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
 import confetti from 'canvas-confetti'
-import { ArrowRight, Binoculars, Check, ChevronDown, Clapperboard, FastForward, Film, Globe2, Hash, LogIn, Music2, Timer, Trophy, Volume2, X } from 'lucide-react'
+import { ArrowRight, Binoculars, Check, ChevronDown, Clapperboard, Disc3, FastForward, Film, Globe2, Hash, Headphones, Loader2, LockKeyhole, LogIn, Music2, Radio, RotateCcw, Sparkles, Timer, Trophy, Volume2, X } from 'lucide-react'
 
 import { BorderBeam } from '@/components/ui/border-beam'
 import { Particles } from '@/components/ui/particles'
@@ -37,10 +37,15 @@ export type QuizView = {
   deadline: number | null
   seconds: number
   readyMs: number
+  playbackLoading?: boolean
+  playbackStarting?: boolean
+  soundBlocked?: number
+  playbackError?: string | null
   item: {
     prompt: string
     tag: string
     category?: string | null
+    difficulty?: string | null
     options: string[]
     answer: number | null
     media: ClipMedia | null
@@ -57,6 +62,11 @@ export type QuizView = {
 
 const CATEGORY: Record<string, { icon: typeof Film; tint: string }> = {
   bollywood: { icon: Clapperboard, tint: 'text-rose-300' },
+  punjabi: { icon: Music2, tint: 'text-amber-300' },
+  global: { icon: Globe2, tint: 'text-sky-300' },
+  desiHipHop: { icon: Radio, tint: 'text-violet-300' },
+  throwbacks: { icon: Disc3, tint: 'text-orange-300' },
+  indie: { icon: Headphones, tint: 'text-emerald-300' },
   cricket: { icon: Trophy, tint: 'text-emerald-300' },
   movies: { icon: Film, tint: 'text-amber-300' },
   music: { icon: Music2, tint: 'text-fuchsia-300' },
@@ -70,6 +80,23 @@ const TRIVIA_CATEGORIES = [
   { id: 'music', label: 'Music' },
   { id: 'gk', label: 'General knowledge' },
 ] as const
+
+const SONG_CATEGORIES = [
+  { id: 'bollywood', label: 'Bollywood hits', hint: 'Big Hindi songs', icon: Clapperboard },
+  { id: 'punjabi', label: 'Punjabi bangers', hint: 'Anthems and new heat', icon: Music2 },
+  { id: 'global', label: 'English hits', hint: 'Pop, anthems & chart hits', icon: Globe2 },
+  { id: 'desiHipHop', label: 'Desi hip-hop', hint: 'Rap across India', icon: Radio },
+  { id: 'throwbacks', label: '90s & 2000s', hint: 'English classics', icon: Disc3 },
+  { id: 'indie', label: 'Indie & alt', hint: 'Fresh left-field picks', icon: Headphones },
+] as const
+
+type SongDifficulty = 'easy' | 'medium' | 'hard' | 'ramp'
+const SONG_DIFFICULTIES: { id: SongDifficulty; label: string; hint: string }[] = [
+  { id: 'easy', label: 'Easy', hint: '15 sec · familiar hits' },
+  { id: 'medium', label: 'Standard', hint: '10 sec · close calls' },
+  { id: 'hard', label: 'Hard', hint: '6 sec · closest matches' },
+  { id: 'ramp', label: 'Ramp up', hint: '15 → 10 → 6 seconds' },
+]
 
 /* Four answer tiles, each its own lit scene rather than a flat colour. */
 const TILE_ART = [
@@ -127,6 +154,7 @@ function Lobby({
   children,
   error,
   ready,
+  busy = false,
   label,
   onStart,
 }: {
@@ -135,6 +163,7 @@ function Lobby({
   children: React.ReactNode
   error: string | null
   ready: boolean
+  busy?: boolean
   label: string
   onStart: () => void
 }) {
@@ -153,7 +182,8 @@ function Lobby({
             className="relative mt-8 hidden items-center gap-3 overflow-hidden rounded-full bg-lime-300 px-9 py-4 text-[1.05rem] font-bold text-[#0d1206] shadow-[0_18px_50px_-14px_rgba(190,242,100,.85)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40 lg:flex"
           >
             {ready && <BorderBeam size={80} duration={5} colorFrom="#ffffff" colorTo="#d9f99d" />}
-            Play now <ArrowRight aria-hidden className="size-5" />
+            {busy ? 'Building the mix…' : 'Play now'}
+            {busy ? <Loader2 aria-hidden className="size-5 animate-spin" /> : <ArrowRight aria-hidden className="size-5" />}
           </motion.button>
         </div>
 
@@ -181,7 +211,13 @@ function Lobby({
               </motion.li>
             ))}
           </ul>
-          <div className="mt-5 flex flex-col divide-y divide-white/[0.06] rounded-2xl border border-white/[0.07] bg-black/20">{children}</div>
+          <fieldset
+            disabled={busy}
+            aria-busy={busy}
+            className="mt-5 flex min-w-0 flex-col divide-y divide-white/[0.06] rounded-2xl border border-white/[0.07] bg-black/20 disabled:opacity-70"
+          >
+            {children}
+          </fieldset>
           {error && (
             <p role="alert" className="mt-3 text-[0.82rem] text-signal-bright">
               {error}
@@ -197,7 +233,7 @@ function Lobby({
             className="relative mx-auto mt-6 flex -rotate-2 items-center gap-3 rounded-[0.6rem_1.6rem_0.8rem_1.4rem] bg-gradient-to-r from-amber-300 via-amber-400 to-orange-400 px-10 py-3.5 text-[#1a1203] shadow-[0_16px_40px_-12px_rgba(251,191,36,.8)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40"
           >
             <Marker className="text-[1.45rem]">{label}</Marker>
-            <ArrowRight aria-hidden className="size-5" />
+            {busy ? <Loader2 aria-hidden className="size-5 animate-spin" /> : <ArrowRight aria-hidden className="size-5" />}
           </motion.button>
         </div>
       </div>
@@ -330,38 +366,112 @@ export function SongQuizSetup({
   people,
   players = [],
   error,
+  starting = false,
   onStart,
 }: {
   people: number
   players?: Person[]
   error: string | null
-  onStart: (options: { rounds: number; seconds: number; lateJoin: boolean }) => void
+  starting?: boolean
+  onStart: (options: { categories: string[]; difficulty: SongDifficulty; rounds: number; lateJoin: boolean }) => void
 }) {
+  const [categories, setCategories] = useState<string[]>(['bollywood', 'punjabi', 'global'])
+  const [difficulty, setDifficulty] = useState<SongDifficulty>('medium')
   const [rounds, setRounds] = useState(10)
-  const [seconds, setSeconds] = useState(15)
   const [lateJoin, setLateJoin] = useState(true)
+  const toggleCategory = (id: string) => {
+    setCategories((current) => {
+      if (current.includes(id)) return current.length === 1 ? current : current.filter((category) => category !== id)
+      return current.length === 3 ? current : [...current, id]
+    })
+  }
   return (
     <Lobby
       players={players}
       error={error}
-      ready
-      label={startLabel(people)}
-      onStart={() => onStart({ rounds, seconds, lateJoin })}
+      ready={categories.length > 0 && !starting}
+      busy={starting}
+      label={starting ? 'Building the mix…' : startLabel(people)}
+      onStart={() => onStart({ categories, difficulty, rounds, lateJoin })}
       poster={
         <>
           <Disc spinning className="size-40" />
           <motion.h2 initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0, rotate: -3 }} className="mt-6 px-2 text-white [text-shadow:0_0_40px_rgba(232,121,249,.35)]">
             <Marker className="block text-[clamp(2.8rem,7vw,4.8rem)]">Guess the song</Marker>
           </motion.h2>
-          <p className="mt-4 max-w-sm text-[1rem] leading-relaxed text-white/80">Clips from everything this room has played, saved and liked. Name it before anyone else does.</p>
+          <p className="mt-4 max-w-sm text-[1rem] leading-relaxed text-white/80">One clip. Four believable answers. Music starts on its own—listen closely and lock it in.</p>
         </>
       }
     >
+      <div className="flex items-start gap-3 px-4 py-3.5">
+        <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-lime-300 text-[#101508] shadow-[0_0_22px_-8px_rgba(190,242,100,.8)]">
+          <LockKeyhole aria-hidden className="size-4" />
+        </span>
+        <span>
+          <strong className="block text-[0.82rem] text-white">Fresh picks only</strong>
+          <span className="mt-0.5 block text-[0.72rem] leading-relaxed text-white/50">Never reads your likes, saved songs, playlists, queue or listening history.</span>
+        </span>
+      </div>
+      <div className="px-4 py-3.5">
+        <span className="flex items-center justify-between gap-3 text-[0.86rem] text-white/85">
+          Music packs
+          <span className="text-[0.7rem] text-white/40">Pick 1–3 · {categories.length}/3</span>
+        </span>
+        <div className="mt-2.5 grid grid-cols-2 gap-2" role="group" aria-label="Music packs">
+          {SONG_CATEGORIES.map((category) => {
+            const on = categories.includes(category.id)
+            const capped = !on && categories.length === 3
+            const Icon = category.icon
+            return (
+              <button
+                key={category.id}
+                type="button"
+                disabled={capped || starting}
+                aria-pressed={on}
+                onClick={() => toggleCategory(category.id)}
+                className={cn(
+                  'group flex min-w-0 items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left outline-none transition-[border-color,background-color,transform,opacity] focus-visible:outline-2 focus-visible:outline-white active:scale-[0.98]',
+                  on ? 'border-lime-300/60 bg-lime-300/[0.09]' : 'border-white/[0.08] bg-white/[0.025] hover:border-white/20 hover:bg-white/[0.05]',
+                  capped && 'cursor-not-allowed opacity-35',
+                )}
+              >
+                <span className={cn('grid size-8 shrink-0 place-items-center rounded-lg', on ? 'bg-lime-300 text-[#101508]' : 'bg-white/[0.06] text-white/55')}>
+                  <Icon aria-hidden className="size-4" />
+                </span>
+                <span className="min-w-0">
+                  <strong className="block truncate text-[0.76rem] font-semibold text-white">{category.label}</strong>
+                  <span className="block truncate text-[0.62rem] text-white/40">{category.hint}</span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <div className="px-4 py-3.5">
+        <span className="flex items-center gap-2 text-[0.86rem] text-white/85">
+          <Sparkles aria-hidden className="size-4 text-fuchsia-300" /> Difficulty
+        </span>
+        <div className="mt-2.5 grid grid-cols-2 gap-2" role="group" aria-label="Difficulty">
+          {SONG_DIFFICULTIES.map((choice) => (
+            <button
+              key={choice.id}
+              type="button"
+              disabled={starting}
+              aria-pressed={difficulty === choice.id}
+              onClick={() => setDifficulty(choice.id)}
+              className={cn(
+                'rounded-xl border px-2.5 py-2.5 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-white',
+                difficulty === choice.id ? 'border-fuchsia-300/60 bg-fuchsia-300/[0.1]' : 'border-white/[0.08] bg-white/[0.025] hover:border-white/20',
+              )}
+            >
+              <strong className="block text-[0.72rem] text-white">{choice.label}</strong>
+              <span className="mt-0.5 block text-[0.59rem] leading-tight text-white/40">{choice.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
       <Row icon={<Music2 className="size-4" />} label="Songs">
         <Segmented label="Songs" values={[5, 10, 15]} value={rounds} onChange={setRounds} compact />
-      </Row>
-      <Row icon={<Timer className="size-4" />} label="Seconds per song">
-        <Segmented label="Seconds per song" values={[10, 15, 20]} value={seconds} onChange={setSeconds} compact />
       </Row>
       <Row icon={<LogIn className="size-4" />} label="Allow late join">
         <Toggle on={lateJoin} onChange={setLateJoin} label="Allow late join" />
@@ -397,6 +507,21 @@ export function QuizTable({
   const song = !!item?.media || !!item?.reveal
   const [sheet, setSheet] = useState(false)
 
+  useEffect(() => {
+    if (!song || !playing || view.phase !== 'question' || mine) return
+    const pick = (event: KeyboardEvent) => {
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey || !/^[1-4]$/.test(event.key)) return
+      const target = event.target
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select, [role="textbox"]'))) return
+      const option = Number(event.key) - 1
+      if (option >= (item?.options.length ?? 0) || view.hidden?.includes(option)) return
+      event.preventDefault()
+      act('answer', { option })
+    }
+    window.addEventListener('keydown', pick)
+    return () => window.removeEventListener('keydown', pick)
+  }, [song, playing, view.phase, view.hidden, item?.options.length, mine, act])
+
   const [left, setLeft] = useState(() => remaining(party, view.deadline))
   useEffect(() => {
     const tick = () => setLeft(remaining(party, view.deadline))
@@ -414,6 +539,7 @@ export function QuizTable({
   }, [party])
   const elapsed = () => {
     const p = partyRef.current
+    if (p.view.phase === 'ready') return 0
     return Math.max(0, p.serverTime + (Date.now() - p.receivedAt) - p.view.opensAt)
   }
 
@@ -435,7 +561,14 @@ export function QuizTable({
   return (
     <div className="relative isolate flex h-full min-h-0 w-full flex-col overflow-hidden">
       <Studio />
-      {item.media && <ClipPlayer media={item.media} playing={view.phase === 'question' || revealed} elapsedMs={elapsed} onStatus={setClip} unlock={unlock} />}
+      {item.media && <ClipPlayer media={item.media} playing={view.phase === 'question' || !!view.playbackStarting || revealed} preparing={!!view.playbackLoading} confirming={!!view.playbackStarting} syncAt={view.phase === 'question' ? view.opensAt : 0} elapsedMs={elapsed} onStatus={(status) => {
+        setClip(status)
+        if (status === 'ready' && playing) act('clip-ready', { round: view.round, ref: item.media!.ref })
+        if (status === 'playing' && playing && view.playbackStarting) act('clip-playing', { round: view.round, ref: item.media!.ref })
+        if (status === 'blocked' && playing) act('clip-blocked', { round: view.round, ref: item.media!.ref })
+      }} unlock={unlock} onUnavailable={(ref, code) => {
+        if (playing) act('clip-failed', { round: view.round, ref, code })
+      }} />}
 
       {/* Where we are, and how long is left. */}
       <div className="flex shrink-0 items-center gap-4 px-4 pb-2 pt-1 lg:px-8">
@@ -470,11 +603,17 @@ export function QuizTable({
                   transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
                   className="flex w-full flex-col items-center"
                 >
-                  {song ? <SongStage view={view} clip={clip} left={left} onUnlock={() => setUnlock((n) => n + 1)} /> : <QuestionCard view={view} />}
+                  {song ? <SongStage view={view} clip={clip} left={left} onUnlock={() => setUnlock((n) => n + 1)} onRetry={playing ? () => act('clip-retry', { round: view.round }) : undefined} /> : <QuestionCard view={view} />}
 
+                  {song && view.phase === 'ready' && (
+                    <p className="mt-4 text-center text-[0.78rem] text-white/45">Answers appear with the music. Same clip, same clock for everyone.</p>
+                  )}
                   {item.options.length > 0 && (
                     <>
-                      <p className="mt-5 self-start text-[0.78rem] font-semibold uppercase tracking-[0.18em] text-white/55">{revealed ? 'The answer' : mine ? 'Locked in' : 'Your answer'}</p>
+                      <div className="mt-5 flex w-full items-center justify-between gap-3 text-[0.78rem] text-white/55">
+                        <p className="font-semibold uppercase tracking-[0.18em]">{revealed ? 'The answer' : mine ? 'Locked in' : 'Your answer'}</p>
+                        {song && !revealed && !mine && <span className="hidden text-[0.7rem] sm:inline">Tap a title or press 1–4</span>}
+                      </div>
                       <div className="mt-2.5 grid w-full grid-cols-2 gap-3">
                         {item.options.map((option, i) => (
                           <Tile
@@ -528,12 +667,12 @@ export function QuizTable({
         </div>
 
         <aside data-lenis-prevent className="hidden min-h-0 flex-col gap-3 overflow-y-auto lg:flex">
-          <Side view={view} selfId={selfId} playing={playing} act={act} />
+          <Side view={view} selfId={selfId} playing={playing} act={act} showPowers={!song} />
         </aside>
       </div>
 
       {/* Phones: the power-ups stay on screen; the board slides up. */}
-      {playing && (
+      {playing && !song && (
         <div className="flex shrink-0 items-center justify-center gap-4 border-t border-white/[0.06] bg-black/30 px-4 py-3 backdrop-blur lg:hidden">
           <PowerUps view={view} act={act} answered={mine !== undefined} compact />
         </div>
@@ -934,14 +1073,26 @@ function Floaters({ reactions }: { reactions: NonNullable<QuizView['reactions']>
   )
 }
 
-function SongStage({ view, clip, left, onUnlock }: { view: QuizView; clip: ClipStatus; left: number; onUnlock: () => void }) {
+function SongStage({ view, clip, left, onUnlock, onRetry }: { view: QuizView; clip: ClipStatus; left: number; onUnlock: () => void; onRetry?: () => void }) {
   const reveal = view.phase === 'reveal' ? view.item?.reveal : null
-  const live = view.phase === 'question' || view.phase === 'reveal'
+  const live = view.phase === 'question'
+  const item = view.item!
+  let heading = 'Name that song'
+  if (view.phase === 'ready') heading = 'Get ready…'
+  if (view.playbackStarting) heading = 'Listen…'
+  if (view.playbackLoading) heading = clip === 'ready' ? 'Waiting for the room…' : 'Checking sound…'
+  if (view.soundBlocked) heading = 'Waiting for sound…'
+  if (clip === 'blocked') heading = 'Sound is blocked'
+  if (view.playbackError) heading = 'Playback paused'
   return (
     <div className="flex flex-col items-center">
+      <span className="mb-3 flex items-center gap-2">
+        <CategoryChip item={item} />
+        {item.difficulty && <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-300/[0.08] px-3 py-1.5 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-fuchsia-200">{item.difficulty}</span>}
+      </span>
       <div className="relative">
-        <Disc spinning={live && clip === 'playing'} artwork={reveal?.artwork ?? null} className="size-44" />
-        {view.phase === 'ready' && (
+        <Disc spinning={(live || !!reveal) && clip === 'playing'} artwork={reveal?.artwork ?? null} className="size-44" />
+        {view.phase === 'ready' && !view.playbackLoading && !view.playbackStarting && !view.playbackError && (
           <div className="absolute inset-0 grid place-items-center">
             <span className="grid size-16 place-items-center rounded-full bg-black/70 font-display text-[2rem] font-bold text-white backdrop-blur">{Math.max(1, Math.ceil(left / 1000))}</span>
           </div>
@@ -956,13 +1107,25 @@ function SongStage({ view, clip, left, onUnlock }: { view: QuizView; clip: ClipS
           </motion.div>
         ) : (
           <motion.div key="listen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 flex flex-col items-center">
-            <Marker className="px-2 text-[2rem] text-white">{view.phase === 'ready' ? 'Get ready…' : 'Name that song'}</Marker>
-            {view.phase === 'question' && clip === 'blocked' ? (
-              <button type="button" onClick={onUnlock} className="mt-3 flex items-center gap-2 rounded-full bg-lime-300 px-5 py-2 text-[0.85rem] font-bold text-[#0d1206]">
-                <Volume2 className="size-4" aria-hidden /> Tap to hear it
-              </button>
+            <Marker className="px-2 text-center text-[2rem] text-white">{heading}</Marker>
+            {clip === 'blocked' && !view.playbackError ? (
+              <div className="mt-3 flex max-w-sm flex-col items-center gap-2 px-3 text-center">
+                <p className="text-[0.8rem] leading-relaxed text-white/65">Your browser needs permission for sound.{view.phase === 'ready' ? ' The round hasn’t started.' : ''}</p>
+                <button type="button" onClick={onUnlock} className="flex items-center gap-2 rounded-full bg-lime-300 px-5 py-2 text-[0.85rem] font-bold text-[#0d1206]">
+                  <Volume2 className="size-4" aria-hidden /> Enable game sound
+                </button>
+              </div>
+            ) : view.playbackError ? (
+              <div className="mt-3 flex max-w-md flex-col items-center gap-3 px-3 text-center">
+                <p role="alert" className="text-[0.85rem] leading-relaxed text-rose-200">{view.playbackError}</p>
+                {onRetry && (
+                  <button type="button" onClick={onRetry} className="flex items-center gap-2 rounded-full bg-lime-300 px-5 py-2 text-[0.85rem] font-bold text-[#0d1206] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+                    <RotateCcw className="size-4" aria-hidden /> Try again
+                  </button>
+                )}
+              </div>
             ) : view.phase === 'question' && clip === 'error' ? (
-              <p className="mt-2 text-[0.85rem] text-signal-bright">This clip won’t play here — go with your gut.</p>
+              <p role="status" className="mt-2 text-[0.85rem] text-signal-bright">YouTube couldn’t play this clip.</p>
             ) : (
               <Bars on={view.phase === 'question' && clip === 'playing'} />
             )}

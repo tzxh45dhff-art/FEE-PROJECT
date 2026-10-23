@@ -21,6 +21,10 @@ export type QuizItem = {
   tag: string
   /** Which category, for the icon beside the label. */
   category?: string
+  /** A per-round label used by modes whose challenge changes as they go. */
+  difficulty?: string
+  /** Overrides the game's default answer clock for this round. */
+  seconds?: number
   options: string[]
   answer: number
   /** Whatever the client needs to play the round — a song clip. Hidden at reveal. */
@@ -111,6 +115,7 @@ function everyoneIn(state: Quiz, now: number) {
 
 function reveal(state: Quiz, ctx: Ctx) {
   const item = state.items[state.round]!
+  const seconds = item.seconds ?? state.seconds
   for (const p of state.players) {
     const pick = state.picks[p.id]
     if (pick?.option === -1) {
@@ -120,7 +125,7 @@ function reveal(state: Quiz, ctx: Ctx) {
       const streak = (state.streaks[p.id] ?? 0) + 1
       state.streaks[p.id] = streak
       state.best[p.id] = Math.max(state.best[p.id] ?? 0, streak)
-      const gain = points(pick.ms, (state.seconds * 1000 + (state.extra[p.id] ?? 0)) / 1000, streak)
+      const gain = points(pick.ms, (seconds * 1000 + (state.extra[p.id] ?? 0)) / 1000, streak)
       state.gains[p.id] = gain
       state.scores[p.id] = (state.scores[p.id] ?? 0) + gain
     } else {
@@ -206,11 +211,12 @@ export function quizGame<O extends QuizOptions>(def: {
       if (by === null) {
         if (payload.round !== state.round) return prev
         if (action === 'open' && state.phase === 'ready') {
+          const seconds = state.items[state.round]?.seconds ?? state.seconds
           state.phase = 'question'
           state.opensAt = ctx.now()
-          state.deadline = ctx.now() + state.seconds * 1000
+          state.deadline = ctx.now() + seconds * 1000
           ctx.clearSchedule()
-          ctx.schedule(state.seconds * 1000, 'timeup', { round: state.round })
+          ctx.schedule(seconds * 1000, 'timeup', { round: state.round })
           return state
         }
         if (action === 'timeup' && state.phase === 'question') {
@@ -288,6 +294,7 @@ export function quizGame<O extends QuizOptions>(def: {
       const mine = extra[viewer] ?? 0
       return {
         ...rest,
+        seconds: item?.seconds ?? state.seconds,
         /* Your own power-ups and what they did this round — nobody else's. */
         powers: powers[viewer] ?? [],
         hidden: hidden[viewer] ?? [],
@@ -300,6 +307,7 @@ export function quizGame<O extends QuizOptions>(def: {
               prompt: item.prompt,
               tag: item.tag,
               category: item.category ?? null,
+              difficulty: item.difficulty ?? null,
               /* The options stay hidden through "get ready": reading time is for the question. */
               options: state.phase === 'ready' && !item.media ? [] : item.options,
               answer: revealed ? item.answer : null,

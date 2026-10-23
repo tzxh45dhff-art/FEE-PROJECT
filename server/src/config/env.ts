@@ -51,6 +51,8 @@ export const env = {
    * public oEmbed endpoint, so the watch feature works without a key at all.
    */
   youtubeApiKey: process.env.YOUTUBE_API_KEY ?? '',
+  /** Optional song discovery. Without it Guess the Song uses iTunes metadata. */
+  lastfmApiKey: process.env.LASTFM_API_KEY ?? '',
 
   /**
    * Cloudflare R2, where video actually lives.
