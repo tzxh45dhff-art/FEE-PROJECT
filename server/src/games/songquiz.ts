@@ -7,6 +7,7 @@ import {
 import { shuffle, type Ctx, type GameDef } from './engine.js'
 import { quizGame, type Quiz, type QuizItem, type QuizOptions } from './quiz.js'
 import { discoverSongs } from '../services/songMetadata.service.js'
+import { seenFor } from '../services/seen.service.js'
 import { normaliseSongText, songLanguage, type SongIdentity } from '../services/songQuizPacks.js'
 
 /**
@@ -160,11 +161,11 @@ const base = quizGame<Options>({
     return { rounds, seconds: 10, categories, difficulty, pool: [], lateJoin: body.lateJoin !== false }
   },
 
-  async prepare(_roomId, options) {
+  async prepare(roomId, options) {
     const discovered = await Promise.allSettled(options.categories.map(discoverSongs))
     const choices = discovered.flatMap((result) => result.status === 'fulfilled' ? result.value : [])
     const library = choices.filter((song) => distractors({ ...song, source: 'youtube', ref: '', artwork: null }, choices, 'hard', { random: () => 0 }).length === 3)
-    const pool = distinctSongs(await freshSongPool(options.categories, { discover: async (category) => library.filter((song) => song.category === category), limit: options.rounds + 5 }))
+    const pool = distinctSongs(await freshSongPool(options.categories, { discover: async (category) => library.filter((song) => song.category === category), limit: options.rounds + 5, avoid: await seenFor(roomId, 'songquiz') }))
     if (pool.length < MIN_SONGS) {
       return {
         error:

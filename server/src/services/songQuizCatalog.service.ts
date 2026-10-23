@@ -102,13 +102,15 @@ export type PoolDependencies = {
   inspect?: Inspect
   random?: (max: number) => number
   limit?: number
+  /** Videos this room has already heard; they only fill in once new songs run out. */
+  avoid?: ReadonlySet<string>
 }
 
 /** Catalogue identity -> exact upload -> duration/embedding check -> game pool.
  * Upload titles are never used as answers. Caches hold public metadata only.
  */
 export async function freshSongPool(categories: SongCategory[], dependencies: PoolDependencies = {}): Promise<CatalogSong[]> {
-  const { discover = discoverSongs, search = quizSearch, inspect = inspectVideos, random = randomInt, limit = 15 } = dependencies
+  const { discover = discoverSongs, search = quizSearch, inspect = inspectVideos, random = randomInt, limit = 15, avoid = new Set<string>() } = dependencies
   const cacheable = search === quizSearch && inspect === inspectVideos
   const libraries = await Promise.allSettled(categories.map(discover))
   const piles = libraries.map((result) => artistBalanced(result.status === 'fulfilled' ? result.value : [], random))
@@ -128,41 +130,63 @@ export async function freshSongPool(categories: SongCategory[], dependencies: Po
     if (hit) cached.push({ ...hit, category: song.category, year: song.year, rank: song.rank })
     else if (hit !== null) unresolved.push(song)
   }
-  // Warm games add at most eight new exact searches; cached recordings supply
-  // the rest. A cold catalogue gets a larger, bounded discovery budget.
-  const budget = cached.length >= limit ? 2 : cached.length >= 4 ? 8 : 24
-  const selected: CatalogSong[] = []
+  /*
+   * Lead with songs this room hasn't heard. The catalogue knows hundreds of
+   * songs but only the ones already matched to an exact upload are instant,
+   * so a game also matches new ones: enough to cover what the room hasn't
+   * heard (waited for), plus a few more in the background so the next game
+   * has more to choose from. Searches here are the free instances, so growing
+   * the catalogue costs no quota.
+   */
+  const unheard = cached.filter((song) => !avoid.has(song.ref))
+  const heard = cached.filter((song) => avoid.has(song.ref))
+  const needed = Math.max(0, limit - unheard.length)
+  const budget = needed === 0 ? 0 : Math.min(24, needed * 2 + 4)
   const refs = new Set(cached.map((song) => song.ref))
-  const needed = Math.max(4, limit - Math.min(cached.length, Math.floor(limit / 2)))
-  for (let offset = 0; offset < Math.min(unresolved.length, budget) && selected.length < needed; offset += 4) {
-    const batch = unresolved.slice(offset, Math.min(offset + 4, budget))
-    const found = await Promise.allSettled(batch.map(async (song) => {
-      const query = `${song.title} ${song.artist}`
-      const results = await candidates(song, search)
-      return { song, results: rankSongs(results.filter((result) => matchesRecording(result, song)), query, 3) }
-    }))
-    const successful = found.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
-    const details = await inspect(successful.flatMap((result) => result.results))
-    for (const { song, results } of successful) {
-      const result = results.find((candidate) => {
-        const video = details.get(candidate.id)
-        return !refs.has(candidate.id) && video?.embeddable && video.duration >= 90 && video.duration <= 540 &&
-          (song.duration === null || Math.abs(video.duration - song.duration) <= Math.max(40, song.duration * 0.2))
-      })
-      const resolved: CatalogSong | null = result ? {
-        source: 'youtube', ref: result.id, title: song.title, artist: song.artist,
-        artwork: result.thumbnail || null, duration: details.get(result.id)!.duration, category: song.category, year: song.year, rank: song.rank,
-      } : null
-      if (cacheable) await catalogueCacheSet(`video:${identityKey(song)}`, resolved, resolved ? WEEK : 60 * 60 * 1000)
-      if (resolved) { selected.push(resolved); refs.add(resolved.ref) }
+
+  async function resolve(songs: SongIdentity[], want: number) {
+    const found: CatalogSong[] = []
+    for (let offset = 0; offset < songs.length && found.length < want; offset += 4) {
+      const batch = songs.slice(offset, offset + 4)
+      const settled = await Promise.allSettled(batch.map(async (song) => {
+        const query = `${song.title} ${song.artist}`
+        const results = await candidates(song, search)
+        return { song, results: rankSongs(results.filter((result) => matchesRecording(result, song)), query, 3) }
+      }))
+      const successful = settled.flatMap((result) => result.status === 'fulfilled' ? [result.value] : [])
+      const details = await inspect(successful.flatMap((result) => result.results))
+      for (const { song, results } of successful) {
+        const result = results.find((candidate) => {
+          const video = details.get(candidate.id)
+          return !refs.has(candidate.id) && video?.embeddable && video.duration >= 90 && video.duration <= 540 &&
+            (song.duration === null || Math.abs(video.duration - song.duration) <= Math.max(40, song.duration * 0.2))
+        })
+        const resolved: CatalogSong | null = result ? {
+          source: 'youtube', ref: result.id, title: song.title, artist: song.artist,
+          artwork: result.thumbnail || null, duration: details.get(result.id)!.duration, category: song.category, year: song.year, rank: song.rank,
+        } : null
+        if (cacheable) await catalogueCacheSet(`video:${identityKey(song)}`, resolved, resolved ? WEEK : 60 * 60 * 1000)
+        if (!resolved) continue
+        refs.add(resolved.ref)
+        /* Matched now but heard before (an earlier match that expired): a filler, not a lead. */
+        if (avoid.has(resolved.ref)) heard.push(resolved)
+        else found.push(resolved)
+      }
     }
+    return found
   }
+
+  const selected = await resolve(unresolved.slice(0, budget), needed)
+  if (cacheable) void resolve(unresolved.slice(budget, budget + 8), 8).catch(() => undefined)
+
   const pool: CatalogSong[] = []
-  while (pool.length < limit && (cached.length || selected.length)) {
-    for (const pile of [cached, selected]) {
+  while (pool.length < limit && (unheard.length || selected.length)) {
+    for (const pile of [unheard, selected]) {
       const song = pile.shift()
       if (song && pool.length < limit) pool.push(song)
     }
   }
+  /* Nothing new left to match: songs already heard fill the rest. */
+  while (pool.length < limit && heard.length) pool.push(heard.shift()!)
   return pool
 }

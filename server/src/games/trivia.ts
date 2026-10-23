@@ -1,6 +1,6 @@
 import * as azure from '../services/azure.service.js'
 import { BANK, CATEGORIES, type Category } from './trivia.questions.js'
-import { shuffle } from './engine.js'
+import { byFreshness, shuffle } from './engine.js'
 import { quizGame, type QuizOptions } from './quiz.js'
 
 /**
@@ -29,7 +29,8 @@ export const trivia = quizGame<Options>({
 
   items({ rounds, categories }, ctx) {
     /* Round-robin across the chosen categories so a mixed game stays mixed. */
-    const piles = categories.map((c) => shuffle(BANK.filter((e) => e[0] === c), ctx))
+    /* Popped from the end, so the questions this room hasn't had go last. */
+    const piles = categories.map((c) => byFreshness(BANK.filter((e) => e[0] === c), (e) => e[1], ctx).reverse())
     const drawn: (typeof BANK)[number][] = []
     for (let i = 0; drawn.length < rounds && piles.some((p) => p.length > 0); i++) {
       const pile = piles[i % piles.length]!

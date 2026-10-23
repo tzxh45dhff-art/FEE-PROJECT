@@ -331,6 +331,11 @@ export function quizGame<O extends QuizOptions>(def: {
       }
     },
 
+    used(state) {
+      const played = state.phase === 'over' ? state.round : state.round + 1
+      return state.items.slice(0, played).map((item) => (item.media?.ref ? String(item.media.ref) : item.prompt))
+    },
+
     over(state) {
       if (state.phase !== 'over' || state.round === 0) return null
       const ranked = state.players

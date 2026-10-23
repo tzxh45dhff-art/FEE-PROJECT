@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { Server, Socket } from 'socket.io'
 
 import { isError, liveCtx, type GameDef, type Player } from '../games/engine.js'
+import { markSeen, seenFor } from '../services/seen.service.js'
 import { drawCanvas, drawGame } from '../games/draw.js'
 import { knowMe } from '../games/knowme.js'
 import { trivia } from '../games/trivia.js'
@@ -123,12 +124,19 @@ function publish(io: Server, roomId: string) {
   })
 }
 
+/** Note what this game showed, so the room's next one leads with new things. */
+function remember(roomId: string, session: Session | undefined) {
+  if (!session?.game.used) return
+  void markSeen(roomId, session.game.id, session.game.used(session.state)).catch(() => undefined)
+}
+
 async function settle(roomId: string, session: Session) {
   if (session.saved) return
   const result = session.game.over(session.state)
   if (!result) return
   session.saved = true
   session.ctx.dispose()
+  remember(roomId, session)
   await prisma.gameResult
     .create({ data: { roomId, game: session.game.id, summary: JSON.stringify(result.summary) } })
     .catch(() => undefined)
@@ -216,14 +224,17 @@ export function attachPartyGateway(io: Server) {
       if (isError(parsed)) return ack(parsed)
       const options = game.prepare ? await game.prepare(roomId, parsed) : parsed
       if (isError(options)) return ack(options)
+      const seen = game.used ? await seenFor(roomId, game.id) : undefined
       /* Someone else may have started a game while this one was preparing. */
       const raced = sessions.get(roomId)
       if (raced && raced !== running && (raced.state as { phase?: string }).phase !== 'over') {
         return ack({ error: `${raced.game.label} is already going — end it first` })
       }
 
-      sessions.get(roomId)?.ctx.dispose()
-      const ctx = liveCtx((action, payload) => apply(io, roomId, null, action, payload))
+      const previous = sessions.get(roomId)
+      previous?.ctx.dispose()
+      remember(roomId, previous)
+      const ctx = liveCtx((action, payload) => apply(io, roomId, null, action, payload), seen)
       const session = {
         game,
         state: game.start(players, options, ctx),

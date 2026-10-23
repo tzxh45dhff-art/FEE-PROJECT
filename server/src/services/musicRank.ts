@@ -48,7 +48,9 @@ export function excluded(result: Pick<SearchResult, 'title'>, query: string) {
 
 export function officialTier(result: SearchResult): 0 | 1 | 2 | 3 {
   const channel = result.channel.trim()
-  if (/\s-\sTopic$/i.test(channel)) return 0
+  /* Song-catalogue results are the auto-generated "Artist - Topic" tracks; the
+     keyless instances just report the channel without the suffix. */
+  if (result.track || /\s-\sTopic$/i.test(channel)) return 0
   /* "Artist - Song" uploaded by the artist's own channel. */
   const lead = result.title.split(/\s[-–—]\s/)[0]?.trim().toLowerCase()
   const own = Boolean(lead && channel && lead === channel.toLowerCase())

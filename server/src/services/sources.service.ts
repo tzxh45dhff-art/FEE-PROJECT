@@ -195,6 +195,8 @@ export type SearchResult = {
   /** The uploader carries YouTube's verified badge, when the source says. */
   verified?: boolean
   duration?: number
+  /** From YouTube Music's song catalogue: the studio track itself, not an upload of it. */
+  track?: boolean
 }
 
 /**
@@ -282,6 +284,7 @@ async function askPiped(instance: string, query: string, music: boolean): Promis
     .map((item) => ({
       id: item.id,
       duration: item.duration,
+      track: music || undefined,
       title: item.title ?? 'Untitled',
       channel: item.uploaderName ?? '',
       verified: item.uploaderVerified ?? false,

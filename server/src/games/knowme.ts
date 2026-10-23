@@ -1,5 +1,5 @@
 import { QUESTIONS, type Question } from './knowme.questions.js'
-import { shuffle, type Ctx, type GameDef, type Player } from './engine.js'
+import { byFreshness, type Ctx, type GameDef, type Player } from './engine.js'
 
 /**
  * How well do you know me.
@@ -38,8 +38,11 @@ type Options = { perPerson: number; answerSeconds: number }
 
 const REVEAL_MS = 6500
 
+/** Popped from the end, so the questions this room hasn't had come up first. */
+const deckOf = (ctx: Ctx) => byFreshness(QUESTIONS.map((_, i) => i), (i) => QUESTIONS[i]!.q, ctx).reverse()
+
 function ask(state: KnowMe, ctx: Ctx) {
-  if (state.deck.length === 0) state.deck = shuffle(QUESTIONS.map((_, i) => i), ctx)
+  if (state.deck.length === 0) state.deck = deckOf(ctx)
   state.question = QUESTIONS[state.deck.pop()!]!
   state.truth = null
   state.guesses = {}
@@ -97,7 +100,7 @@ export const knowMe: GameDef<KnowMe, Options> = {
       guesses: {},
       deadline: null,
       answerSeconds,
-      deck: shuffle(QUESTIONS.map((_, i) => i), ctx),
+      deck: deckOf(ctx),
     }
     ask(state, ctx)
     return state
@@ -168,6 +171,8 @@ export const knowMe: GameDef<KnowMe, Options> = {
     if (state.players.some((p) => p.id === player.id) || state.players.length >= 10) return null
     return { ...state, players: [...state.players, player], scores: { ...state.scores, [player.id]: 0 } }
   },
+
+  used: (state) => QUESTIONS.filter((_, i) => !state.deck.includes(i)).map((question) => question.q),
 
   over(state) {
     if (state.phase !== 'over' || state.turn === 0) return null

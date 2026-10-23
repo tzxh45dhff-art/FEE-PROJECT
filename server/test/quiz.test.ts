@@ -114,6 +114,26 @@ describe('quiz engine (live trivia)', () => {
   })
 })
 
+describe('a room does not get the same content twice', () => {
+  it('trivia leads with questions the room has not had yet', () => {
+    const options = trivia.options({ rounds: 10, seconds: 10, categories: ['gk'] })
+    if ('error' in options) throw new Error(options.error)
+    const first = trivia.start([a], options, { ...ctx(), random: (max) => Math.floor(Math.random() * max) })
+    const seen = new Set(trivia.used!(first).length ? first.items.map((item) => item.prompt) : [])
+    const second = trivia.start([a], options, { ...ctx(), random: (max) => Math.floor(Math.random() * max), seen })
+    const pile = BANK.filter((entry) => entry[0] === 'gk').length
+    const repeats = second.items.filter((item) => seen.has(item.prompt)).length
+    assert.equal(repeats, Math.max(0, 20 - pile), 'repeats only once the category has run out')
+  })
+
+  it('remembers only the rounds actually played', () => {
+    const options = trivia.options({ rounds: 5, seconds: 10 })
+    if ('error' in options) throw new Error(options.error)
+    const state = trivia.start([a], options, ctx())
+    assert.deepEqual(trivia.used!(state), [state.items[0]!.prompt])
+  })
+})
+
 describe('guess the song (rounds)', () => {
   const song = (title: string, i: number, category: Song['category'] = 'bollywood'): Song => ({ source: 'youtube', ref: `ref${i}`, title, artist: 'Someone', artwork: null, duration: 200, category })
 

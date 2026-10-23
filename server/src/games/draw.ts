@@ -1,5 +1,5 @@
 import { WORDS } from './draw.words.js'
-import { shuffle, text, type Ctx, type GameDef, type Player } from './engine.js'
+import { byFreshness, text, type Ctx, type GameDef, type Player } from './engine.js'
 
 /**
  * Draw and guess.
@@ -86,7 +86,7 @@ function say(state: Draw, entry: Omit<FeedEntry, 'id'>) {
 
 function choose(state: Draw, ctx: Ctx) {
   const fresh = WORDS.filter((w) => !state.used.includes(w))
-  state.choices = shuffle(fresh.length >= 3 ? fresh : WORDS, ctx).slice(0, 3)
+  state.choices = byFreshness(fresh.length >= 3 ? fresh : WORDS, (word) => word, ctx).slice(0, 3)
   state.word = null
   state.revealed = []
   state.guessed = []
@@ -269,6 +269,8 @@ export const drawGame: GameDef<Draw, Options> = {
     if (state.players.some((p) => p.id === player.id) || state.players.length >= 10) return null
     return { ...state, players: [...state.players, player], scores: { ...state.scores, [player.id]: 0 } }
   },
+
+  used: (state) => state.used,
 
   over(state) {
     if (state.phase !== 'over' || state.turn === 0) return null

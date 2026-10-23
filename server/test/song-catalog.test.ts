@@ -47,6 +47,9 @@ describe('song catalogue quality', () => {
       assert.equal(matchesRecording({ ...result, title, channel: 'Other Artist' }, song), false, title)
     }
     assert.equal(parseVideoDuration('PT1H20M5S'), 4805)
+    // The keyless song search reports a studio track's channel without " - Topic".
+    assert.ok(matchesRecording({ id: 'track', title: 'Born to Shine (From "G.O.A.T.")', channel: 'Diljit Dosanjh', thumbnail: '', track: true }, song))
+    assert.equal(matchesRecording({ id: 'upload', title: 'Born to Shine (From "G.O.A.T.")', channel: 'Diljit Dosanjh', thumbnail: '' }, song), false)
   })
 
   it('rejects long or unembeddable uploads even if their title is an exact match', async () => {
@@ -72,5 +75,17 @@ describe('song catalogue quality', () => {
     })
     assert.deepEqual(pool, [])
     assert.equal(searched, false)
+  })
+
+  it('leads with songs the room has not heard, and only repeats once new ones run out', async () => {
+    const songs = ['A', 'B', 'C', 'D', 'E', 'F'].map((title, i): SongIdentity => ({ ...song, title: `${title} Song`, rank: i + 1 }))
+    const search = async (query: string) => [{ id: query.split(' ')[0]!, title: `${query} Official Audio`, channel: 'Diljit Dosanjh - Topic', thumbnail: '' }]
+    const inspect = async (results: { id: string }[]) => new Map(results.map((r) => [r.id, { duration: 213, embeddable: true }]))
+    const pool = await freshSongPool(['punjabi'], { discover: async () => songs, search, inspect, limit: 4, avoid: new Set(['A', 'B']) })
+    assert.equal(pool.length, 4)
+    assert.ok(pool.every((entry) => !['A', 'B'].includes(entry.ref)), 'heard songs never lead')
+    const tight = await freshSongPool(['punjabi'], { discover: async () => songs, search, inspect, limit: 6, avoid: new Set(['A', 'B']) })
+    assert.equal(tight.length, 6)
+    assert.deepEqual(new Set(tight.slice(4).map((entry) => entry.ref)), new Set(['A', 'B']), 'heard songs only fill the end')
   })
 })

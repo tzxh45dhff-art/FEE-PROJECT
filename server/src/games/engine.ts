@@ -27,6 +27,8 @@ export type Ctx = {
   schedule: (ms: number, action: string, payload?: Record<string, unknown>) => void
   /** Cancel every pending timer for this game. */
   clearSchedule: () => void
+  /** Content this room has had in earlier games, for `byFreshness`. */
+  seen?: ReadonlySet<string>
 }
 
 export type Result<S> = S | { error: string }
@@ -58,15 +60,18 @@ export interface GameDef<S, O = unknown> {
   join?: (state: S, player: Player) => S | null
   /** The game is over; what is worth keeping, or null for nothing. */
   over: (state: S) => { summary: Record<string, unknown> } | null
+  /** The content this game has shown so far, remembered so the room's next game leads with new things. */
+  used?: (state: S) => string[]
 }
 
 export const isError = (value: unknown): value is { error: string } =>
   typeof value === 'object' && value !== null && 'error' in value && typeof (value as { error: unknown }).error === 'string'
 
 /** The real context: crypto randomness and real timers. */
-export function liveCtx(dispatch: (action: string, payload: Record<string, unknown>) => void): Ctx & { dispose: () => void } {
+export function liveCtx(dispatch: (action: string, payload: Record<string, unknown>) => void, seen?: ReadonlySet<string>): Ctx & { dispose: () => void } {
   const timers = new Set<NodeJS.Timeout>()
   return {
+    seen,
     now: () => Date.now(),
     random: (max) => (max <= 1 ? 0 : randomInt(max)),
     schedule: (ms, action, payload = {}) => {
@@ -98,3 +103,14 @@ export function shuffle<T>(list: readonly T[], ctx: Pick<Ctx, 'random'>): T[] {
 }
 
 export const text = (raw: unknown, max: number) => (typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ').slice(0, max) : '')
+
+/**
+ * Shuffled, with what this room has not had yet in front and what it has
+ * seen behind — so repeats only start once everything has been used.
+ */
+export function byFreshness<T>(list: readonly T[], key: (item: T) => string, ctx: Pick<Ctx, 'random' | 'seen'>): T[] {
+  const mixed = shuffle(list, ctx)
+  const seen = ctx.seen
+  if (!seen?.size) return mixed
+  return [...mixed.filter((item) => !seen.has(key(item))), ...mixed.filter((item) => seen.has(key(item)))]
+}
