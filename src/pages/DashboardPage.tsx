@@ -12,7 +12,6 @@ import { CharacterParty, type HubMember } from '@/features/dashboard/hub/Charact
 import { FunDock } from '@/features/fun/FunDock'
 import { FunLayer } from '@/features/fun/FunLayer'
 import { PetCorner } from '@/features/pet/PetCorner'
-import { PhotoBooth } from '@/features/booth/PhotoBooth'
 import { useFun } from '@/features/fun/useFun'
 import { Fireflies } from '@/features/dashboard/hub/Fireflies'
 import { HubDrawer } from '@/features/dashboard/hub/HubDrawer'
@@ -641,13 +640,6 @@ export function DashboardPage() {
                   onEmote={fun.emote}
                   onThrow={fun.throwAt}
                   onToy={fun.play}
-                />
-                <PhotoBooth
-                  roomId={activeRoom.id}
-                  roomName={activeRoom.name}
-                  selfId={user?.id}
-                  enabled={activity === null}
-                  onPose={fun.emote}
                 />
               </div>
             )}

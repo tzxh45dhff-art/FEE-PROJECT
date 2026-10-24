@@ -277,8 +277,7 @@ export default function CharacterCanvas({
     <Canvas
       dpr={[1, 1.75]}
       camera={{ position: [0, 0.95, 3.6], fov: 30 }}
-      /* Kept after each frame so the photo booth can read the characters back. */
-      gl={{ alpha: true, antialias: true, preserveDrawingBuffer: true }}
+      gl={{ alpha: true, antialias: true }}
       frameloop={still ? 'demand' : 'always'}
       style={{ background: 'transparent' }}
     >
