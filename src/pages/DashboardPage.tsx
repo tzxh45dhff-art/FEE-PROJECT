@@ -29,7 +29,7 @@ import { MusicDock } from '@/features/music/MusicDock'
 import { MusicProvider } from '@/features/music/MusicProvider'
 import { MusicStage } from '@/features/music/MusicStage'
 import { CallInvite } from '@/features/room-panel/CallInvite'
-import { RoomPanel, PANEL_WIDTH_REM } from '@/features/room-panel/RoomPanel'
+import { RoomPanel, PANEL_MIN_REM, PANEL_WIDTH_REM } from '@/features/room-panel/RoomPanel'
 import { useChat } from '@/features/room-panel/useChat'
 import { FloatingCall } from '@/features/room-panel/FloatingCall'
 import { ExtensionBridge } from '@/features/watch/ExtensionBridge'
@@ -238,7 +238,25 @@ export function DashboardPage() {
    * narrowness the only honest layout is an overlay.
    */
   const sideBySide = useMediaQuery('(min-width: 60rem)')
-  const inset = sideOpen && sideBySide ? PANEL_WIDTH_REM : 0
+  /* How wide the room panel is, by the viewer's own drag. Narrower only, and
+     remembered on this device. */
+  const [panelRem, setPanelRem] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem('huddle.panelRem'))
+      return saved ? Math.min(PANEL_WIDTH_REM, Math.max(PANEL_MIN_REM, saved)) : PANEL_WIDTH_REM
+    } catch {
+      return PANEL_WIDTH_REM
+    }
+  })
+  const resizePanel = useCallback((rem: number) => {
+    setPanelRem(rem)
+    try {
+      localStorage.setItem('huddle.panelRem', String(Math.round(rem * 4) / 4))
+    } catch {
+      /* Private mode: it still resizes, it just won't be remembered. */
+    }
+  }, [])
+  const inset = sideOpen && sideBySide ? panelRem : 0
 
   /*
    * Presence follows the room you are *standing in*, not every room you belong
@@ -540,7 +558,17 @@ export function DashboardPage() {
           />
 
           {activity === null && activeRoom && <FunLayer events={fun.events} youId={user?.id ?? null} />}
-          {activeRoom && <PetCorner key={activeRoom.id} roomId={activeRoom.id} selfId={user?.id} hidden={activity !== null} />}
+          {activeRoom && (
+            <PetCorner
+              key={activeRoom.id}
+              roomId={activeRoom.id}
+              selfId={user?.id}
+              activity={activity}
+              messages={chat.messages}
+              onCall={call.status === 'live'}
+              onSuggest={(action) => (action === 'call' ? setSideOpen(true) : setActivity(action))}
+            />
+          )}
 
           <HubRail side="left" items={leftItems} collapsed={railsFolded} onToggleCollapsed={wide ? undefined : toggleRails} />
           <HubRail side="right" items={rightRail} compact={rightTray} collapsed={railsFolded} insetRight={inset} />
@@ -801,6 +829,8 @@ export function DashboardPage() {
             selfId={user?.id}
             selfName={user?.name ?? 'You'}
             onClose={() => setSideOpen(false)}
+            width={sideBySide ? panelRem : PANEL_WIDTH_REM}
+            onWidthChange={sideBySide ? resizePanel : undefined}
           />
         )}
       </AnimatePresence>

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { PanelRightClose } from 'lucide-react'
@@ -10,6 +10,10 @@ import type { useMeshCall } from '@/features/room-panel/useMeshCall'
 
 /** Kept in one place — the hub and the watch stage both inset by exactly this. */
 export const PANEL_WIDTH_REM = 21
+/** How narrow it can be dragged: call controls and a chat bubble still fit. */
+export const PANEL_MIN_REM = 16
+
+const clampPanel = (rem: number) => Math.min(PANEL_WIDTH_REM, Math.max(PANEL_MIN_REM, rem))
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -29,6 +33,8 @@ export function RoomPanel({
   selfId,
   selfName,
   onClose,
+  width = PANEL_WIDTH_REM,
+  onWidthChange,
 }: {
   chat: ReturnType<typeof useChat>
   call: ReturnType<typeof useMeshCall>
@@ -37,8 +43,29 @@ export function RoomPanel({
   selfId: string | undefined
   selfName: string
   onClose: () => void
+  /** Current width in rem; it can only be made narrower than the default. */
+  width?: number
+  /** Present where the panel sits beside the room and resizing makes sense. */
+  onWidthChange?: (rem: number) => void
 }) {
   const { setWatching } = chat
+  const [dragging, setDragging] = useState(false)
+  const remPx = useRef(16)
+
+  /*
+   * Everything that insets for this panel eases its padding over half a
+   * second, which is lovely on open and a rubber band while dragging. Off for
+   * the length of a drag, so the room follows the edge exactly.
+   */
+  useEffect(() => {
+    if (!dragging) return
+    document.body.dataset.panelResizing = ''
+    return () => {
+      delete document.body.dataset.panelResizing
+    }
+  }, [dragging])
+
+  const fromPointer = (clientX: number) => clampPanel((window.innerWidth - clientX) / remPx.current)
 
   /* Open means read. Anything arriving now is on screen, so it should never
      land in the unread count. */
@@ -55,12 +82,60 @@ export function RoomPanel({
       /* Full width where it has to cover the room, its own column where there
          is space to sit beside it. Matches the breakpoint the hub uses to
          decide whether to inset at all, so the two can never disagree. */
-      style={{ width: `min(100vw, ${PANEL_WIDTH_REM}rem)` }}
+      style={{ width: `min(100vw, ${width}rem)` }}
       initial={{ x: '100%' }}
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ duration: 0.45, ease: EASE }}
     >
+      {onWidthChange && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the room panel"
+          aria-valuemin={PANEL_MIN_REM}
+          aria-valuemax={PANEL_WIDTH_REM}
+          aria-valuenow={Math.round(width)}
+          tabIndex={0}
+          title="Drag to make narrower · double-click to reset"
+          /* Captured, so the drag keeps following the pointer even across the
+             video's iframe, which would otherwise swallow the movement. */
+          onPointerDown={(event) => {
+            if (event.button !== 0) return
+            event.preventDefault()
+            remPx.current = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+            event.currentTarget.setPointerCapture(event.pointerId)
+            setDragging(true)
+          }}
+          onPointerMove={(event) => {
+            if (dragging) onWidthChange(fromPointer(event.clientX))
+          }}
+          onPointerUp={() => setDragging(false)}
+          onPointerCancel={() => setDragging(false)}
+          onDoubleClick={() => onWidthChange(PANEL_WIDTH_REM)}
+          onKeyDown={(event) => {
+            const step = event.shiftKey ? 2 : 1
+            const next =
+              event.key === 'ArrowLeft' ? width + step
+              : event.key === 'ArrowRight' ? width - step
+              : event.key === 'Home' ? PANEL_WIDTH_REM
+              : event.key === 'End' ? PANEL_MIN_REM
+              : null
+            if (next === null) return
+            event.preventDefault()
+            onWidthChange(clampPanel(next))
+          }}
+          className="group absolute inset-y-0 -left-1.5 z-10 w-3 cursor-col-resize touch-none outline-none"
+        >
+          <span
+            aria-hidden
+            className={
+              'absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 transition-colors duration-200 ' +
+              (dragging ? 'bg-signal' : 'bg-transparent group-hover:bg-white/25 group-focus-visible:bg-signal')
+            }
+          />
+        </div>
+      )}
       <header className="flex items-center justify-between gap-2 border-b border-white/[0.07] px-4 py-3">
         <h2 className="font-display text-[0.95rem] font-semibold tracking-[-0.015em] text-chalk">
           Room
