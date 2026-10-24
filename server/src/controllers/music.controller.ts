@@ -6,6 +6,8 @@ import * as libraryModel from '../models/library.model.js'
 import { lyricsFor } from '../services/lyrics.service.js'
 import * as trackModel from '../models/track.model.js'
 import { MUSIC_SOURCES } from '../services/music.service.js'
+import { importProgress, startImport } from '../services/playlistImport.service.js'
+import { announcePlaylists } from '../sockets/music.gateway.js'
 import { rankSongs, uploadKind } from '../services/musicRank.js'
 import { assertMembership } from '../services/room.service.js'
 import {
@@ -238,6 +240,40 @@ export async function add(req: Request, res: Response) {
   res.status(201).json({ item, items: await trackModel.listTracks(roomId) })
 }
 
+const addManyBody = z.object({ tracks: z.array(addBody).min(1, 'Nothing to add').max(200) })
+
+/**
+ * A whole playlist onto the queue, in order.
+ *
+ * One request rather than one per song: a hundred separate adds would each
+ * announce themselves to the room, and anyone else adding a song meanwhile
+ * would land in the middle of the album.
+ */
+export async function addMany(req: Request, res: Response) {
+  const roomId = await gate(req)
+
+  const parsed = addManyBody.safeParse(req.body)
+  if (!parsed.success) {
+    throw HttpError.badRequest(parsed.error.issues[0]?.message ?? 'Could not add those')
+  }
+
+  const added = await trackModel.addTracks(
+    roomId,
+    req.userId!,
+    parsed.data.tracks.map((track) => ({
+      source: track.source,
+      ref: track.ref,
+      title: track.title,
+      artist: track.artist ?? null,
+      album: track.album ?? null,
+      artwork: track.artwork ?? null,
+      duration: track.duration ?? null,
+    })),
+  )
+
+  res.status(201).json({ item: added[0], items: await trackModel.listTracks(roomId) })
+}
+
 export async function remove(req: Request, res: Response) {
   const roomId = await gate(req)
   await trackModel.removeTrack(roomId, req.params.trackId!)
@@ -262,9 +298,44 @@ const trackBody = z.object({
   duration: z.number().int().positive().nullable().optional(),
 })
 
+/** Every playlist, with how far along any import into it is. */
+async function playlistsWithProgress(roomId: string) {
+  const items = await libraryModel.listPlaylists(roomId)
+  return items.map((item) => ({ ...item, importing: importProgress(item.id) }))
+}
+
 export async function playlists(req: Request, res: Response) {
   const roomId = await gate(req)
-  res.json({ items: await libraryModel.listPlaylists(roomId) })
+  res.json({ items: await playlistsWithProgress(roomId) })
+}
+
+const importBody = z.object({ url: z.string().trim().min(1, 'Paste a playlist link').max(600) })
+
+/**
+ * Make a playlist from a Spotify or Apple Music link.
+ *
+ * Answers as soon as the list has been read and the playlist exists; the
+ * songs are found on YouTube Music afterwards and arrive over the socket —
+ * see `startImport`.
+ */
+export async function importPlaylist(req: Request, res: Response) {
+  const roomId = await gate(req)
+
+  const parsed = importBody.safeParse(req.body)
+  if (!parsed.success) {
+    throw HttpError.badRequest(parsed.error.issues[0]?.message ?? 'Paste a playlist link')
+  }
+
+  const userId = req.userId!
+  const started = await startImport(parsed.data.url, {
+    createPlaylist: (name) => libraryModel.createPlaylist(roomId, userId, name),
+    place: (playlistId, track, position) => libraryModel.placeInPlaylist(playlistId, track, position),
+    changed: () => announcePlaylists(roomId),
+  })
+
+  announcePlaylists(roomId)
+  const item = (await playlistsWithProgress(roomId)).find((one) => one.id === started.playlistId)
+  res.status(201).json({ item })
 }
 
 const nameBody = z.object({ name: z.string().trim().min(1, 'Name it something').max(120) })

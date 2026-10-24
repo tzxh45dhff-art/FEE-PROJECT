@@ -23,6 +23,11 @@ function announce(roomId: string) {
   getSocket().emit('music:queue-sync', { roomId })
 }
 
+/** The same, for playlists — everyone's list of them updates live. */
+function announcePlaylists(roomId: string) {
+  getSocket().emit('music:playlists-sync', { roomId })
+}
+
 export function fetchCapabilities(roomId: string) {
   return api.get<{ search: boolean; sources: string[] }>(`/rooms/${roomId}/music`)
 }
@@ -55,6 +60,16 @@ export function fetchQueue(roomId: string) {
 export function addToQueue(roomId: string, track: ResolvedTrack) {
   return api
     .post<{ item: QueuedTrack; items: QueuedTrack[] }>(`/rooms/${roomId}/music/queue`, track)
+    .then((response) => {
+      announce(roomId)
+      return response
+    })
+}
+
+/** Several songs onto the queue in order — a whole playlist, say. */
+export function addManyToQueue(roomId: string, tracks: ResolvedTrack[]) {
+  return api
+    .post<{ item: QueuedTrack; items: QueuedTrack[] }>(`/rooms/${roomId}/music/queue/many`, { tracks })
     .then((response) => {
       announce(roomId)
       return response
@@ -152,19 +167,40 @@ export function fetchPlaylists(roomId: string) {
 export function createPlaylist(roomId: string, name: string) {
   return api
     .post<{ item: Playlist }>(`/rooms/${roomId}/music/playlists`, { name })
+    .then((response) => {
+      announcePlaylists(roomId)
+      return response.item
+    })
+}
+
+/**
+ * Start importing a Spotify or Apple Music link.
+ *
+ * Comes back with the new playlist as soon as the list has been read; the
+ * songs fill in afterwards, announced by the server itself.
+ */
+export function importPlaylist(roomId: string, url: string) {
+  return api
+    .post<{ item: Playlist }>(`/rooms/${roomId}/music/playlists/import`, { url })
     .then((response) => response.item)
 }
 
 export function deletePlaylist(roomId: string, playlistId: string) {
   return api
     .del<{ items: Playlist[] }>(`/rooms/${roomId}/music/playlists/${playlistId}`)
-    .then((response) => response.items)
+    .then((response) => {
+      announcePlaylists(roomId)
+      return response.items
+    })
 }
 
 export function addToPlaylist(roomId: string, playlistId: string, track: LibraryTrack) {
   return api
     .post<{ item: Playlist }>(`/rooms/${roomId}/music/playlists/${playlistId}/tracks`, track)
-    .then((response) => response.item)
+    .then((response) => {
+      announcePlaylists(roomId)
+      return response.item
+    })
 }
 
 export function removeFromPlaylist(roomId: string, playlistId: string, trackId: string) {
@@ -172,7 +208,10 @@ export function removeFromPlaylist(roomId: string, playlistId: string, trackId: 
     .del<{ item: Playlist }>(
       `/rooms/${roomId}/music/playlists/${playlistId}/tracks/${trackId}`,
     )
-    .then((response) => response.item)
+    .then((response) => {
+      announcePlaylists(roomId)
+      return response.item
+    })
 }
 
 export function fetchLiked(roomId: string) {

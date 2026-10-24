@@ -42,10 +42,10 @@ export function CoverHeading({
            * artwork itself. `background-size` scales them independently, which
            * is what lets the image be enormous while the wash stays put.
            */
-          backgroundImage: `linear-gradient(105deg, rgb(255 255 255 / 0.62), rgb(255 255 255 / 0.34)), url(${artwork})`,
+          backgroundImage: `linear-gradient(105deg, rgb(255 255 255 / 0.86), rgb(255 255 255 / 0.7)), url(${artwork})`,
           backgroundSize: '100% 100%, 420% auto',
           backgroundPosition: 'center, center',
-          backgroundBlendMode: 'overlay, normal',
+          backgroundBlendMode: 'normal, normal',
         }}
       >
         {children}

@@ -47,6 +47,41 @@ export async function addTrack(input: {
   })
 }
 
+/** Several songs onto the end of the queue, in the order given, in one go. */
+export async function addTracks(
+  roomId: string,
+  addedById: string,
+  tracks: {
+    source: string
+    ref: string
+    title: string
+    artist: string | null
+    album: string | null
+    artwork: string | null
+    duration: number | null
+  }[],
+) {
+  return prisma.$transaction(async (tx) => {
+    const last = await tx.trackItem.findFirst({
+      where: { roomId },
+      orderBy: { position: 'desc' },
+      select: { position: true },
+    })
+    const start = (last?.position ?? -1) + 1
+
+    const created = []
+    for (const [index, track] of tracks.entries()) {
+      created.push(
+        await tx.trackItem.create({
+          data: { ...track, roomId, addedById, position: start + index },
+          select: trackSelect,
+        }),
+      )
+    }
+    return created
+  })
+}
+
 export function removeTrack(roomId: string, id: string) {
   // Scoped by room so an id from elsewhere can't reach across into this one.
   return prisma.trackItem.deleteMany({ where: { id, roomId } })

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import * as musicApi from '@/features/music/api'
+import { getSocket } from '@/lib/socket'
 import type { LibraryTrack, LikedTrack, Playlist } from '@/features/music/types'
 import { trackKey } from '@/features/music/types'
 
@@ -34,6 +35,27 @@ export function useLibrary(roomId: string | null) {
     setLoading(true)
     void reload()
   }, [reload])
+
+  /*
+   * Playlists belong to the room, so they follow it live: someone else making
+   * one, adding to one, or an import filling one in all arrive here. Only the
+   * playlists are refetched — likes are personal and nobody else changes them.
+   */
+  useEffect(() => {
+    if (!roomId) return
+    const socket = getSocket()
+    const onChanged = (raw: unknown) => {
+      if ((raw as { roomId?: unknown } | null)?.roomId !== roomId) return
+      musicApi
+        .fetchPlaylists(roomId)
+        .then(setPlaylists)
+        .catch(() => {})
+    }
+    socket.on('music:playlists', onChanged)
+    return () => {
+      socket.off('music:playlists', onChanged)
+    }
+  }, [roomId])
 
   const isLiked = useCallback((track: LibraryTrack) => likedKeys.has(trackKey(track)), [likedKeys])
 
@@ -79,6 +101,16 @@ export function useLibrary(roomId: string | null) {
     [roomId],
   )
 
+  const importPlaylist = useCallback(
+    async (url: string) => {
+      if (!roomId) return null
+      const created = await musicApi.importPlaylist(roomId, url)
+      setPlaylists((current) => [created, ...current.filter((one) => one.id !== created.id)])
+      return created
+    },
+    [roomId],
+  )
+
   const removePlaylist = useCallback(
     async (playlistId: string) => {
       if (!roomId) return
@@ -113,6 +145,7 @@ export function useLibrary(roomId: string | null) {
       isLiked,
       toggleLike,
       createPlaylist,
+      importPlaylist,
       removePlaylist,
       addToPlaylist,
       removeFromPlaylist,
@@ -125,6 +158,7 @@ export function useLibrary(roomId: string | null) {
       isLiked,
       toggleLike,
       createPlaylist,
+      importPlaylist,
       removePlaylist,
       addToPlaylist,
       removeFromPlaylist,

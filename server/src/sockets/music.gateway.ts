@@ -53,7 +53,22 @@ function numberFrom(raw: unknown, key: string): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
+/** Set once the gateway is attached, so REST work can reach the room too. */
+let musicIo: Server | null = null
+
+/**
+ * Tell the room its playlists changed.
+ *
+ * Unlike the queue, which the client announces after its own REST call, an
+ * import keeps adding songs long after the request that started it has
+ * answered — so the server has to be the one to say so.
+ */
+export function announcePlaylists(roomId: string) {
+  musicIo?.to(roomId).emit('music:playlists', { roomId })
+}
+
 export function attachMusicGateway(io: Server) {
+  musicIo = io
   io.on('connection', (socket: Socket) => {
     const state = socketUser(socket)
     if (!state) return
@@ -162,6 +177,13 @@ export function attachMusicGateway(io: Server) {
       const roomId = roomIdFrom(raw)
       if (!(await may(roomId)) || !roomId) return
       await pushQueue(roomId)
+    })
+
+    /** A playlist changed over REST; same reason as the queue above. */
+    socket.on('music:playlists-sync', async (raw: unknown) => {
+      const roomId = roomIdFrom(raw)
+      if (!(await may(roomId)) || !roomId) return
+      socket.to(roomId).emit('music:playlists', { roomId })
     })
 
     socket.on('music:control', (raw: unknown) => {
