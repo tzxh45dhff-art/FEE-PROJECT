@@ -54,6 +54,8 @@ const CUE: Record<PetCueKind, { face: Expression; bump: 'squash' | 'jump' | 'sha
   break: { face: 'happy', bump: 'jump', line: ['Break time! Stretch!', 'You earned it', 'Water? Snack?'], hearts: 3, glyph: '✨' },
   hello: { face: 'happy', bump: 'wiggle', line: ['You called?', 'Hi {name}!', 'That’s me!'], hearts: 2 },
   tune: { face: 'happy', bump: 'jump', line: ['Ooh, I love this one!', 'Tuuune 🎶', 'Turn it up!'], hearts: 3, glyph: '♪' },
+  hush: { face: 'sad', bump: 'shake', line: ['Hey, who stopped the music?', 'Aww, I was dancing!', 'Noooo, put it back on 😿'], hearts: 1, glyph: '💧' },
+  resume: { face: 'happy', bump: 'jump', line: ['Yay, it’s back!', 'Dance time again!', 'Ooh, here we go 🎶'], hearts: 3, glyph: '♪' },
 }
 
 const DID: Record<PetEvent['action'], string> = { feed: 'fed me', pet: 'stroked me', poke: 'hit me', tickle: 'tickled me', play: 'played with me', talk: 'talked to me', sorry: 'said sorry' }
@@ -76,6 +78,8 @@ export function LivePet({
   cue = null,
   scene = 'none',
   dancing = false,
+  onDrag,
+  onNudge,
 }: {
   pet: Pet
   event: PetEvent | null
@@ -97,6 +101,13 @@ export function LivePet({
   scene?: PetScene
   /** Music is playing in the room: it bobs along. */
   dancing?: boolean
+  /**
+   * Picked up and carried: press and hold, then move. Distances are from where
+   * it was picked up. Without this it can't be moved.
+   */
+  onDrag?: (phase: 'start' | 'move' | 'end', dx: number, dy: number) => void
+  /** Moved from the keyboard, by this many pixels. */
+  onNudge?: (dx: number, dy: number) => void
 }) {
   const box = useRef<HTMLDivElement>(null)
   const [look, setLook] = useState({ x: 0, y: 0 })
@@ -106,6 +117,8 @@ export function LivePet({
   const [bubble, setBubble] = useState<{ id: string; text: string; who?: string } | null>(null)
   const [hearts, setHearts] = useState<{ id: string; n: number; glyph: string } | null>(null)
   const [snack, setSnack] = useState<{ id: string; food: Food } | null>(null)
+  /* Being carried around the screen: a delighted face and a little swing. */
+  const [carried, setCarried] = useState(false)
 
   /* Eyes follow the pointer anywhere on the page. */
   useEffect(() => {
@@ -151,6 +164,8 @@ export function LivePet({
   const upset = pet.pose !== 'normal'
   useEffect(() => {
     if (!cue || upset) return
+    /* Someone is focusing: it keeps perfectly still until the break. */
+    if (scene === 'focus' && cue.kind !== 'break') return
     const r = CUE[cue.kind]
     setReacting({ face: r.face, until: Date.now() + 2200 })
     setBumpKind(r.bump)
@@ -191,11 +206,11 @@ export function LivePet({
   const sulking = pet.pose === 'corner'
   const rest: Expression = sulking ? 'sad' : coldToMe ? 'grumpy' : scene === 'dozing' ? 'sleepy' : REST[pet.mood]
   const face: Expression =
-    level > 0.04 || mimic === 'speaking' ? 'talk' : mimic === 'hearing' ? 'listen' : (reacting?.face ?? (mimic === 'listening' ? 'idle' : rest))
+    level > 0.04 || mimic === 'speaking' ? 'talk' : mimic === 'hearing' ? 'listen' : carried ? 'giggle' : (reacting?.face ?? (mimic === 'listening' ? 'idle' : rest))
   const gaze = sulking ? { x: 0.25, y: 0.35 } : coldToMe ? { x: -look.x * 1.5, y: look.y } : look
   const scale = { baby: 0.78, kid: 0.88, teen: 0.96, grown: 1.04 }[pet.stage] * (sulking ? 0.82 : 1)
   /* Bobbing to the music — unless it is upset, focusing, asleep, or mid-reaction. */
-  const grooving = dancing && !upset && scene !== 'focus' && scene !== 'dozing' && !reacting
+  const grooving = dancing && !upset && scene !== 'focus' && scene !== 'dozing' && !reacting && !carried
 
   /*
    * One rule for a hand on the pet, decided by what the hand did rather than
@@ -203,8 +218,10 @@ export function LivePet({
    * across it is a stroke (love). A stroke keeps counting while you keep
    * rubbing, but no faster than the pet can enjoy it.
    */
-  const hand = useRef<{ x: number; y: number; at: number; travelled: number; stroked: boolean } | null>(null)
+  const hand = useRef<{ x: number; y: number; sx: number; sy: number; at: number; travelled: number; stroked: boolean; lifted: boolean } | null>(null)
   const lastStroke = useRef(0)
+  const holdTimer = useRef<number | null>(null)
+
 
   return (
     <div ref={box} className={cn('relative select-none', className)}>
@@ -250,15 +267,30 @@ export function LivePet({
       ) : (
       <motion.button
         type="button"
-        aria-label={`${pet.name} — rub to stroke, tap to poke`}
+        aria-label={`${pet.name} — rub to stroke, tap to poke${onDrag ? ', hold to pick up, arrow keys to move' : ''}`}
         onPointerDown={(e) => {
           if (e.button !== 0) return
           e.currentTarget.setPointerCapture(e.pointerId)
-          hand.current = { x: e.clientX, y: e.clientY, at: Date.now(), travelled: 0, stroked: false }
+          hand.current = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, at: Date.now(), travelled: 0, stroked: false, lifted: false }
+          /* Held still for a moment: picked up, not rubbed. */
+          if (onDrag) {
+            if (holdTimer.current) window.clearTimeout(holdTimer.current)
+            holdTimer.current = window.setTimeout(() => {
+              const h = hand.current
+              if (!h || h.travelled >= 6 || h.stroked) return
+              h.lifted = true
+              setCarried(true)
+              onDrag('start', 0, 0)
+            }, 260)
+          }
         }}
         onPointerMove={(e) => {
           const h = hand.current
           if (!h) return
+          if (h.lifted) {
+            onDrag?.('move', e.clientX - h.sx, e.clientY - h.sy)
+            return
+          }
           h.travelled += Math.hypot(e.clientX - h.x, e.clientY - h.y)
           h.x = e.clientX
           h.y = e.clientY
@@ -272,18 +304,39 @@ export function LivePet({
         onPointerUp={() => {
           const h = hand.current
           hand.current = null
+          if (holdTimer.current) window.clearTimeout(holdTimer.current)
+          if (h?.lifted) {
+            setCarried(false)
+            onDrag?.('end', 0, 0)
+            return
+          }
           if (h && !h.stroked && h.travelled < 14 && Date.now() - h.at < 600) onTap?.()
         }}
-        onPointerCancel={() => (hand.current = null)}
+        onPointerCancel={() => {
+          if (holdTimer.current) window.clearTimeout(holdTimer.current)
+          if (hand.current?.lifted) {
+            setCarried(false)
+            onDrag?.('end', 0, 0)
+          }
+          hand.current = null
+        }}
         onKeyDown={(e) => {
           /* From a keyboard: Enter strokes. Nobody needs a key for hitting it. */
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
             onStroke?.()
           }
+          /* Arrow keys carry it, for anyone not using a mouse. */
+          const step = e.shiftKey ? 64 : 24
+          const move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key]
+          if (move && onNudge) {
+            e.preventDefault()
+            onNudge(move[0]!, move[1]!)
+          }
         }}
-        className="block size-full cursor-pointer touch-none outline-none focus-visible:rounded-3xl focus-visible:outline-2 focus-visible:outline-signal"
-        animate={{ scale, y: sulking ? '8%' : 0 }}
+        className="block size-full cursor-pointer touch-none outline-none data-[carried=true]:cursor-grabbing focus-visible:rounded-3xl focus-visible:outline-2 focus-visible:outline-signal"
+        data-carried={carried}
+        animate={{ scale: carried ? scale * 1.06 : scale, y: sulking ? '8%' : 0 }}
         transition={{ type: 'spring', stiffness: 120, damping: 14 }}
         style={{ originY: 1 }}
         whileTap={{ scale: scale * 0.97 }}
@@ -291,8 +344,8 @@ export function LivePet({
         <motion.div
           className="size-full"
           style={{ originY: 1 }}
-          animate={grooving ? { y: [0, -5, 0], rotate: [-3, 3, -3] } : { y: 0, rotate: 0 }}
-          transition={grooving ? { repeat: Infinity, duration: 0.9, ease: 'easeInOut' } : { duration: 0.3 }}
+          animate={carried ? { y: -6, rotate: [-6, 6, -6] } : grooving ? { y: [0, -5, 0], rotate: [-3, 3, -3] } : { y: 0, rotate: 0 }}
+          transition={carried || grooving ? { repeat: Infinity, duration: carried ? 0.7 : 0.9, ease: 'easeInOut' } : { duration: 0.3 }}
         >
           <PetArt species={pet.species} expression={face} look={gaze} mouth={level} bump={bump} bumpKind={bumpKind} className="size-full drop-shadow-[0_18px_30px_rgba(0,0,0,.35)]" />
         </motion.div>

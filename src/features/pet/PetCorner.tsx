@@ -96,6 +96,18 @@ export function PetCorner({
     lastTrack.current = id
     if (was !== undefined && id && id !== was && dancing) petCue('tune', track?.artist ?? undefined)
   }, [track?.id, track?.artist, dancing])
+  /* Paused and resumed — the same song stopping and starting, not a new one. */
+  const wasPlaying = useRef<boolean | undefined>(undefined)
+  const musicOn = !!music.snapshot?.playing
+  const musicAction = music.snapshot?.by?.action
+  useEffect(() => {
+    const was = wasPlaying.current
+    wasPlaying.current = musicOn
+    if (was === undefined || !track) return
+    if (was && !musicOn && musicAction === 'pause') petCue('hush')
+    if (!was && musicOn && musicAction === 'play') petCue('resume')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [musicOn])
   const listening = dancing && track ? `${track.title}${track.artist ? ` by ${track.artist}` : ''}` : null
 
   /* The room's chat: it laughs along, goes soft at hearts, and answers to its name. */
@@ -131,6 +143,75 @@ export function PetCorner({
     }
   }
   const spot = activity ? COMPANION_SPOT[activity] : undefined
+
+  /*
+   * Wherever you put it. Picked up and carried (or moved with the arrow keys),
+   * it stays there — separately on the hub and in each activity, since a good
+   * spot over a film is a bad one over a quiz. Stored as a share of the
+   * screen so it lands in the same place after a resize.
+   */
+  const where = activity ?? 'hub'
+  const [placed, setPlaced] = useState<Record<string, { x: number; y: number }>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('huddle.petSpots') ?? '{}') as Record<string, { x: number; y: number }>
+    } catch {
+      return {}
+    }
+  })
+  const hubBox = useRef<HTMLDivElement>(null)
+  const companionBox = useRef<HTMLDivElement>(null)
+  const carry = useRef<{ left: number; top: number; width: number; height: number } | null>(null)
+  const [live, setLive] = useState<{ left: number; top: number } | null>(null)
+  const box = () => (activity ? companionBox.current : hubBox.current)
+  const fit = (left: number, top: number, width: number, height: number) => ({
+    left: Math.max(4, Math.min(window.innerWidth - width - 4, left)),
+    top: Math.max(4, Math.min(window.innerHeight - height - 4, top)),
+  })
+  const save = (left: number, top: number) => {
+    const next = { ...placed, [where]: { x: left / window.innerWidth, y: top / window.innerHeight } }
+    setPlaced(next)
+    try {
+      localStorage.setItem('huddle.petSpots', JSON.stringify(next))
+    } catch {
+      /* Not remembered past this visit. */
+    }
+  }
+  const onDrag = (phase: 'start' | 'move' | 'end', dx: number, dy: number) => {
+    const el = box()
+    if (phase === 'start') {
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      carry.current = { left: r.left, top: r.top, width: r.width, height: r.height }
+      setLive({ left: r.left, top: r.top })
+      return
+    }
+    const c = carry.current
+    if (!c) return
+    if (phase === 'move') {
+      setLive(fit(c.left + dx, c.top + dy, c.width, c.height))
+      return
+    }
+    carry.current = null
+    setLive((current) => {
+      if (current) save(current.left, current.top)
+      return null
+    })
+  }
+  const onNudge = (dx: number, dy: number) => {
+    const el = box()
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const next = fit(r.left + dx, r.top + dy, r.width, r.height)
+    save(next.left, next.top)
+  }
+  /* Where it sits right now: being carried, put somewhere, or its usual spot. */
+  const saved = placed[where]
+  const position: React.CSSProperties | undefined = live
+    ? { left: live.left, top: live.top, right: 'auto', bottom: 'auto' }
+    : saved
+      ? /* Kept on screen if the window has shrunk since. */
+        { left: `min(${saved.x * 100}vw, calc(100vw - ${activity ? 7.5 : 12}rem))`, top: `min(${saved.y * 100}vh, calc(100vh - ${activity ? 9 : 14}rem))`, right: 'auto', bottom: 'auto' }
+      : undefined
 
   /*
    * Suggestions, in its own words (written by the model on the server).
@@ -258,6 +339,8 @@ export function PetCorner({
             exit={{ opacity: 0, y: 20 }}
             transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }}
             data-pet-corner
+            ref={hubBox}
+            style={position}
             className="pointer-events-auto absolute left-2 top-4 z-20 flex w-[11.5rem] flex-col items-center sm:bottom-3 sm:left-3 sm:top-auto md:left-5"
           >
             {pets.pet ? (
@@ -276,6 +359,8 @@ export function PetCorner({
                   cue={cue}
                   scene={scene}
                   dancing={dancing}
+                  onDrag={onDrag}
+                  onNudge={onNudge}
                 />
                 <button
                   type="button"
@@ -315,6 +400,8 @@ export function PetCorner({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -24 }}
               transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
+              ref={companionBox}
+              style={position}
               className={cn('fixed z-[136] flex flex-col items-center', spot)}
             >
               {tucked ? (
@@ -343,6 +430,8 @@ export function PetCorner({
                     cue={cue}
                     scene={scene}
                     dancing={dancing}
+                    onDrag={onDrag}
+                    onNudge={onNudge}
                   />
                   <div className="-mt-1 flex items-center gap-1">
                     <button

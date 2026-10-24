@@ -33,6 +33,8 @@ export type PetCueKind =
   | 'break' // focus over: stretch
   | 'hello' // someone said its name
   | 'tune' // a new song started
+  | 'hush' // the music was paused
+  | 'resume' // and started again
 
 export type PetCue = { id: string; kind: PetCueKind; who?: string }
 
