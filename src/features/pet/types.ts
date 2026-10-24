@@ -2,8 +2,10 @@
 
 export type Species = 'cat' | 'pup' | 'bunny' | 'panda'
 export type Food = 'cookie' | 'fish' | 'carrot' | 'bamboo' | 'icecream' | 'pizza'
-export type PetAction = 'feed' | 'pet' | 'poke' | 'tickle' | 'play' | 'talk'
-export type Reaction = 'yum' | 'love' | 'full' | 'purr' | 'ouch' | 'giggle' | 'grumpy' | 'play' | 'listen' | 'sulk'
+export type PetAction = 'feed' | 'pet' | 'poke' | 'tickle' | 'play' | 'talk' | 'sorry'
+export type Reaction =
+  | 'yum' | 'love' | 'full' | 'purr' | 'ouch' | 'giggle' | 'grumpy' | 'play' | 'listen' | 'sulk'
+  | 'leave' | 'turnaway' | 'sniff' | 'forgive' | 'away' | 'comfort'
 export type Mood = 'hungry' | 'sad' | 'happy' | 'okay'
 export type Stage = 'baby' | 'kid' | 'teen' | 'grown'
 
@@ -34,7 +36,14 @@ export type Pet = {
   stage: Stage
   progress: number
   mood: Mood
+  /** Out and about, sulking in the corner, or gone for a while. */
+  pose: 'normal' | 'corner' | 'away'
+  away: { until: number; because: Person } | null
+  /** Who it is upset with, worst first. */
+  grudges: Grudge[]
 }
+
+export type Grudge = { id: string; name: string; level: 'wary' | 'grumpy' | 'sulk'; sorry: boolean; amends: number; need: number }
 
 export type Person = { id: string; name: string }
 

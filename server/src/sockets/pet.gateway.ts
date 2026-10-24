@@ -1,8 +1,10 @@
-import { randomInt, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import type { Server, Socket } from 'socket.io'
 
 import * as pets from '../models/pet.model.js'
-import { care, drift, isAction, isFood, isSpecies, petName, type Food, type PetAction, type Reaction } from '../services/pet.rules.js'
+import { care, drift, FAVOURITE, feel, GRUMPY_AT, isAction, isFood, isSpecies, petName, type Food, type PetAction, type Reaction } from '../services/pet.rules.js'
+import { presenceFor } from '../services/presence.service.js'
+import { claim, readContext, suggest } from '../services/petSuggest.service.js'
 import { socketUser } from './presence.gateway.js'
 import { roomGuard } from './roomAuth.js'
 
@@ -54,6 +56,44 @@ function serial<T>(roomId: string, job: () => Promise<T>): Promise<T> {
   return run
 }
 
+/** One interaction, start to finish: feelings first, then the care they allow. */
+function interact(io: Server, roomId: string, by: Person, action: PetAction, food: Food | null) {
+  return serial(roomId, async () => {
+    const row = await pets.findPet(roomId)
+    if (!row) return { error: 'No pet yet' }
+    const now = Date.now()
+    const species = row.species as keyof typeof FAVOURITE
+    const felt = feel(pets.feelingsOf(row, now), by, action, now, food === FAVOURITE[species])
+    let vitals = drift(pets.vitalsOf(row), now)
+    let reaction: Reaction = felt.reaction ?? 'listen'
+    if (felt.allowed) {
+      const cared = care(vitals, action, { food: food ?? undefined, species })
+      vitals = cared.vitals
+      reaction = felt.reaction ?? cared.reaction
+    }
+    await pets.savePet(roomId, vitals, undefined, felt.feelings)
+    const event: PetEvent = { id: randomUUID(), roomId, by, action, reaction, food, at: now }
+    io.to(roomId).emit('pet:state', { roomId, pet: pets.snapshot(row, vitals, felt.feelings) })
+    io.to(roomId).emit('pet:event', event)
+    return { ok: true, reaction }
+  })
+}
+
+/**
+ * "sorry" typed in the room's chat counts as saying it to the pet — but only
+ * from someone it is actually upset with, so ordinary apologies between
+ * people don't make it perk up for no reason.
+ */
+export async function petHearsSorry(io: Server, roomId: string, by: Person, text: string) {
+  if (!/\b(sorry|sry|soz|sowwy|maaf|maafi)\b/i.test(text)) return
+  const row = await pets.findPet(roomId)
+  if (!row) return
+  const f = pets.feelingsOf(row, Date.now())
+  const mine = f.grudges[by.id]
+  if (!mine || mine.sorry || (mine.hurt < GRUMPY_AT && f.away?.because !== by.id)) return
+  await interact(io, roomId, by, 'sorry', null)
+}
+
 export function attachPetGateway(io: Server) {
   io.on('connection', (socket: Socket) => {
     const state = socketUser(socket)
@@ -95,21 +135,28 @@ export function attachPetGateway(io: Server) {
       const action = body.action
       const food = action === 'feed' ? (isFood(body.food) ? body.food : 'cookie') : null
 
-      await serial(roomId, async () => {
-        const row = await pets.findPet(roomId)
-        if (!row) return ack({ error: 'No pet yet' })
-        const now = Date.now()
-        const { vitals, reaction } = care(drift(pets.vitalsOf(row), now), action, {
-          food: food ?? undefined,
-          species: row.species as never,
-          random: (n) => randomInt(n),
-        })
-        await pets.savePet(roomId, vitals)
-        const event: PetEvent = { id: randomUUID(), roomId, by: self, action, reaction, food, at: now }
-        io.to(roomId).emit('pet:state', { roomId, pet: pets.snapshot(row, vitals) })
-        io.to(roomId).emit('pet:event', event)
-        ack({ ok: true, reaction })
-      })
+      const result = await interact(io, roomId, self, action, food)
+      ack(result)
+    })
+
+    /*
+     * A suggestion, in the pet's words, for this person only. The room's
+     * budget is claimed before the model is asked, so two screens asking at
+     * once never pay twice; a skipped turn just means the pet stays quiet.
+     */
+    socket.on('pet:suggest', async (raw: unknown, maybeAck: unknown) => {
+      const ack = ackFrom(maybeAck)
+      const body = (raw ?? {}) as Record<string, unknown>
+      const roomId = await may(body.roomId)
+      if (!roomId) return ack({ error: 'Not in this room' })
+      const context = readContext(body)
+      if (!context) return ack({ skip: 'unknown moment' })
+      const pet = await pets.currentPet(roomId)
+      if (!pet || pet.pose !== 'normal') return ack({ skip: 'not now' })
+      if (!claim(roomId, Date.now())) return ack({ skip: 'too soon' })
+      const present = presenceFor(roomId).map((p) => p.name)
+      const suggestion = await suggest(roomId, pet, self, present, context)
+      ack(suggestion ? { suggestion: { id: randomUUID(), ...suggestion } } : { skip: 'quiet' })
     })
 
     socket.on('pet:rename', async (raw: unknown, maybeAck: unknown) => {
@@ -121,9 +168,10 @@ export function attachPetGateway(io: Server) {
       await serial(roomId, async () => {
         const row = await pets.findPet(roomId)
         if (!row) return ack({ error: 'No pet yet' })
-        const v = drift(pets.vitalsOf(row), Date.now())
+        const now = Date.now()
+        const v = drift(pets.vitalsOf(row), now)
         const saved = await pets.savePet(roomId, v, name)
-        io.to(roomId).emit('pet:state', { roomId, pet: pets.snapshot(saved, v) })
+        io.to(roomId).emit('pet:state', { roomId, pet: pets.snapshot(saved, v, pets.feelingsOf(row, now)) })
         ack({ ok: true })
       })
     })

@@ -1,4 +1,4 @@
-import {Suspense, useCallback, useEffect, useMemo, useState} from 'react'
+import {Suspense, useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -29,6 +29,7 @@ import { useStudyPreferences } from '@/features/study/useStudyPreferences'
 import { useStudySync, useStudyTimer } from '@/features/study/useStudyTimer'
 import { cn } from '@/lib/utils'
 import { lazyChunk } from '@/lib/lazyChunk'
+import { petCue, useHoldPetScene } from '@/features/pet/petCues'
 
 /* Each pane is its own chunk. The library pane pulls a PDF-shaped list, the
    notes pane pulls a markdown renderer and a diagram engine, and the coding
@@ -113,6 +114,16 @@ export function StudyStage({
 
   const { preferences, theme, update } = useStudyPreferences(selfId)
   const timer = useStudyTimer(roomId, true)
+
+  /* The pet keeps quiet while the room focuses, and stretches when the break comes. */
+  const timerPhase = timer.snapshot?.phase ?? null
+  const focusing = timerPhase === 'focus' && !!timer.snapshot?.running
+  useHoldPetScene('focus', focusing)
+  const lastPhase = useRef(timerPhase)
+  useEffect(() => {
+    if (lastPhase.current === 'focus' && (timerPhase === 'short' || timerPhase === 'long')) petCue('break')
+    lastPhase.current = timerPhase
+  }, [timerPhase])
 
   const loadSubjects = useCallback(async () => {
     try {

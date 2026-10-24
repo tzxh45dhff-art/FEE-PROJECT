@@ -9,6 +9,7 @@ import { ClipPlayer, type ClipMedia, type ClipStatus } from '@/features/party/Cl
 import { Segmented } from '@/features/party/Segmented'
 import { remaining, type PartyState } from '@/features/party/useParty'
 import { cn } from '@/lib/utils'
+import { petCue } from '@/features/pet/petCues'
 
 /**
  * Live trivia and guess the song, on screen — a game show.
@@ -546,12 +547,15 @@ export function QuizTable({
   /* A right answer is a moment — confetti on the screen of whoever got it. */
   const myGain = selfId ? view.gains[selfId] : undefined
   const celebrated = useRef(-1)
+  const answered = mine !== undefined
   useEffect(() => {
-    if (revealed && myGain && celebrated.current !== view.round) {
-      celebrated.current = view.round
+    if (!revealed || celebrated.current === view.round) return
+    celebrated.current = view.round
+    if (myGain) {
       void confetti({ particleCount: 70, spread: 70, startVelocity: 34, origin: { y: 0.55 }, colors: ['#bef264', '#fcd34d', '#f472b6', '#7dd3fc'], disableForReducedMotion: true })
-    }
-  }, [revealed, myGain, view.round])
+      petCue('right')
+    } else if (answered) petCue('wrong')
+  }, [revealed, myGain, view.round, answered])
 
   if (view.phase === 'over') return <Podium view={view} selfId={selfId} onLeaveTable={onLeaveTable} onPlayAgain={onPlayAgain} />
   if (!item) return null
@@ -1183,6 +1187,10 @@ function Podium({ view, selfId, onLeaveTable, onPlayAgain }: { view: QuizView; s
   const label = (p: Person) => (p.id === selfId ? 'You' : p.name)
   useEffect(() => {
     void confetti({ particleCount: 140, spread: 100, startVelocity: 42, origin: { y: 0.4 }, colors: ['#fcd34d', '#bef264', '#c4b5fd', '#f9a8d4'], disableForReducedMotion: true })
+    /* The pet takes it personally — but only if you were playing. */
+    const winner = ranked[0]
+    if (winner && view.players.some((p) => p.id === selfId)) petCue(winner.id === selfId ? 'win' : 'lose', winner.name)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const height = (p: Person) => (p === top[0] ? 'h-32' : p === top[1] ? 'h-24' : 'h-16')
   const cup = (p: Person) => (p === top[0] ? 'text-amber-300' : p === top[1] ? 'text-slate-200' : 'text-orange-400')

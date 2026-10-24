@@ -8,7 +8,19 @@ import type { Food, Person, Pet, PetAction, PetEvent, Species } from '@/features
  * did to it, and the last thing anyone said to it.
  */
 
-type Reply = { ok?: boolean; error?: string; reaction?: string; pet?: Pet | null }
+type Reply = { ok?: boolean; error?: string; reaction?: string; pet?: Pet | null; suggestion?: PetSuggestion; skip?: string }
+
+export type SuggestAction = 'none' | 'games' | 'watch' | 'study' | 'call' | 'feed' | 'play'
+export type PetSuggestion = { id: string; line: string; action: SuggestAction }
+export type SuggestMoment = 'arrived' | 'back' | 'idle' | 'gameover' | 'paused' | 'break'
+export type SuggestContext = {
+  moment: SuggestMoment
+  activity: string
+  hour: number
+  onCall: boolean
+  watching: string | null
+  result: 'win' | 'lose' | null
+}
 export type VoiceClip = { id: string; by: Person; blob: Blob }
 
 export function usePet(roomId: string | null) {
@@ -55,6 +67,21 @@ export function usePet(roomId: string | null) {
     }
   }, [roomId])
 
+  /*
+   * Walked off: it comes back on its own when its time is up, and every screen
+   * should see it walk back in without anyone having to touch anything.
+   */
+  const awayUntil = pet?.away?.until ?? null
+  useEffect(() => {
+    if (!roomId || !awayUntil) return
+    const timer = window.setTimeout(() => {
+      getSocket().emit('pet:get', { roomId }, (reply: Reply) => {
+        if (reply && 'pet' in reply) setPet(reply.pet ?? null)
+      })
+    }, Math.max(0, awayUntil - Date.now()) + 800)
+    return () => window.clearTimeout(timer)
+  }, [roomId, awayUntil])
+
   /* An error is a moment, not a state. */
   useEffect(() => {
     if (!error) return
@@ -85,5 +112,17 @@ export function usePet(roomId: string | null) {
     [call],
   )
 
-  return { pet, loaded, event, voice, adoptedBy, error, adopt, act, rename, sendVoice }
+  /* Quiet on purpose: a skipped or failed suggestion is the pet saying nothing, never an error. */
+  const suggest = useCallback(
+    (context: SuggestContext) =>
+      new Promise<PetSuggestion | null>((resolve) => {
+        if (!roomId) return resolve(null)
+        getSocket()
+          .timeout(10_000)
+          .emit('pet:suggest', { roomId, ...context }, (err: Error | null, reply: Reply) => resolve(err ? null : (reply?.suggestion ?? null)))
+      }),
+    [roomId],
+  )
+
+  return { pet, loaded, event, voice, adoptedBy, error, adopt, act, rename, sendVoice, suggest }
 }

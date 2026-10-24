@@ -762,6 +762,8 @@ model RoomPet {
   /// Grows with care; decides how big the pet is.
   xp        Int      @default(0)
   updatedAt DateTime @default(now())
+  /// Who it is upset with and whether it has walked off — JSON, see pet.rules `Feelings`.
+  feelings  String   @default("{}")
 
   room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
 }

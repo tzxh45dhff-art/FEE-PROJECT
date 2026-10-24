@@ -3,6 +3,7 @@ import type { Server, Socket } from 'socket.io'
 import * as messageModel from '../models/message.model.js'
 import { socketUser } from './presence.gateway.js'
 import { roomGuard } from './roomAuth.js'
+import { petHearsSorry } from './pet.gateway.js'
 
 /**
  * Room chat.
@@ -52,6 +53,8 @@ export function attachChatGateway(io: Server) {
          lingers on everyone else's screen until it times out. */
       io.to(roomId).emit('chat:typing', { roomId, user: self, typing: false })
       io.to(roomId).emit('chat:message', { roomId, message })
+      /* Saying sorry in chat reaches the pet too, if it is upset with you. */
+      void petHearsSorry(io, roomId, self, text).catch(() => undefined)
     })
 
     socket.on('chat:typing', async (raw: unknown) => {

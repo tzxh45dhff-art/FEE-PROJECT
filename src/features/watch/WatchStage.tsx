@@ -22,6 +22,7 @@ import { WatchControls } from '@/features/watch/WatchControls'
 import { WatchToasts } from '@/features/watch/WatchToasts'
 import { apiUrl } from '@/lib/config'
 import { cn } from '@/lib/utils'
+import { petCue, setPetWatching, useHoldPetScene, type PetCueKind } from '@/features/pet/petCues'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -37,6 +38,11 @@ const AUDIO_LANGUAGE_KEY = 'syncroom.audioLanguage'
  * Portalled to the body for the same reason the hub's drawer is — the hub's
  * fade leaves a `will-change` that would trap this under the fixed header.
  */
+/** What the pet makes of each reaction over a film. */
+const PET_REACTS: Record<string, PetCueKind> = {
+  laugh: 'laugh', dead: 'laugh', cry: 'aww', shock: 'gasp', love: 'love', fire: 'cheer', clap: 'cheer', popcorn: 'snack',
+}
+
 export function WatchStage({
   roomId,
   selfId,
@@ -103,6 +109,33 @@ export function WatchStage({
 
   /* Reactions floating over the film, and moments pinned in it. */
   const fun = useWatchFun(roomId, item?.id ?? null)
+
+  /*
+   * The pet watches along: it reacts with the room, and dozes off if the film
+   * sits paused for a while.
+   */
+  const lastReaction = useRef<string | null>(null)
+  useEffect(() => {
+    const latest = fun.reactions.at(-1)
+    if (!latest || latest.id === lastReaction.current) return
+    const fresh = lastReaction.current !== null || Date.now() - latest.at < 4000
+    lastReaction.current = latest.id
+    const kind = PET_REACTS[latest.reaction]
+    if (fresh && kind) petCue(kind, latest.from.name)
+  }, [fun.reactions])
+  const [dozing, setDozing] = useState(false)
+  const paused = !!item && !snapshot?.playing
+  useEffect(() => {
+    setDozing(false)
+    if (!paused) return
+    const timer = window.setTimeout(() => setDozing(true), 60_000)
+    return () => window.clearTimeout(timer)
+  }, [paused])
+  useHoldPetScene(dozing ? 'dozing' : 'watching', !!item)
+  useEffect(() => {
+    setPetWatching(item?.title ?? null)
+    return () => setPetWatching(null)
+  }, [item?.title])
   const seekRoom = useCallback(
     (seconds: number) => send('watch:control', { action: 'seek', position: seconds }),
     [send],

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { PetArt } from '@/features/pet/PetArt'
 import type { MimicMode } from '@/features/pet/useMimic'
 import { FOOD_EMOJI } from '@/features/pet/foods'
+import type { PetCue, PetCueKind, PetScene } from '@/features/pet/petCues'
 import type { Expression, Food, Pet, PetEvent, Reaction } from '@/features/pet/types'
 import { cn } from '@/lib/utils'
 
@@ -28,10 +29,33 @@ const REACT: Record<Reaction, { face: Expression; bump: 'squash' | 'jump' | 'sha
   grumpy: { face: 'grumpy', bump: 'shake', line: ['Hmph.', 'Rude.', 'Okay, that’s enough.'], hearts: 2, glyph: '💢' },
   play: { face: 'happy', bump: 'jump', line: ['Again! Again!', 'Wheee!', 'Catch me!'], hearts: 4, glyph: '⭐' },
   listen: { face: 'listen', bump: 'wiggle', line: [''] },
-  sulk: { face: 'sad', bump: 'shake', line: ['…not now.', 'I’m too hungry to play', 'Leave me alone…'], hearts: 1, glyph: '💧' },
+  sulk: { face: 'sad', bump: 'shake', line: ['That really hurt, {name}.', 'I’m going to sit over here.', 'Leave me alone, {name}…'], hearts: 2, glyph: '💧' },
+  /* Feelings. `{name}` is whoever did it. */
+  leave: { face: 'sad', bump: 'shake', line: ['That’s it. I’m leaving.', 'I need some space, {name}.', 'Bye.'], hearts: 3, glyph: '💧' },
+  turnaway: { face: 'grumpy', bump: 'shake', line: ['Not until you say sorry, {name}.', 'Hmph. No.', 'I’m not talking to you.'], hearts: 1, glyph: '💢' },
+  sniff: { face: 'sad', bump: 'wiggle', line: ['*sniff* …okay.', '…go on.', 'A little better…'], hearts: 1, glyph: '💗' },
+  forgive: { face: 'love', bump: 'jump', line: ['Okay… I forgive you, {name}', 'Friends again?', 'Fine. Come here, {name}.'], hearts: 7 },
+  away: { face: 'sad', bump: 'shake', line: [''] },
+  comfort: { face: 'purr', bump: 'wiggle', line: ['…thanks.', 'At least you’re nice to me.', '*sniffle*'], hearts: 2 },
 }
 
-const DID: Record<PetEvent['action'], string> = { feed: 'fed me', pet: 'stroked me', poke: 'poked me', tickle: 'tickled me', play: 'played with me', talk: 'talked to me' }
+/* What it makes of what is going on around it. `{name}` is whoever did it, if anyone. */
+const CUE: Record<PetCueKind, { face: Expression; bump: 'squash' | 'jump' | 'shake' | 'wiggle'; line: string[]; hearts?: number; glyph?: string }> = {
+  laugh: { face: 'giggle', bump: 'wiggle', line: ['Hahaha!', 'Stop, I can’t 😂', 'LOL'], hearts: 4, glyph: '✨' },
+  aww: { face: 'sad', bump: 'wiggle', line: ['Awww…', '*sniff*', 'That’s so sad'], hearts: 1, glyph: '💧' },
+  gasp: { face: 'ouch', bump: 'shake', line: ['WHAT?!', 'No way!', 'Did you see that?!'], hearts: 1, glyph: '❗' },
+  cheer: { face: 'happy', bump: 'jump', line: ['YESSS!', 'Woo!', 'That was so good'], hearts: 4, glyph: '⭐' },
+  love: { face: 'love', bump: 'jump', line: ['Awww 💗', 'I love this', 'So cute'], hearts: 4 },
+  snack: { face: 'yum', bump: 'squash', line: ['Can I have some?', 'Share? 🍿', 'Popcorn!!'], hearts: 2, glyph: '🍿' },
+  right: { face: 'happy', bump: 'jump', line: ['You got it!', 'Big brain!', 'Nailed it!'], hearts: 3, glyph: '⭐' },
+  wrong: { face: 'sad', bump: 'shake', line: ['Ooh, so close', 'Next one!', 'Hmm, nope'] },
+  win: { face: 'love', bump: 'jump', line: ['CHAMPION!!', 'You won!! 🏆', 'I knew you would!'], hearts: 7, glyph: '🎉' },
+  lose: { face: 'sad', bump: 'shake', line: ['Rematch?', 'Next time, for sure', '{name} got lucky.'], hearts: 1, glyph: '💧' },
+  break: { face: 'happy', bump: 'jump', line: ['Break time! Stretch!', 'You earned it', 'Water? Snack?'], hearts: 3, glyph: '✨' },
+  hello: { face: 'happy', bump: 'wiggle', line: ['You called?', 'Hi {name}!', 'That’s me!'], hearts: 2 },
+}
+
+const DID: Record<PetEvent['action'], string> = { feed: 'fed me', pet: 'stroked me', poke: 'hit me', tickle: 'tickled me', play: 'played with me', talk: 'talked to me', sorry: 'said sorry' }
 
 const REST: Record<Pet['mood'], Expression> = { hungry: 'hungry', sad: 'sad', happy: 'idle', okay: 'idle' }
 
@@ -47,6 +71,9 @@ export function LivePet({
   className,
   bubbleSide = 'top',
   onTap,
+  onStroke,
+  cue = null,
+  scene = 'none',
 }: {
   pet: Pet
   event: PetEvent | null
@@ -58,7 +85,14 @@ export function LivePet({
   speaker: string | null
   className?: string
   bubbleSide?: 'top' | 'right'
-  onTap?: (point: { x: number; y: number }) => void
+  /** A quick tap: a hit. */
+  onTap?: () => void
+  /** Rubbing across it: love. Fires again every so often while the rubbing goes on. */
+  onStroke?: () => void
+  /** Something happening around it — a laugh at the film, a right answer. */
+  cue?: PetCue | null
+  /** What it is doing in the background: watching along, dozing, keeping quiet. */
+  scene?: PetScene
 }) {
   const box = useRef<HTMLDivElement>(null)
   const [look, setLook] = useState({ x: 0, y: 0 })
@@ -90,7 +124,7 @@ export function LivePet({
       setReacting({ face: r.face, until: Date.now() + 2200 })
       setBumpKind(r.bump)
       setBump((b) => b + 1)
-      const line = pick(r.line, event.id)
+      const line = pick(r.line, event.id).replaceAll('{name}', event.by.name.split(' ')[0] ?? event.by.name)
       const who = event.by.id === selfId ? '' : event.by.name
       const action = event.action === 'feed' && event.food ? `${FOOD_EMOJI[event.food]} ` : ''
       if (line) setBubble({ id: event.id, text: `${action}${line}`, who: who ? `${who} ${event.reaction === 'full' ? 'tried to feed me' : DID[event.action]}` : undefined })
@@ -105,6 +139,25 @@ export function LivePet({
     }
     play()
   }, [event, selfId])
+
+  /*
+   * Whatever is going on around it. Not while it is upset — a sulking pet does
+   * not cheer — and only a face, no chatter, while someone is focusing.
+   */
+  const upset = pet.pose !== 'normal'
+  useEffect(() => {
+    if (!cue || upset) return
+    const r = CUE[cue.kind]
+    setReacting({ face: r.face, until: Date.now() + 2200 })
+    setBumpKind(r.bump)
+    setBump((b) => b + 1)
+    if (scene !== 'focus' || cue.kind === 'break') {
+      const line = pick(r.line, cue.id).replaceAll('{name}', cue.who?.split(' ')[0] ?? 'they')
+      setBubble({ id: cue.id, text: line })
+    }
+    if (r.hearts) setHearts({ id: cue.id, n: r.hearts, glyph: r.glyph ?? '💗' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cue])
 
   useEffect(() => {
     if (!bubble) return
@@ -124,9 +177,28 @@ export function LivePet({
     if (speaker) setBubble({ id: `voice-${speaker}-${Date.now()}`, text: `${speaker} says…` })
   }, [speaker])
 
+  /*
+   * How it is with *you*. Upset with you and no apology yet: it stays grumpy
+   * and won't look your way. Sulking in the corner: small and sad for
+   * everyone, eyes on the floor.
+   */
+  const mine = pet.grudges.find((g) => g.id === selfId)
+  const coldToMe = !!mine && mine.level !== 'wary' && !mine.sorry
+  const sulking = pet.pose === 'corner'
+  const rest: Expression = sulking ? 'sad' : coldToMe ? 'grumpy' : scene === 'dozing' ? 'sleepy' : REST[pet.mood]
   const face: Expression =
-    level > 0.04 || mimic === 'speaking' ? 'talk' : mimic === 'hearing' ? 'listen' : (reacting?.face ?? (mimic === 'listening' ? 'idle' : REST[pet.mood]))
-  const scale = { baby: 0.78, kid: 0.88, teen: 0.96, grown: 1.04 }[pet.stage]
+    level > 0.04 || mimic === 'speaking' ? 'talk' : mimic === 'hearing' ? 'listen' : (reacting?.face ?? (mimic === 'listening' ? 'idle' : rest))
+  const gaze = sulking ? { x: 0.25, y: 0.35 } : coldToMe ? { x: -look.x * 1.5, y: look.y } : look
+  const scale = { baby: 0.78, kid: 0.88, teen: 0.96, grown: 1.04 }[pet.stage] * (sulking ? 0.82 : 1)
+
+  /*
+   * One rule for a hand on the pet, decided by what the hand did rather than
+   * by a timer racing it: lifted after barely moving is a tap (a hit), moving
+   * across it is a stroke (love). A stroke keeps counting while you keep
+   * rubbing, but no faster than the pet can enjoy it.
+   */
+  const hand = useRef<{ x: number; y: number; at: number; travelled: number; stroked: boolean } | null>(null)
+  const lastStroke = useRef(0)
 
   return (
     <div ref={box} className={cn('relative select-none', className)}>
@@ -155,21 +227,98 @@ export function LivePet({
         )}
       </AnimatePresence>
 
+      {pet.pose === 'away' ? (
+        /* Gone for a while: an empty spot with a little bag disappearing off it. */
+        <div className="flex size-full items-end justify-center pb-[12%]" aria-label={`${pet.name} has gone off for a while`}>
+          <motion.span
+            aria-hidden
+            className="text-[2.2rem]"
+            initial={{ x: 0, opacity: 1 }}
+            animate={{ x: 70, opacity: 0 }}
+            transition={{ duration: 1.6, ease: 'easeIn' }}
+          >
+            🧳
+          </motion.span>
+          <span aria-hidden className="absolute bottom-[10%] h-3 w-1/2 rounded-[50%] bg-black/25" />
+        </div>
+      ) : (
       <motion.button
         type="button"
-        aria-label={`${pet.name} — tap to poke`}
+        aria-label={`${pet.name} — rub to stroke, tap to poke`}
         onPointerDown={(e) => {
-          const r = e.currentTarget.getBoundingClientRect()
-          onTap?.({ x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height })
+          if (e.button !== 0) return
+          e.currentTarget.setPointerCapture(e.pointerId)
+          hand.current = { x: e.clientX, y: e.clientY, at: Date.now(), travelled: 0, stroked: false }
         }}
-        className="block size-full cursor-pointer outline-none focus-visible:rounded-3xl focus-visible:outline-2 focus-visible:outline-signal"
-        animate={{ scale }}
+        onPointerMove={(e) => {
+          const h = hand.current
+          if (!h) return
+          h.travelled += Math.hypot(e.clientX - h.x, e.clientY - h.y)
+          h.x = e.clientX
+          h.y = e.clientY
+          if (h.travelled >= 40 && Date.now() - lastStroke.current > 900) {
+            h.stroked = true
+            h.travelled = 0
+            lastStroke.current = Date.now()
+            onStroke?.()
+          }
+        }}
+        onPointerUp={() => {
+          const h = hand.current
+          hand.current = null
+          if (h && !h.stroked && h.travelled < 14 && Date.now() - h.at < 600) onTap?.()
+        }}
+        onPointerCancel={() => (hand.current = null)}
+        onKeyDown={(e) => {
+          /* From a keyboard: Enter strokes. Nobody needs a key for hitting it. */
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onStroke?.()
+          }
+        }}
+        className="block size-full cursor-pointer touch-none outline-none focus-visible:rounded-3xl focus-visible:outline-2 focus-visible:outline-signal"
+        animate={{ scale, y: sulking ? '8%' : 0 }}
         transition={{ type: 'spring', stiffness: 120, damping: 14 }}
         style={{ originY: 1 }}
         whileTap={{ scale: scale * 0.97 }}
       >
-        <PetArt species={pet.species} expression={face} look={look} mouth={level} bump={bump} bumpKind={bumpKind} className="size-full drop-shadow-[0_18px_30px_rgba(0,0,0,.35)]" />
+        <PetArt species={pet.species} expression={face} look={gaze} mouth={level} bump={bump} bumpKind={bumpKind} className="size-full drop-shadow-[0_18px_30px_rgba(0,0,0,.35)]" />
       </motion.button>
+      )}
+
+      {/* Dozing through a paused film. */}
+      <AnimatePresence>
+        {scene === 'dozing' && !upset && !reacting && (
+          <motion.span
+            key="zzz"
+            aria-hidden
+            className="pointer-events-none absolute right-[18%] top-[12%] text-[1.1rem] font-bold text-white/70"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 1, 0], y: [0, -16], x: [0, 6] }}
+            exit={{ opacity: 0 }}
+            transition={{ repeat: Infinity, duration: 2.4, ease: 'easeOut' }}
+          >
+            z
+          </motion.span>
+        )}
+      </AnimatePresence>
+
+      {/* Sulking: its own little rain cloud. */}
+      <AnimatePresence>
+        {sulking && (
+          <motion.span
+            key="cloud"
+            aria-hidden
+            className="pointer-events-none absolute left-1/2 top-[14%] -ml-4 text-[1.9rem]"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: [0, -4, 0] }}
+            exit={{ opacity: 0 }}
+            transition={{ y: { repeat: Infinity, duration: 2.6, ease: 'easeInOut' }, opacity: { duration: 0.4 } }}
+          >
+            🌧️
+          </motion.span>
+        )}
+      </AnimatePresence>
 
       {/* Hearts (or sparkles, or stars), floating up and away, swaying as they go. */}
       <AnimatePresence>

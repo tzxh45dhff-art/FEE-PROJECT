@@ -16,6 +16,7 @@ import { EndGameButton } from '@/features/party/EndGameButton'
 import { usePageVisible } from '@/hooks/usePageVisible'
 import { cn } from '@/lib/utils'
 import { lazyChunk } from '@/lib/lazyChunk'
+import { petCue } from '@/features/pet/petCues'
 
 const PenFightTable = lazyChunk(() => import('@/features/games/penfight/PenFightTable'))
 
@@ -84,6 +85,14 @@ export function GamesStage({
   const partyView = party.party?.view as { phase?: string; players?: GamePlayer[] } | undefined
   const partyRunning = !!party.party && partyView?.phase !== 'over'
   const penRunning = screen === 'penfight' && !!snapshot && snapshot.winner === null
+
+  /* A pen fight decided: the pet cheers for you or sulks with you. */
+  const penWinner = snapshot?.winner ?? null
+  useEffect(() => {
+    if (penWinner === null || seat === null || !snapshot) return
+    petCue(penWinner === seat ? 'win' : 'lose', snapshot.players[penWinner]?.name)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [penWinner])
 
   const opponents = members.filter((member) => !member.you)
   /* What each quiz was last started with, so "Play again" is one tap. */

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Pencil, X } from 'lucide-react'
 
 import { FOOD_EMOJI } from '@/features/pet/foods'
 import { LivePet } from '@/features/pet/LivePet'
+import { PetFeelings } from '@/features/pet/PetFeelings'
 import { PetArt } from '@/features/pet/PetArt'
 import { Egg } from '@/features/pet/PetCorner'
 import type { useMimic } from '@/features/pet/useMimic'
@@ -193,9 +194,6 @@ function Care({ pets, selfId, mimic, level, speaker }: { pets: Pets; selfId: str
     if (e && e.action !== 'talk') setLog((l) => (l.some((x) => x.id === e.id) ? l : [e, ...l].slice(0, 4)))
   }, [pets.event])
 
-  /* Stroking: a drag across the pet counts as petting it, once per stroke. */
-  const stroke = useRef<{ x: number; y: number; travelled: number; sent: boolean } | null>(null)
-  const lastPet = useRef(0)
 
   const days = Math.max(1, Math.ceil((Date.now() - pet.bornAt) / 86_400_000))
   const next = NEXT_STAGE[pet.stage]
@@ -229,24 +227,7 @@ function Care({ pets, selfId, mimic, level, speaker }: { pets: Pets; selfId: str
           aria-hidden
           className="absolute bottom-[3.6rem] left-1/2 h-12 w-[15rem] -translate-x-1/2 rounded-[50%] border border-dashed border-white/15"
         />
-        <div
-          className="touch-none"
-          onPointerDown={(e) => (stroke.current = { x: e.clientX, y: e.clientY, travelled: 0, sent: false })}
-          onPointerMove={(e) => {
-            const s = stroke.current
-            if (!s || s.sent) return
-            s.travelled += Math.hypot(e.clientX - s.x, e.clientY - s.y)
-            s.x = e.clientX
-            s.y = e.clientY
-            if (s.travelled > 110 && Date.now() - lastPet.current > 1200) {
-              s.sent = true
-              lastPet.current = Date.now()
-              void pets.act('pet')
-            }
-          }}
-          onPointerUp={() => (stroke.current = null)}
-          onPointerLeave={() => (stroke.current = null)}
-        >
+        <div>
           <LivePet
             pet={pet}
             event={pets.event}
@@ -255,12 +236,8 @@ function Care({ pets, selfId, mimic, level, speaker }: { pets: Pets; selfId: str
             level={level}
             speaker={speaker}
             className="relative h-80 w-72 md:h-[24rem] md:w-80"
-            onTap={() => {
-              /* A tap is a poke unless it turns into a stroke. */
-              window.setTimeout(() => {
-                if (!stroke.current?.sent) void pets.act('poke')
-              }, 180)
-            }}
+            onTap={() => void pets.act('poke')}
+            onStroke={() => void pets.act('pet')}
           />
         </div>
         <p className="mt-3 text-[0.75rem] text-dusk">
@@ -270,8 +247,11 @@ function Care({ pets, selfId, mimic, level, speaker }: { pets: Pets; selfId: str
               ? 'Hearing you…'
               : mimic.mode === 'denied'
                 ? 'The microphone is blocked for this site'
-                : 'Tap to poke · drag across to stroke'}
+                : pet.pose === 'away'
+                  ? `${pet.name} isn’t here right now`
+                  : 'Rub to love · tap to hit'}
         </p>
+        <PetFeelings pet={pet} selfId={selfId} onSorry={() => void pets.act('sorry')} />
       </div>
 
       {/* Everything else. */}
@@ -413,7 +393,9 @@ function describe(e: PetEvent, name: string) {
     case 'pet':
       return `stroked ${name}`
     case 'poke':
-      return `poked ${name}${e.reaction === 'grumpy' ? ' (not a fan)' : ''}`
+      return e.reaction === 'leave' ? `hit ${name} one too many times — it left` : e.reaction === 'sulk' ? `hit ${name} — it’s sulking` : `hit ${name}`
+    case 'sorry':
+      return `said sorry to ${name}`
     case 'tickle':
       return `tickled ${name}`
     case 'play':
@@ -423,7 +405,7 @@ function describe(e: PetEvent, name: string) {
   }
 }
 
-const LOG_GLYPH: Record<PetEvent['action'], string> = { feed: '🍽️', pet: '🤚', poke: '👉', tickle: '🪶', play: '🎾', talk: '💬' }
+const LOG_GLYPH: Record<PetEvent['action'], string> = { feed: '🍽️', pet: '🤚', poke: '👊', tickle: '🪶', play: '🎾', talk: '💬', sorry: '🥺' }
 
 function Meter({ icon, label, value, tone, low, note }: { icon: string; label: string; value: number; tone: string; low?: string; note?: string }) {
   const v = Math.max(0, Math.min(100, value))
