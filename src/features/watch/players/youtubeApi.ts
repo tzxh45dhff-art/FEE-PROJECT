@@ -24,8 +24,18 @@ export type YTPlayer = {
   /** 0–100, unlike every other volume in this codebase. */
   setVolume: (level: number) => void
   getVolume: () => number
+  /*
+   * The captions module. Not in YouTube's published reference, but the same
+   * calls its own player makes: load the module, read its track list, pick a
+   * track by language — or an empty track to hide captions.
+   */
+  loadModule?: (module: 'captions') => void
+  getOption?: (module: 'captions', option: 'tracklist') => YTCaptionTrack[] | undefined
+  setOption?: (module: 'captions', option: 'track', value: { languageCode?: string }) => void
   destroy: () => void
 }
+
+export type YTCaptionTrack = { languageCode: string; displayName?: string; languageName?: string; kind?: string }
 
 export type YTNamespace = {
   Player: new (
@@ -38,6 +48,8 @@ export type YTNamespace = {
         onStateChange?: (event: { data: number; target: YTPlayer }) => void
         onError?: (event: { data: number; target: YTPlayer }) => void
         onAutoplayBlocked?: () => void
+        /** A module (captions, for one) finished loading and can be asked things. */
+        onApiChange?: (event: { target: YTPlayer }) => void
       }
     },
   ) => YTPlayer

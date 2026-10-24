@@ -12,7 +12,7 @@ import { QueuePanel } from '@/features/watch/QueuePanel'
 import { type Queued } from '@/features/watch/SourcePicker'
 import { WatchBrowser } from '@/features/watch/WatchBrowser'
 import { CoverAmbience } from '@/features/music/CoverAmbience'
-import type { AudioTrackInfo, PlayerHandle, QueueItem } from '@/features/watch/types'
+import type { AudioTrackInfo, PlayerHandle, QueueItem, SubtitleTrack } from '@/features/watch/types'
 import { useDriftCorrection } from '@/features/sync/useDriftCorrection'
 import { useWatchSession } from '@/features/watch/useWatchSession'
 import { WatchFun } from '@/features/fun/WatchFun'
@@ -94,6 +94,8 @@ export function WatchStage({
   const [audioTrack, setAudioTrackState] = useState(0)
   /** Index into the item's subtitle list, or -1 for off. Also personal. */
   const [subtitleTrack, setSubtitleTrackState] = useState(-1)
+  /** The caption tracks the YouTube video on screen has, from YouTube itself. */
+  const [youTubeCaptions, setYouTubeCaptions] = useState<SubtitleTrack[]>([])
   /** True while the player is stalled, so a freeze reads as loading. */
   const [buffering, setBuffering] = useState(false)
 
@@ -214,6 +216,30 @@ export function WatchStage({
 
     stageRef.current.requestFullscreen().catch(() => undefined)
   }, [handle])
+
+  /** Play or pause for the whole room, from the controls or a click on the picture. */
+  const playPause = useCallback(() => {
+    if (!snapshot) return
+    send('watch:control', {
+      action: snapshot.playing ? 'pause' : 'play',
+      position: embeddable && handle ? handle.getPosition() : undefined,
+    })
+  }, [snapshot, send, embeddable, handle])
+
+  /*
+   * A click on the picture plays or pauses; a double-click goes fullscreen.
+   * The single click waits a beat so a double-click doesn't also pause and
+   * resume the room on its way to fullscreen.
+   */
+  const clickTimer = useRef<ReturnType<typeof setTimeout>>(null)
+  const onPictureClick = useCallback(() => {
+    if (clickTimer.current) clearTimeout(clickTimer.current)
+    clickTimer.current = setTimeout(playPause, 220)
+  }, [playPause])
+  const onPictureDoubleClick = useCallback(() => {
+    if (clickTimer.current) clearTimeout(clickTimer.current)
+    toggleFullscreen()
+  }, [toggleFullscreen])
 
 
   useEffect(() => {
@@ -558,6 +584,26 @@ export function WatchStage({
                 onHandle={setHandle}
                 onEnded={onEnded}
                 onError={setError}
+                onCaptions={setYouTubeCaptions}
+              />
+            )}
+
+            {/*
+              A clear layer over YouTube's picture.
+
+              Mouse movement over an iframe goes to the iframe, not to us: YouTube
+              drew its own title, share button, "More videos" and logo on every
+              hover, and the stage never saw the movement, so Huddle's controls
+              only came back near the bottom edge. Covering the picture keeps the
+              pointer ours — YouTube stays a picture, Huddle stays the player.
+              Last in this box so it sits above the iframe but below the controls.
+            */}
+            {item?.source === 'youtube' && (
+              <div
+                aria-hidden
+                className="absolute inset-0"
+                onClick={onPictureClick}
+                onDoubleClick={onPictureDoubleClick}
               />
             )}
 
@@ -775,16 +821,11 @@ export function WatchStage({
                 audioTracks={audioTracks}
                 audioTrack={audioTrack}
                 onAudioTrackChange={onAudioTrackChange}
-                subtitles={item?.subtitles ?? []}
+                subtitles={item?.source === 'youtube' ? youTubeCaptions : (item?.subtitles ?? [])}
                 subtitleTrack={subtitleTrack}
                 onSubtitleTrackChange={onSubtitleTrackChange}
                 onToggleQueue={() => setQueueOpen((open) => !open)}
-                onPlayPause={() =>
-                  send('watch:control', {
-                    action: snapshot.playing ? 'pause' : 'play',
-                    position: embeddable && handle ? handle.getPosition() : undefined,
-                  })
-                }
+                onPlayPause={playPause}
                 onSeek={(seconds) => send('watch:control', { action: 'seek', position: seconds })}
                 onRate={(rate) => send('watch:control', { action: 'rate', rate })}
                 onSkip={skip}

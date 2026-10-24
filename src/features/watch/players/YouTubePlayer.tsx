@@ -5,7 +5,7 @@ import {
   youtubeError,
   type YTPlayer,
 } from '@/features/watch/players/youtubeApi'
-import type { PlayerHandle } from '@/features/watch/types'
+import type { PlayerHandle, SubtitleTrack } from '@/features/watch/types'
 
 /**
  * YouTube, driven by us rather than by its own chrome.
@@ -21,6 +21,7 @@ export function YouTubePlayer({
   onHandle,
   onEnded,
   onError,
+  onCaptions,
 }: {
   videoId: string
   /**
@@ -37,6 +38,8 @@ export function YouTubePlayer({
   onHandle: (handle: PlayerHandle | null) => void
   onEnded: () => void
   onError: (message: string) => void
+  /** The caption tracks this video has, for the CC menu. Empty when it has none. */
+  onCaptions: (tracks: SubtitleTrack[]) => void
 }) {
   const mount = useRef<HTMLDivElement>(null)
   /** The node handed to the API — ours to create and remove, never React's. */
@@ -59,6 +62,46 @@ export function YouTubePlayer({
   endedRef.current = onEnded
   errorRef.current = onError
   handleRef.current = onHandle
+  const captionsRef = useRef(onCaptions)
+  captionsRef.current = onCaptions
+
+  /*
+   * Captions are personal and start off, like a film's subtitles. `wantedCaption`
+   * is this viewer's pick (a language code, or null for off); `captionTracks`
+   * is what YouTube says this video has, in the order the menu shows them.
+   */
+  const captionTracks = useRef<SubtitleTrack[]>([])
+  const wantedCaption = useRef<string | null>(null)
+  /** Which video the captions module was last asked to load for. */
+  const captionsFor = useRef<string | null>(null)
+
+  /** Put YouTube's captions where this viewer wants them. */
+  const applyCaption = (target: YTPlayer | null) => {
+    try {
+      target?.setOption?.('captions', 'track', wantedCaption.current ? { languageCode: wantedCaption.current } : {})
+    } catch {
+      /* Module not there yet; onApiChange applies it once it is. */
+    }
+  }
+
+  /** Read the video's caption tracks once YouTube has them, and re-apply the pick. */
+  const readCaptions = (target: YTPlayer) => {
+    try {
+      const list = target.getOption?.('captions', 'tracklist') ?? []
+      const tracks = list.map((track) => ({
+        language: track.languageCode,
+        label: track.displayName || track.languageName || track.languageCode,
+        /* Not a file: a stable key for the menu, prefixed so it can never
+           collide with a real subtitle URL. */
+        url: `youtube:${track.languageCode}:${track.kind ?? ''}`,
+      }))
+      captionTracks.current = tracks
+      captionsRef.current(tracks)
+    } catch {
+      /* The module went away mid-read. */
+    }
+    applyCaption(target)
+  }
 
   /*
    * Built once, then re-pointed.
@@ -134,10 +177,20 @@ export function YouTubePlayer({
                   /* The player went away between the event and this handler. */
                 }
               },
-              onStateChange: ({ data }) => {
+              onApiChange: ({ target }) => {
+                if (!disposed) readCaptions(target)
+              },
+              onStateChange: ({ data, target }) => {
                 if (disposed) return
                 try {
                   buffering.current = data === YT.PlayerState.BUFFERING
+                  /* Caption tracks are only known once a video is actually
+                     playing; ask for them once per video. */
+                  if (data === YT.PlayerState.PLAYING && captionsFor.current !== loadedVideo.current) {
+                    captionsFor.current = loadedVideo.current
+                    target.loadModule?.('captions')
+                    applyCaption(target)
+                  }
                   /* Only when this player is the room's — a paused, inactive
                      player reaching its end must not advance the queue. */
                   if (data === YT.PlayerState.ENDED && activeRef.current) endedRef.current()
@@ -220,6 +273,10 @@ export function YouTubePlayer({
     if (loadedVideo.current === videoId) return
 
     loadedVideo.current = videoId
+    /* A new video starts with captions off and no tracks until it says otherwise. */
+    wantedCaption.current = null
+    captionTracks.current = []
+    captionsRef.current([])
     try {
       player.current.loadVideoById({
         videoId,
@@ -272,13 +329,16 @@ export function YouTubePlayer({
       /* YouTube only accepts its own rate list, so drift is corrected by
          seeking rather than by nudging the speed. */
       supportsFineRate: false,
-      /* The iframe API has no alternate-audio concept to expose, and YouTube
-         draws its own captions inside the iframe where we can't reach them. */
+      /* The iframe API has no alternate-audio concept to expose. Captions are
+         YouTube's own, drawn inside the iframe, but it lets us pick them. */
       getAudioTracks: () => [],
       getAudioTrack: () => 0,
       setAudioTrack: () => undefined,
-      getSubtitleTrack: () => -1,
-      setSubtitleTrack: () => undefined,
+      getSubtitleTrack: () => captionTracks.current.findIndex((track) => track.language === wantedCaption.current),
+      setSubtitleTrack: (index) => {
+        wantedCaption.current = captionTracks.current[index]?.language ?? null
+        applyCaption(instance)
+      },
     }
 
     onHandle(handle)
