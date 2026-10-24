@@ -304,6 +304,21 @@ async function askPiped(instance: string, query: string, music: boolean): Promis
 }
 
 /**
+ * The Data API returns titles HTML-escaped (`Don&#39;t`), unlike every other
+ * source — left alone, the entity shows up as text on the page.
+ */
+function unescapeHtml(text: string) {
+  return text
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code: string) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
+/**
  * When YouTube last refused the key for quota or rate. Until this passes the
  * key is not tried at all: every search would fail the same way, and making
  * each one wait for that refusal before the fallback is pure delay.
@@ -365,8 +380,8 @@ export async function searchYouTube(query: string, options: { music?: boolean } 
     .filter((item) => item.id?.videoId)
     .map((item) => ({
       id: item.id!.videoId!,
-      title: item.snippet?.title ?? 'Untitled',
-      channel: item.snippet?.channelTitle ?? '',
+      title: unescapeHtml(item.snippet?.title ?? 'Untitled'),
+      channel: unescapeHtml(item.snippet?.channelTitle ?? ''),
       thumbnail:
         item.snippet?.thumbnails?.medium?.url ??
         item.snippet?.thumbnails?.default?.url ??

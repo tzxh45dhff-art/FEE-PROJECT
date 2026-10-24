@@ -114,6 +114,24 @@ export async function addToPlaylist(roomId: string, playlistId: string, track: T
   return findPlaylist(roomId, playlistId)
 }
 
+/**
+ * Put a song at a known place in a playlist, for an import.
+ *
+ * Imported songs are found in parallel and land out of order, so each carries
+ * its place in the original list rather than going on the end — the playlist
+ * fills in its gaps and finishes in the order it was made in.
+ */
+export async function placeInPlaylist(playlistId: string, track: TrackInput, position: number) {
+  const already = await prisma.playlistTrack.findFirst({
+    where: { playlistId, source: track.source, ref: track.ref },
+    select: { id: true },
+  })
+  if (already) return false
+
+  await prisma.playlistTrack.create({ data: { ...normalise(track), playlistId, position } })
+  return true
+}
+
 export async function removeFromPlaylist(roomId: string, playlistId: string, trackId: string) {
   const playlist = await prisma.playlist.findFirst({
     where: { id: playlistId, roomId },

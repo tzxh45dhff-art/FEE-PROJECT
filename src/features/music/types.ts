@@ -85,13 +85,31 @@ export type LibraryTrack = {
 
 export type PlaylistTrack = LibraryTrack & { id: string; position: number }
 
+/** How far an import from Spotify or Apple Music has got. */
+export type ImportProgress = {
+  total: number
+  done: number
+  found: number
+  /** "Title — Artist" for each song YouTube Music did not have. */
+  missed: string[]
+  finished: boolean
+}
+
 export type Playlist = {
   id: string
   name: string
   createdAt: string
   createdBy: { id: string; name: string }
   tracks: PlaylistTrack[]
+  /** Present while an import is filling this playlist, and briefly after. */
+  importing?: ImportProgress | null
 }
+
+/** A Spotify or Apple Music playlist or album link — imported rather than played. */
+export const isExternalPlaylistLink = (value: string) =>
+  /^https?:\/\/((open|play)\.spotify\.com\/(.*\/)?(playlist|album)\/|(embed\.)?music\.apple\.com\/.*\/(playlist|album)\/|spotify\.link\/|spoti\.fi\/)/i.test(
+    value.trim(),
+  )
 
 export type LikedTrack = LibraryTrack & { id: string; createdAt: string }
 

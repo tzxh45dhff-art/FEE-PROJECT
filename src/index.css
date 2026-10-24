@@ -653,10 +653,34 @@
   }
 }
 
+/*
+ * The cover-light behind the player, drifting and breathing.
+ *
+ * No rotation: with the record already turning in the middle of the page, a
+ * background that turned too made the whole screen feel like it was spinning.
+ * A slow wander and swell keeps the colour alive without any visible motion
+ * to follow.
+ */
+@keyframes music-swirl {
+  0% {
+    transform: translate3d(-4%, -3%, 0) scale(1.04);
+  }
+  33% {
+    transform: translate3d(3%, -1%, 0) scale(1.12);
+  }
+  66% {
+    transform: translate3d(-1%, 4%, 0) scale(1.08);
+  }
+  100% {
+    transform: translate3d(-4%, -3%, 0) scale(1.04);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  /* Both of these are pure decoration, and both are large moving areas —
+  /* All of these are pure decoration, and all are large moving areas —
      exactly what this preference exists to switch off. */
   [style*='music-spin'],
+  [style*='music-swirl'],
   [style*='music-drift'] {
     animation: none !important;
   }

@@ -71,7 +71,7 @@ export function MusicDock({
               /* Tinted by the cover, faintly. Enough to feel like the record on
                  the page, not enough to fight the screen behind it. */
               background: palette
-                ? `color-mix(in oklab, ${palette.base} 42%, rgba(6,6,8,0.82))`
+                ? `color-mix(in oklab, ${palette.base} 34%, rgba(6,6,8,0.85))`
                 : 'rgba(6,6,8,0.82)',
             }}
           >

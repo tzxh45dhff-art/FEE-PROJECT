@@ -1,7 +1,23 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type CSSProperties } from 'react'
 
 import { BAND_COUNT } from '@/features/music/useAudioAnalyser'
 import { cn } from '@/lib/utils'
+
+/**
+ * How far to zoom a cover so a circle shows only the art.
+ *
+ * YouTube's standard thumbnails are 4:3 with the picture letterboxed inside
+ * them — and for a "Topic" upload the picture is itself a square cover
+ * pillarboxed into 16:9. Cropped to a circle as-is, that leaves black bars
+ * across the top and bottom of the record. Zooming by 4/3 cuts exactly to the
+ * square in the middle, which is the album art.
+ */
+function coverCrop(artwork: string): CSSProperties | undefined {
+  if (/ytimg\.com\/vi\/[^/]+\/(hq|mq|sd)?default\.jpg/.test(artwork)) {
+    return { transform: 'scale(1.34)' }
+  }
+  return undefined
+}
 
 /**
  * The record, and the sound coming off it.
@@ -12,7 +28,8 @@ import { cn } from '@/lib/utils'
  * it per frame would cost far more than letting CSS hold it still while only
  * the reactive part redraws.
  *
- * The rotation is CSS too, driven by an animation that is paused rather than
+ * The disc is the album cover itself, cut round. The rotation is CSS too,
+ * driven by an animation that is paused rather than
  * removed. A record that stops when the music stops and picks up from the same
  * groove is the entire charm of the thing; restarting at zero every time would
  * read as a glitch.
@@ -148,36 +165,37 @@ export function Vinyl({
       <div aria-hidden className="absolute inset-[14%] rounded-full shadow-[0_30px_80px_-20px_rgba(0,0,0,0.85)]" />
 
       <div
-        className="absolute inset-[14%] rounded-full will-change-transform"
+        className="absolute inset-[14%] overflow-hidden rounded-full bg-[#0b0b0d] will-change-transform"
         style={{
-          /* The disc itself: black vinyl with a sheen across it, and grooves
-             drawn as a repeating gradient rather than a texture file. */
-          background:
-            'repeating-radial-gradient(circle at 50% 50%, #0b0b0d 0px, #141417 2px, #0b0b0d 4px)',
-          animation: 'music-spin 7s linear infinite',
+          animation: 'music-spin 14s linear infinite',
           animationPlayState: playing ? 'running' : 'paused',
         }}
       >
-        <span
-          aria-hidden
-          className="absolute inset-0 rounded-full bg-[linear-gradient(115deg,transparent_38%,rgba(255,255,255,0.09)_47%,transparent_56%)]"
-        />
+        {/* The whole face is the cover — the record *is* the album. */}
+        {artwork ? (
+          <img
+            src={artwork}
+            alt=""
+            draggable={false}
+            className="size-full select-none object-cover"
+            style={coverCrop(artwork)}
+          />
+        ) : (
+          /* No cover: the face stays, in the app's own colours, rather than
+             leaving a black hole where the album should be. */
+          <span className="block size-full bg-gradient-to-br from-signal/80 via-signal-deep to-void" />
+        )}
 
-        {/* A real record's label is about a third of its face — smaller reads
-            as a sticker, larger stops looking like vinyl at all. */}
-        <span className="absolute inset-[32%] overflow-hidden rounded-full ring-1 ring-inset ring-white/15">
-          {artwork ? (
-            <img src={artwork} alt="" className="size-full object-cover" />
-          ) : (
-            /* No cover: the label stays, in the app's own colours, rather than
-               leaving a hole in the middle of the record. */
-            <span className="grid size-full place-items-center bg-gradient-to-br from-signal/70 to-signal-deep" />
-          )}
-        </span>
-
-        {/* The spindle hole, punched through whatever is behind it. */}
-        <span className="absolute left-1/2 top-1/2 size-[4.5%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-void ring-1 ring-white/20" />
       </div>
+
+      {/* The sheen stays put while the record turns under it — a highlight
+          that rotated with the disc would read as a mark on the art, not light
+          on a surface. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-[14%] rounded-full bg-[linear-gradient(125deg,rgba(255,255,255,0.16)_0%,transparent_30%,transparent_62%,rgba(255,255,255,0.07)_78%,transparent_92%)] ring-1 ring-inset ring-white/15"
+      />
+
     </div>
   )
 }

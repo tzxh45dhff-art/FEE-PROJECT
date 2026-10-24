@@ -18,10 +18,54 @@ import { useEffect, useState } from 'react'
 export type CoverPalette = {
   /** The cover's dominant colour, already lifted to something legible on black. */
   base: string
-  /** A second colour for the gradient to travel to. */
+  /** A second colour for the gradient to travel to — the cover's own, when it has one. */
   accent: string
+  /** A third, for the smallest bloom. */
+  glow: string
+  /** The dominant colour at full brightness, for things drawn *on* the page. */
+  vivid: string
+  /**
+   * The cover itself, shrunk, blurred and saturated, as a data URL — the
+   * page's background is this, so it is the album's own colours in the
+   * album's own places rather than a guess at them.
+   */
+  wash: string | null
   /** True when the artwork is dark enough that text needs its own ground. */
   dark: boolean
+}
+
+/**
+ * A tiny, soft copy of the cover to stretch across the page.
+ *
+ * Blurred here, once, into a 64px image — not with a CSS blur on a
+ * full-screen layer, which is the single most expensive thing to ask a phone
+ * to draw and once left half the player unpainted on a foldable. Stretched to
+ * fill the screen, a 64px image that is already soft just looks like light.
+ * Where the canvas has no `filter` (older Safari) the image is drawn smaller
+ * still, and the browser's own upscale does the softening.
+ */
+function makeWash(image: HTMLImageElement, sx: number, sy: number, side: number): string | null {
+  const probe = document.createElement('canvas').getContext('2d')
+  const canFilter = probe !== null && 'filter' in probe
+  const size = canFilter ? 64 : 20
+
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const context = canvas.getContext('2d')
+  if (!context) return null
+
+  if (canFilter) context.filter = 'blur(5px) saturate(1.7) brightness(1.08)'
+  /* Drawn past the edges so the blur has colour to pull in, rather than
+     fading to transparent around the border. */
+  const bleed = canFilter ? size * 0.2 : 0
+  context.drawImage(image, sx, sy, side, side, -bleed, -bleed, size + bleed * 2, size + bleed * 2)
+
+  try {
+    return canvas.toDataURL('image/jpeg', 0.9)
+  } catch {
+    return null
+  }
 }
 
 /** Bucketed to 32 levels per channel — exact colours cluster into one anyway. */
@@ -81,7 +125,13 @@ export function useCoverPalette(artwork: string | null | undefined): CoverPalett
         const context = canvas.getContext('2d', { willReadFrequently: true })
         if (!context) return
 
-        context.drawImage(image, 0, 0, size, size)
+        /* The middle square only: YouTube thumbnails letterbox their picture,
+           and the bars are not part of anybody's album. */
+        const side = Math.min(image.naturalWidth, image.naturalHeight) * 0.74
+        const sx = (image.naturalWidth - side) / 2
+        const sy = (image.naturalHeight - side) / 2
+        context.drawImage(image, sx, sy, side, side, 0, 0, size, size)
+        const wash = makeWash(image, sx, sy, side)
         const { data } = context.getImageData(0, 0, size, size)
 
         const counts = new Map<string, { count: number; r: number; g: number; b: number }>()
@@ -111,33 +161,61 @@ export function useCoverPalette(artwork: string | null | undefined): CoverPalett
           }
         }
 
-        const ranked = [...counts.values()].sort((a, b) => b.count - a.count)
-        if (ranked.length === 0) {
-          setPalette(null)
+        /*
+         * Weighted by how colourful a cluster is as well as how big. Ranking
+         * on size alone picks the large dull region of a cover — the grey
+         * wall behind the singer — over the red jacket that everyone would
+         * actually call the colour of the album.
+         */
+        const clusters = [...counts.values()].map((cluster) => {
+          const colour = toHsl(cluster.r / cluster.count, cluster.g / cluster.count, cluster.b / cluster.count)
+          return { ...colour, weight: cluster.count * (0.35 + colour.s) }
+        })
+        clusters.sort((a, b) => b.weight - a.weight)
+
+        if (clusters.length === 0) {
+          /* A black-and-white cover: no colour to name, but its own picture
+             is still the right background. */
+          setPalette({
+            base: 'hsl(0 0% 30%)',
+            accent: 'hsl(0 0% 22%)',
+            glow: 'hsl(0 0% 26%)',
+            vivid: 'hsl(0 0% 82%)',
+            dark: true,
+            wash,
+          })
           return
         }
 
-        const dominant = ranked[0]!
-        const average = {
-          r: dominant.r / dominant.count,
-          g: dominant.g / dominant.count,
-          b: dominant.b / dominant.count,
+        /* Up to three genuinely different colours from the cover itself. */
+        const hueGap = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b))
+        const picked = [clusters[0]!]
+        for (const cluster of clusters) {
+          if (picked.length === 3) break
+          if (picked.every((one) => hueGap(one.h, cluster.h) > 28)) picked.push(cluster)
         }
-        const { h, s, l } = toHsl(average.r, average.g, average.b)
 
+        const dominant = picked[0]!
         /*
-         * Pushed towards something that works as a *background*. The literal
-         * dominant colour of a cover is often either muddy or fluorescent, and
-         * either one behind an entire page is unreadable — so saturation is
-         * floored and capped, and lightness is pinned into a narrow dark band.
+         * Lifted into a band that glows on a dark page without washing it
+         * out: saturation floored so a muted cover still has a colour, and
+         * lightness held in the middle so white text stays readable over it.
          */
-        const saturation = Math.min(0.72, Math.max(0.38, s))
-        const second = (h + 42) % 360
+        const tone = (colour: { h: number; s: number }, lightness: number) => {
+          const saturation = Math.min(0.92, Math.max(0.55, colour.s * 1.25))
+          return `hsl(${colour.h.toFixed(0)} ${(saturation * 100).toFixed(0)}% ${lightness}%)`
+        }
+        /* A one-colour cover: neighbours of its own hue rather than nothing. */
+        const second = picked[1] ?? { h: (dominant.h + 34) % 360, s: dominant.s }
+        const third = picked[2] ?? { h: (dominant.h + 330) % 360, s: dominant.s }
 
         setPalette({
-          base: `hsl(${h.toFixed(0)} ${(saturation * 100).toFixed(0)}% 24%)`,
-          accent: `hsl(${second.toFixed(0)} ${(saturation * 100).toFixed(0)}% 16%)`,
-          dark: l < 0.45,
+          base: tone(dominant, 40),
+          accent: tone(second, 34),
+          glow: tone(third, 38),
+          vivid: tone(dominant, 64),
+          dark: dominant.l < 0.45,
+          wash,
         })
       } catch {
         /* A tainted canvas — see the note on `crossOrigin` above. */

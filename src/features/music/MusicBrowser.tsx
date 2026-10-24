@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  ArrowLeft,
+  Check,
   Heart,
+  Link2,
   ListMusic,
   Loader2,
   Music4,
+  Play,
   Plus,
   Search,
+  Shuffle,
   Sparkles,
   Trash2,
   Upload,
@@ -25,10 +30,12 @@ import * as musicApi from '@/features/music/api'
 import { useMusic } from '@/features/music/MusicContext'
 import { TrackCard, TrackGrid } from '@/features/music/TrackCard'
 import { TrackRow } from '@/features/music/TrackRow'
-import type {
-  LibraryTrack,
-  Playlist,
-  TrackSearchResult,
+import {
+  isExternalPlaylistLink,
+  trackKey,
+  type LibraryTrack,
+  type Playlist,
+  type TrackSearchResult,
 } from '@/features/music/types'
 import type { useLibrary } from '@/features/music/useLibrary'
 import { cn } from '@/lib/utils'
@@ -55,6 +62,26 @@ const fromSearch = (result: TrackSearchResult): LibraryTrack => ({
   duration: null,
 })
 
+/** The fields the queue takes — a playlist row carries an id and position too. */
+const toResolved = (track: LibraryTrack) => ({
+  source: track.source,
+  ref: track.ref,
+  title: track.title,
+  artist: track.artist,
+  album: track.album,
+  artwork: track.artwork,
+  duration: track.duration,
+})
+
+function shuffle<T>(items: T[]): T[] {
+  const copy = [...items]
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[copy[i], copy[j]] = [copy[j]!, copy[i]!]
+  }
+  return copy
+}
+
 /**
  * The library half of the music app.
  *
@@ -80,7 +107,15 @@ export function MusicBrowser({
   const [results, setResults] = useState<TrackSearchResult[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [openPlaylist, setOpenPlaylist] = useState<Playlist | null>(null)
+  /*
+   * The open playlist by id, read from the library each render.
+   *
+   * Holding the playlist object itself froze it at the moment it was opened:
+   * songs added to it, removed from it, or arriving from an import all changed
+   * the library but never the page showing it.
+   */
+  const [openPlaylistId, setOpenPlaylistId] = useState<string | null>(null)
+  const openPlaylist = library.playlists.find((one) => one.id === openPlaylistId) ?? null
   const [suggestions, setSuggestions] = useState<{
     history: LibraryTrack[]
     more: TrackSearchResult[]
@@ -135,21 +170,40 @@ export function MusicBrowser({
       if (!roomId) return
       setError(null)
       try {
-        const queued = await musicApi.addToQueue(roomId, {
-          source: track.source,
-          ref: track.ref,
-          title: track.title,
-          artist: track.artist,
-          album: track.album,
-          artwork: track.artwork,
-          duration: track.duration,
-        })
+        const queued = await musicApi.addToQueue(roomId, toResolved(track))
         onQueued(queued, playNow)
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Could not add that')
       }
     },
     [roomId, onQueued],
+  )
+
+  /** A whole playlist onto the queue, the first song on now. */
+  const playAll = useCallback(
+    async (tracks: LibraryTrack[], shuffled: boolean) => {
+      if (!roomId || tracks.length === 0) return
+      setError(null)
+      const order = shuffled ? shuffle(tracks) : tracks
+      try {
+        const queued = await musicApi.addManyToQueue(roomId, order.slice(0, 200).map(toResolved))
+        onQueued(queued, true)
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Could not play that')
+      }
+    },
+    [roomId, onQueued],
+  )
+
+  const importLink = useCallback(
+    async (link: string) => {
+      const created = await library.importPlaylist(link)
+      if (created) {
+        setView('playlists')
+        setOpenPlaylistId(created.id)
+      }
+    },
+    [library],
   )
 
   const play = useCallback(
@@ -166,6 +220,13 @@ export function MusicBrowser({
     setResults(null)
 
     try {
+      /* A Spotify or Apple Music list cannot play here, but its songs can. */
+      if (isExternalPlaylistLink(value)) {
+        await importLink(value)
+        setQuery('')
+        return
+      }
+
       const looksLikeLink = /^https?:\/\//i.test(value) || /^[\w-]{11}$/.test(value)
 
       /* A pasted link is an instruction, not a query — resolving it names the
@@ -188,7 +249,7 @@ export function MusicBrowser({
     } finally {
       setBusy(false)
     }
-  }, [query, roomId, canSearch, enqueue])
+  }, [query, roomId, canSearch, enqueue, importLink])
 
   const upload = useCallback(
     async (file: File | undefined) => {
@@ -304,7 +365,7 @@ export function MusicBrowser({
                 type="button"
                 onClick={() => {
                   setView(entry.id)
-                  setOpenPlaylist(null)
+                  setOpenPlaylistId(null)
                 }}
                 className={cn(
                   'relative flex min-h-11 shrink-0 items-center gap-2.5 rounded-full px-3.5 py-2 text-left outline-none transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal md:min-h-0 md:rounded-xl',
@@ -359,15 +420,47 @@ export function MusicBrowser({
               transition={{ duration: 0.3, ease: EASE }}
             >
               <div className="shrink-0 pb-3">
+                {openPlaylist && (
+                  <button
+                    type="button"
+                    onClick={() => setOpenPlaylistId(null)}
+                    className="-ml-1 mb-1.5 flex items-center gap-1.5 rounded-full px-1 py-0.5 text-[0.76rem] text-mist outline-none transition-colors hover:text-chalk focus-visible:outline-2 focus-visible:outline-signal"
+                  >
+                    <ArrowLeft aria-hidden className="size-3.5" />
+                    All playlists
+                  </button>
+                )}
                 <h2 className="font-display text-[clamp(1.5rem,3vw,2rem)] font-semibold tracking-[-0.03em] text-chalk">
                   {openPlaylist ? openPlaylist.name : heading.label}
                 </h2>
                 {openPlaylist && (
-                  <p className="mt-1 text-[0.78rem] text-dusk">
-                    {openPlaylist.tracks.length}{' '}
-                    {openPlaylist.tracks.length === 1 ? 'song' : 'songs'} · made by{' '}
-                    {openPlaylist.createdBy.name}
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <p className="text-[0.78rem] text-dusk">
+                      {openPlaylist.tracks.length}{' '}
+                      {openPlaylist.tracks.length === 1 ? 'song' : 'songs'} · made by{' '}
+                      {openPlaylist.createdBy.name}
+                    </p>
+                    {openPlaylist.tracks.length > 0 && (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void playAll(openPlaylist.tracks, false)}
+                          className="flex h-9 items-center gap-1.5 rounded-full bg-chalk px-4 text-[0.8rem] font-medium text-void outline-none transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                        >
+                          <Play aria-hidden className="size-3.5 fill-current" />
+                          Play all
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void playAll(openPlaylist.tracks, true)}
+                          className="flex h-9 items-center gap-1.5 rounded-full border border-white/12 px-4 text-[0.8rem] text-chalk outline-none transition-colors hover:border-white/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                        >
+                          <Shuffle aria-hidden className="size-3.5" />
+                          Shuffle
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -420,7 +513,9 @@ export function MusicBrowser({
                   {openPlaylist ? (
                     <PlaylistDetail
                       playlist={openPlaylist}
+                      roomId={roomId}
                       rowProps={rowProps}
+                      onAdd={(track) => library.addToPlaylist(openPlaylist.id, track)}
                       onRemove={(trackId) =>
                         void library.removeFromPlaylist(openPlaylist.id, trackId)
                       }
@@ -432,7 +527,8 @@ export function MusicBrowser({
                   ) : view === 'playlists' ? (
                     <PlaylistsView
                       library={library}
-                      onOpen={setOpenPlaylist}
+                      onOpen={(playlist) => setOpenPlaylistId(playlist.id)}
+                      onImport={importLink}
                     />
                   ) : (
                     <SuggestedView
@@ -524,62 +620,115 @@ function LikedView({ tracks, rowProps }: { tracks: LibraryTrack[]; rowProps: Row
   )
 }
 
+const FIELD =
+  'h-11 min-w-0 flex-1 rounded-full border border-white/10 bg-white/[0.04] px-4 text-[0.88rem] text-chalk outline-none placeholder:text-dusk focus:border-white/25'
+const PRIMARY =
+  'flex shrink-0 items-center gap-1.5 rounded-full bg-chalk px-4 text-[0.82rem] font-medium text-void outline-none transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-40 disabled:hover:scale-100'
+const TILE =
+  'flex min-h-11 flex-1 items-center gap-3 rounded-xl border border-dashed border-white/12 px-4 py-3 text-left text-[0.85rem] text-mist outline-none transition-colors hover:border-white/25 hover:text-chalk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal'
+
 function PlaylistsView({
   library,
   onOpen,
+  onImport,
 }: {
   library: ReturnType<typeof useLibrary>
   onOpen: (playlist: Playlist) => void
+  onImport: (link: string) => Promise<void>
 }) {
-  const [naming, setNaming] = useState(false)
-  const [name, setName] = useState('')
+  /* One of the two ways in is open at a time — they share the same row. */
+  const [mode, setMode] = useState<'idle' | 'name' | 'import'>('idle')
+  const [value, setValue] = useState('')
+  const [working, setWorking] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+
+  const close = () => {
+    setMode('idle')
+    setValue('')
+    setProblem(null)
+  }
+
+  const submit = async () => {
+    const text = value.trim()
+    if (!text || working) return
+    setWorking(true)
+    setProblem(null)
+    try {
+      if (mode === 'import' || isExternalPlaylistLink(text)) {
+        await onImport(text)
+      } else {
+        /* Straight into the new playlist, where its songs get added. */
+        const created = await library.createPlaylist(text)
+        if (created) onOpen(created)
+      }
+      close()
+    } catch (cause) {
+      setProblem(cause instanceof Error ? cause.message : 'That did not work')
+    } finally {
+      setWorking(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-0.5">
-      <div className="pb-2">
-        {naming ? (
+      <div className="pb-3">
+        {mode === 'idle' ? (
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button type="button" onClick={() => setMode('name')} className={TILE}>
+              <Plus aria-hidden className="size-4 shrink-0" />
+              New playlist
+            </button>
+            <button type="button" onClick={() => setMode('import')} className={TILE}>
+              <Link2 aria-hidden className="size-4 shrink-0" />
+              Import from Spotify or Apple Music
+            </button>
+          </div>
+        ) : (
           <form
             className="flex gap-2"
             onSubmit={(event) => {
               event.preventDefault()
-              const value = name.trim()
-              if (!value) return
-              void library.createPlaylist(value)
-              setName('')
-              setNaming(false)
+              void submit()
             }}
           >
             <input
               autoFocus
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Name this playlist"
-              className="h-11 min-w-0 flex-1 rounded-full border border-white/10 bg-white/[0.04] px-4 text-[0.88rem] text-chalk outline-none placeholder:text-dusk focus:border-white/25"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              placeholder={
+                mode === 'import'
+                  ? 'Paste a Spotify or Apple Music playlist link'
+                  : 'Name this playlist'
+              }
+              spellCheck={mode !== 'import'}
+              disabled={working}
+              className={FIELD}
             />
-            <button
-              type="submit"
-              className="shrink-0 rounded-full bg-chalk px-4 text-[0.82rem] font-medium text-void outline-none transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-            >
-              Create
+            <button type="submit" disabled={working || value.trim().length === 0} className={PRIMARY}>
+              {working && <Loader2 aria-hidden className="size-3.5 animate-spin" />}
+              {mode === 'import' ? 'Import' : 'Create'}
             </button>
             <button
               type="button"
-              onClick={() => setNaming(false)}
+              onClick={close}
               aria-label="Cancel"
               className="grid size-11 shrink-0 place-items-center rounded-full text-mist outline-none transition-colors hover:bg-white/10 hover:text-chalk"
             >
               <X aria-hidden className="size-4" />
             </button>
           </form>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setNaming(true)}
-            className="flex w-full items-center gap-3 rounded-xl border border-dashed border-white/12 px-4 py-3 text-left text-[0.85rem] text-mist outline-none transition-colors hover:border-white/25 hover:text-chalk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-          >
-            <Plus aria-hidden className="size-4" />
-            New playlist
-          </button>
+        )}
+
+        {mode === 'import' && !problem && (
+          <p className="mt-2 px-1 text-[0.74rem] leading-relaxed text-dusk">
+            The playlist has to be public. Each song is found on YouTube Music and plays from there
+            — up to the first 100.
+          </p>
+        )}
+        {problem && (
+          <p role="alert" className="mt-2 px-1 text-[0.78rem] text-signal-bright">
+            {problem}
+          </p>
         )}
       </div>
 
@@ -587,45 +736,273 @@ function PlaylistsView({
         <Empty
           icon={ListMusic}
           title="No playlists yet"
-          body="Playlists belong to the room, so anyone here can open one — and everyone can see who made it."
+          body="Start one from scratch, or bring one over from Spotify or Apple Music. Playlists belong to the room, so anyone here can open them."
         />
       ) : (
-        library.playlists.map((playlist) => (
-          <div
-            key={playlist.id}
-            className="group/list flex items-center gap-3 rounded-xl px-2.5 py-2 transition-colors hover:bg-white/[0.05]"
-          >
-            <button
-              type="button"
-              onClick={() => onOpen(playlist)}
-              className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+        library.playlists.map((playlist) => {
+          const importing = playlist.importing && !playlist.importing.finished ? playlist.importing : null
+          return (
+            <div
+              key={playlist.id}
+              className="group/list flex items-center gap-3 rounded-xl px-2.5 py-2 transition-colors hover:bg-white/[0.05]"
             >
-              <span className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-white/[0.05] text-dusk ring-1 ring-inset ring-white/10">
-                {playlist.tracks[0]?.artwork ? (
-                  <img src={playlist.tracks[0].artwork} alt="" className="size-full object-cover" />
-                ) : (
-                  <ListMusic aria-hidden className="size-4" />
-                )}
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-[0.88rem] text-chalk">{playlist.name}</span>
-                <span className="mt-0.5 block truncate text-[0.74rem] text-dusk">
-                  {playlist.tracks.length} {playlist.tracks.length === 1 ? 'song' : 'songs'} ·{' '}
-                  {playlist.createdBy.name}
+              <button
+                type="button"
+                onClick={() => onOpen(playlist)}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+              >
+                <span className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-white/[0.05] text-dusk ring-1 ring-inset ring-white/10">
+                  {playlist.tracks[0]?.artwork ? (
+                    <img src={playlist.tracks[0].artwork} alt="" className="size-full object-cover" />
+                  ) : (
+                    <ListMusic aria-hidden className="size-4" />
+                  )}
                 </span>
-              </span>
-            </button>
+                <span className="min-w-0">
+                  <span className="block truncate text-[0.88rem] text-chalk">{playlist.name}</span>
+                  <span className="mt-0.5 flex items-center gap-1.5 truncate text-[0.74rem] text-dusk">
+                    {importing ? (
+                      <>
+                        <Loader2 aria-hidden className="size-3 shrink-0 animate-spin" />
+                        Finding songs · {importing.done} of {importing.total}
+                      </>
+                    ) : (
+                      <>
+                        {playlist.tracks.length} {playlist.tracks.length === 1 ? 'song' : 'songs'} ·{' '}
+                        {playlist.createdBy.name}
+                      </>
+                    )}
+                  </span>
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => void library.removePlaylist(playlist.id)}
-              aria-label={`Delete ${playlist.name}`}
-              className="grid size-8 shrink-0 place-items-center rounded-full text-dusk opacity-0 outline-none transition-all hover:text-signal-bright focus-visible:opacity-100 group-hover/list:opacity-100"
-            >
-              <Trash2 aria-hidden className="size-4" />
-            </button>
-          </div>
-        ))
+              <button
+                type="button"
+                onClick={() => void library.removePlaylist(playlist.id)}
+                aria-label={`Delete ${playlist.name}`}
+                className="grid size-8 shrink-0 place-items-center rounded-full text-dusk opacity-0 outline-none transition-all hover:text-signal-bright focus-visible:opacity-100 group-hover/list:opacity-100 [@media(hover:none)]:opacity-100"
+              >
+                <Trash2 aria-hidden className="size-4" />
+              </button>
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+}
+
+/** How an import is going, and what it could not find once it is done. */
+function ImportStatus({ progress }: { progress: NonNullable<Playlist['importing']> }) {
+  const [showMissed, setShowMissed] = useState(false)
+  const fraction = progress.total > 0 ? progress.done / progress.total : 0
+
+  if (!progress.finished) {
+    return (
+      <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+        <div className="flex items-center gap-2 text-[0.8rem] text-chalk">
+          <Loader2 aria-hidden className="size-3.5 animate-spin text-mist" />
+          Finding songs on YouTube Music · {progress.done} of {progress.total}
+        </div>
+        <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-white/10">
+          <motion.div
+            className="h-full rounded-full bg-chalk"
+            animate={{ width: `${Math.round(fraction * 100)}%` }}
+            transition={{ duration: 0.5, ease: EASE }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  if (progress.missed.length === 0) return null
+
+  return (
+    <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-[0.8rem]">
+      <button
+        type="button"
+        onClick={() => setShowMissed((open) => !open)}
+        className="text-left text-mist outline-none hover:text-chalk focus-visible:outline-2 focus-visible:outline-signal"
+      >
+        Found {progress.found} of {progress.total}. {progress.missed.length}{' '}
+        {progress.missed.length === 1 ? 'song was' : 'songs were'} not on YouTube Music —{' '}
+        <span className="underline underline-offset-2">{showMissed ? 'hide' : 'see which'}</span>
+      </button>
+      {showMissed && (
+        <ul className="mt-2 space-y-0.5 text-[0.76rem] text-dusk">
+          {progress.missed.map((name) => (
+            <li key={name} className="truncate">
+              {name}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Searching from inside a playlist, straight into it.
+ *
+ * Before this the only way to fill a playlist was to leave it, search, and
+ * use each result's menu — so a freshly made playlist sat empty with nothing
+ * on the page that could change that.
+ */
+function AddSongs({
+  roomId,
+  playlist,
+  onAdd,
+}: {
+  roomId: string | null
+  playlist: Playlist
+  onAdd: (track: LibraryTrack) => Promise<void>
+}) {
+  const [open, setOpen] = useState(playlist.tracks.length === 0 && !playlist.importing)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<LibraryTrack[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+  const [adding, setAdding] = useState<Set<string>>(new Set())
+
+  const inPlaylist = useMemo(() => new Set(playlist.tracks.map(trackKey)), [playlist.tracks])
+
+  const search = async () => {
+    const value = query.trim()
+    if (!value || !roomId) return
+    setBusy(true)
+    setProblem(null)
+    try {
+      if (/^https?:\/\//i.test(value) || /^[\w-]{11}$/.test(value)) {
+        /* A pasted song link goes straight in. */
+        const resolved = await musicApi.resolveInput(roomId, value)
+        await onAdd(resolved)
+        setQuery('')
+        setResults(null)
+      } else {
+        setResults((await musicApi.searchTracks(roomId, value)).map(fromSearch))
+      }
+    } catch (cause) {
+      setProblem(cause instanceof Error ? cause.message : 'Could not search')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const add = async (track: LibraryTrack) => {
+    const key = trackKey(track)
+    setAdding((current) => new Set(current).add(key))
+    try {
+      await onAdd(track)
+    } catch (cause) {
+      setProblem(cause instanceof Error ? cause.message : 'Could not add that')
+    } finally {
+      setAdding((current) => {
+        const next = new Set(current)
+        next.delete(key)
+        return next
+      })
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className={cn(TILE, 'mb-3 w-full flex-none')}>
+        <Plus aria-hidden className="size-4 shrink-0" />
+        Add songs
+      </button>
+    )
+  }
+
+  return (
+    <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.02] p-3">
+      <form
+        className="flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void search()
+        }}
+      >
+        <div className="relative min-w-0 flex-1">
+          <Search
+            aria-hidden
+            className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-dusk"
+          />
+          <input
+            autoFocus
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search for a song to add, or paste a link"
+            spellCheck={false}
+            className={cn(FIELD, 'w-full pl-11')}
+          />
+          {busy && (
+            <Loader2
+              aria-hidden
+              className="absolute right-4 top-1/2 size-4 -translate-y-1/2 animate-spin text-mist"
+            />
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false)
+            setResults(null)
+            setQuery('')
+          }}
+          aria-label="Close search"
+          className="grid size-11 shrink-0 place-items-center rounded-full text-mist outline-none transition-colors hover:bg-white/10 hover:text-chalk"
+        >
+          <X aria-hidden className="size-4" />
+        </button>
+      </form>
+
+      {problem && (
+        <p role="alert" className="mt-2 px-1 text-[0.78rem] text-signal-bright">
+          {problem}
+        </p>
+      )}
+
+      {results && results.length === 0 && (
+        <p className="mt-3 px-1 text-[0.8rem] text-mist">Nothing found — try different words.</p>
+      )}
+
+      {results && results.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-0.5">
+          {results.map((track) => {
+            const key = trackKey(track)
+            const added = inPlaylist.has(key)
+            const pending = adding.has(key)
+            return (
+              <li key={key} className="flex items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-white/[0.04]">
+                <span className="size-10 shrink-0 overflow-hidden rounded-md bg-white/[0.05] ring-1 ring-inset ring-white/10">
+                  {track.artwork && <img src={track.artwork} alt="" className="size-full object-cover" />}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[0.85rem] text-chalk">{track.title}</span>
+                  <span className="block truncate text-[0.74rem] text-dusk">{track.artist}</span>
+                </span>
+                <button
+                  type="button"
+                  disabled={added || pending}
+                  onClick={() => void add(track)}
+                  aria-label={added ? `${track.title} is in this playlist` : `Add ${track.title}`}
+                  className={cn(
+                    'grid size-9 shrink-0 place-items-center rounded-full outline-none transition-colors focus-visible:outline-2 focus-visible:outline-signal',
+                    added ? 'text-chalk' : 'text-mist hover:bg-white/10 hover:text-chalk',
+                  )}
+                >
+                  {pending ? (
+                    <Loader2 aria-hidden className="size-4 animate-spin" />
+                  ) : added ? (
+                    <Check aria-hidden className="size-4" />
+                  ) : (
+                    <Plus aria-hidden className="size-4" />
+                  )}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
       )}
     </div>
   )
@@ -633,34 +1010,40 @@ function PlaylistsView({
 
 function PlaylistDetail({
   playlist,
+  roomId,
   rowProps,
+  onAdd,
   onRemove,
 }: {
   playlist: Playlist
+  roomId: string | null
   rowProps: RowProps
+  onAdd: (track: LibraryTrack) => Promise<void>
   onRemove: (trackId: string) => void
 }) {
-  if (playlist.tracks.length === 0) {
-    return (
-      <Empty
-        icon={ListMusic}
-        title="This playlist is empty"
-        body="Add songs to it from the menu on any row in search, liked, or suggested."
-      />
-    )
-  }
+  const importing = playlist.importing ?? null
+  const stillImporting = importing !== null && !importing.finished
 
   return (
     <div className="flex flex-col gap-0.5">
-      {playlist.tracks.map((track, index) => (
-        <TrackRow
-          key={track.id}
-          index={index}
-          {...rowProps(track)}
-          onRemove={() => onRemove(track.id)}
-          removeLabel="Remove from this playlist"
-        />
-      ))}
+      {importing && <ImportStatus progress={importing} />}
+      {!stillImporting && <AddSongs key={playlist.id} roomId={roomId} playlist={playlist} onAdd={onAdd} />}
+
+      {playlist.tracks.length === 0 && !stillImporting ? (
+        <p className="px-1 py-6 text-center text-[0.84rem] text-mist">
+          Nothing in here yet. Search above to add the first song.
+        </p>
+      ) : (
+        playlist.tracks.map((track, index) => (
+          <TrackRow
+            key={track.id}
+            index={index}
+            {...rowProps(track)}
+            onRemove={() => onRemove(track.id)}
+            removeLabel="Remove from this playlist"
+          />
+        ))
+      )}
     </div>
   )
 }

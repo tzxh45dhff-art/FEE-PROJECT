@@ -51,6 +51,7 @@ roomRoutes.get('/:id/music/library', asyncHandler(musicController.library))
 roomRoutes.get('/:id/music/lyrics', asyncHandler(musicController.lyrics))
 roomRoutes.get('/:id/music/queue', asyncHandler(musicController.queue))
 roomRoutes.post('/:id/music/queue', asyncHandler(musicController.add))
+roomRoutes.post('/:id/music/queue/many', asyncHandler(musicController.addMany))
 roomRoutes.post('/:id/music/queue/reorder', asyncHandler(musicController.reorder))
 roomRoutes.delete('/:id/music/queue', asyncHandler(musicController.clear))
 roomRoutes.delete('/:id/music/queue/:trackId', asyncHandler(musicController.remove))
@@ -58,6 +59,7 @@ roomRoutes.delete('/:id/music/queue/:trackId', asyncHandler(musicController.remo
 /* The kept library: playlists, saved songs, and what to play next. */
 roomRoutes.get('/:id/music/playlists', asyncHandler(musicController.playlists))
 roomRoutes.post('/:id/music/playlists', asyncHandler(musicController.createPlaylist))
+roomRoutes.post('/:id/music/playlists/import', asyncHandler(musicController.importPlaylist))
 roomRoutes.delete('/:id/music/playlists/:playlistId', asyncHandler(musicController.deletePlaylist))
 roomRoutes.post('/:id/music/playlists/:playlistId/tracks', asyncHandler(musicController.addToPlaylist))
 roomRoutes.delete(

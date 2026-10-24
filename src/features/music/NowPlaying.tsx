@@ -221,7 +221,7 @@ export function NowPlaying({
           artwork={track.artwork}
           playing={snapshot.playing}
           read={read}
-          accent={palette?.base ?? 'var(--color-signal)'}
+          accent={palette?.vivid ?? 'var(--color-signal)'}
           className="w-[min(78vw,min(30rem,46vh))]"
         />
 
