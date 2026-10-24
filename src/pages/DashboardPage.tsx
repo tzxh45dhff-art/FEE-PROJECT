@@ -15,7 +15,9 @@ import { PetCorner } from '@/features/pet/PetCorner'
 import { useFun } from '@/features/fun/useFun'
 import { Fireflies } from '@/features/dashboard/hub/Fireflies'
 import { HubDrawer } from '@/features/dashboard/hub/HubDrawer'
+import { HubDock } from '@/features/dashboard/hub/HubDock'
 import { HubRail, type RailItem } from '@/features/dashboard/hub/HubRail'
+import { MusicLoaded } from '@/features/dashboard/hub/useMusicLoaded'
 import { HubSettings } from '@/features/dashboard/hub/HubSettings'
 import { RoomSettings } from '@/features/dashboard/components/RoomSettings'
 import { RoomList } from '@/features/dashboard/hub/RoomList'
@@ -111,6 +113,8 @@ export function DashboardPage() {
    * Listen again clears it and rejoins wherever the room has reached.
    */
   const [leftMusic, setLeftMusic] = useState(false)
+  /* Whether a song is loaded, reported from inside the music session. */
+  const [musicLoaded, setMusicLoaded] = useState(false)
   useEffect(() => {
     if (activity === 'music') setLeftMusic(false)
   }, [activity])
@@ -256,6 +260,8 @@ export function DashboardPage() {
     }
   }, [])
   const inset = sideOpen && sideBySide ? panelRem : 0
+  /* Mirrors MusicDock's own rule for showing itself on the hub. */
+  const musicDockShown = musicLoaded && activity !== 'music' && activity !== 'watch' && !leftMusic
 
   /*
    * Presence follows the room you are *standing in*, not every room you belong
@@ -438,6 +444,7 @@ export function DashboardPage() {
             icon: MessagesSquare,
             active: sideOpen,
             live: call.othersOnCall > 0 || chat.unread > 0,
+            badge: chat.unread,
             onClick: () => setSideOpen((open) => !open),
           } satisfies RailItem,
         ]
@@ -515,8 +522,6 @@ export function DashboardPage() {
     })
   const railsFolded = !wide && !railsOpen
 
-  const rightRail = activeRoom ? rightItems.filter((item) => item.key === 'talk') : rightItems
-  const rightTray = activeRoom ? rightItems.filter((item) => item.key !== 'talk') : []
 
   /* While the corridor plays the hub stays mounted but invisible, so the room
      fetch is already in flight by the time it hands off. */
@@ -557,20 +562,43 @@ export function DashboardPage() {
           />
 
           {activity === null && activeRoom && <FunLayer events={fun.events} youId={user?.id ?? null} />}
-          {activeRoom && (
-            <PetCorner
-              key={activeRoom.id}
-              roomId={activeRoom.id}
-              selfId={user?.id}
-              activity={activity}
-              messages={chat.messages}
-              onCall={call.status === 'live'}
-              onSuggest={(action) => (action === 'call' ? setSideOpen(true) : setActivity(action))}
-            />
-          )}
-
           <HubRail side="left" items={leftItems} collapsed={railsFolded} onToggleCollapsed={wide ? undefined : toggleRails} />
-          <HubRail side="right" items={rightRail} compact={rightTray} collapsed={railsFolded} insetRight={inset} />
+          {activeRoom ? (
+            /*
+             * The right-hand column: the room's dock, centred in whatever room
+             * is left, with the pet standing underneath at the bottom. One
+             * flex column, so the two can never overlap at any screen size —
+             * and it rises clear of the music dock whenever that is showing.
+             */
+            <div
+              /* Too short to stack (a phone held sideways): side by side instead, still apart. */
+              /*
+               * On a phone the pet stands just above the Voice / Fun row (and
+               * above the music dock too, when it shows), so the row keeps the
+               * full width; on wider screens it stands on the ground beside them.
+               */
+              className={cn(
+                'pointer-events-none absolute top-16 z-30 flex flex-col items-end gap-3 transition-[right,bottom,padding] duration-500 ease-glass sm:bottom-4 sm:top-20 [@media(max-height:520px)]:top-4 [@media(max-height:520px)]:flex-row',
+                musicDockShown ? 'bottom-[10.5rem] sm:pb-[4.75rem]' : 'bottom-[5.25rem]',
+              )}
+              style={{ right: `calc(${inset}rem + 0.75rem)` }}
+            >
+              <div className="flex min-h-0 flex-1 items-center">
+                <HubDock items={rightItems} />
+              </div>
+              <PetCorner
+                key={activeRoom.id}
+                roomId={activeRoom.id}
+                selfId={user?.id}
+                activity={activity}
+                messages={chat.messages}
+                onCall={call.status === 'live'}
+                onSuggest={(action) => (action === 'call' ? setSideOpen(true) : setActivity(action))}
+              />
+            </div>
+          ) : (
+            <HubRail side="right" items={rightItems} collapsed={railsFolded} insetRight={inset} />
+          )}
 
           {/*
             Everything along the bottom of the room, in one column against the
@@ -587,9 +615,9 @@ export function DashboardPage() {
           */}
           <div
             className={cn(
-              'pointer-events-none absolute bottom-6 left-0 z-20 flex flex-col items-start gap-2.5 px-6 transition-[right] duration-500 ease-glass',
-              /* The pet stands in the corner; the controls line up beside it on the same ground. */
-              activeRoom && 'sm:pl-[12.5rem]',
+              'pointer-events-none absolute left-0 right-0 z-20 flex flex-col items-start gap-2.5 px-4 transition-[right,bottom] duration-500 ease-glass sm:right-[var(--hub-bar-right)] sm:px-6 [@media(max-height:520px)]:pl-24',
+              /* On a phone the music dock spans the bottom; stand on top of it rather than under it. */
+              musicDockShown ? 'bottom-24 sm:bottom-6' : 'bottom-6',
             )}
             /*
              * Stops short of both the panel and the dock's corner.
@@ -601,7 +629,8 @@ export function DashboardPage() {
              * begins means the gap is held open by the layout at every width,
              * and the chip inside truncates instead of running underneath.
              */
-            style={{ right: `calc(${inset}rem + min(23rem, 34%))` }}
+            /* …and, from small tablets up, never under the right-hand column where the pet stands. */
+            style={{ ['--hub-bar-right' as string]: `calc(${inset}rem + max(min(23rem, 34%), 13.5rem))` }}
           >
             {(error || needsAssets) && (
               <div className="hidden max-w-xs md:block">
@@ -798,6 +827,7 @@ export function DashboardPage() {
         is the same session, full size) and while a film is on, which pauses
         the music outright rather than layering two soundtracks.
       */}
+      <MusicLoaded onChange={setMusicLoaded} />
       {activeRoom && (
         <MusicDock
           visible={activity !== 'music' && activity !== 'watch' && !leftMusic}

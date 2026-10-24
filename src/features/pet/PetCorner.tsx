@@ -207,10 +207,10 @@ export function PetCorner({
   /* Where it sits right now: being carried, put somewhere, or its usual spot. */
   const saved = placed[where]
   const position: React.CSSProperties | undefined = live
-    ? { left: live.left, top: live.top, right: 'auto', bottom: 'auto' }
+    ? { position: 'fixed', left: live.left, top: live.top, right: 'auto', bottom: 'auto' }
     : saved
       ? /* Kept on screen if the window has shrunk since. */
-        { left: `min(${saved.x * 100}vw, calc(100vw - ${activity ? 7.5 : 12}rem))`, top: `min(${saved.y * 100}vh, calc(100vh - ${activity ? 9 : 14}rem))`, right: 'auto', bottom: 'auto' }
+        { position: 'fixed', left: `min(${saved.x * 100}vw, calc(100vw - ${activity ? 7.5 : 12}rem))`, top: `min(${saved.y * 100}vh, calc(100vh - ${activity ? 9 : 14}rem))`, right: 'auto', bottom: 'auto' }
       : undefined
 
   /*
@@ -341,11 +341,12 @@ export function PetCorner({
             data-pet-corner
             ref={hubBox}
             style={position}
-            className="pointer-events-auto absolute left-2 top-4 z-20 flex w-[11.5rem] flex-col items-center sm:bottom-3 sm:left-3 sm:top-auto md:left-5"
+            /* In the hub's right-hand column, under the room dock; the column keeps the two apart. */
+            className="pointer-events-auto relative z-30 flex w-28 flex-col items-end sm:w-48 sm:items-center"
           >
             {pets.pet ? (
               <>
-                <PetSuggestion suggestion={hidden ? null : suggestion} name={pets.pet.name} placement="responsive" onAccept={accept} onDismiss={dismiss} />
+                <PetSuggestion suggestion={hidden ? null : suggestion} name={pets.pet.name} placement="left" onAccept={accept} onDismiss={dismiss} />
                 <LivePet
                   pet={pets.pet}
                   event={pets.event}
@@ -354,6 +355,7 @@ export function PetCorner({
                   level={level}
                   speaker={speaker}
                   className="h-28 w-24 sm:h-52 sm:w-48 sm:[@media(max-height:760px)]:h-40 sm:[@media(max-height:760px)]:w-36"
+                  bubbleSide="left"
                   onTap={() => void pets.act('poke')}
                   onStroke={() => void pets.act('pet')}
                   cue={cue}

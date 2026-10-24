@@ -90,7 +90,7 @@ export function LivePet({
   /** Whose voice it is repeating right now, if someone else's. */
   speaker: string | null
   className?: string
-  bubbleSide?: 'top' | 'right'
+  bubbleSide?: 'top' | 'right' | 'left'
   /** A quick tap: a hit. */
   onTap?: () => void
   /** Rubbing across it: love. Fires again every so often while the rubbing goes on. */
@@ -235,7 +235,7 @@ export function LivePet({
             transition={{ type: 'spring', stiffness: 420, damping: 24 }}
             className={cn(
               'pointer-events-none absolute z-10 max-w-[13rem] whitespace-nowrap rounded-2xl bg-white px-3.5 py-2 text-[0.82rem] font-semibold text-[#2a1f2f] shadow-[0_10px_30px_-10px_rgba(0,0,0,.6)]',
-              bubbleSide === 'top' ? 'left-1/2 -translate-x-1/2' : 'left-[78%] top-[8%]',
+              bubbleSide === 'top' ? 'left-1/2 -translate-x-1/2' : bubbleSide === 'left' ? 'right-[78%] top-[8%]' : 'left-[78%] top-[8%]',
             )}
             /* Just over its head, however big it has grown. */
             style={bubbleSide === 'top' ? { bottom: `${scale * 84}%` } : undefined}
@@ -243,7 +243,10 @@ export function LivePet({
             {bubble.text}
             {bubble.who && <span className="block text-[0.66rem] font-medium text-[#8a7690]">{bubble.who}</span>}
             <span
-              className={cn('absolute size-3 rotate-45 bg-white', bubbleSide === 'top' ? '-bottom-1 left-1/2 -translate-x-1/2' : '-left-1 top-1/2 -translate-y-1/2')}
+              className={cn(
+                'absolute size-3 rotate-45 bg-white',
+                bubbleSide === 'top' ? '-bottom-1 left-1/2 -translate-x-1/2' : bubbleSide === 'left' ? '-right-1 top-1/2 -translate-y-1/2' : '-left-1 top-1/2 -translate-y-1/2',
+              )}
               aria-hidden
             />
           </motion.div>

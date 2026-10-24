@@ -17,6 +17,8 @@ export type RailItem = {
   live?: boolean
   /** Leaving a room is destructive-ish; it should not look like the others. */
   danger?: boolean
+  /** A count worth showing on the button itself — unread messages. */
+  badge?: number
 }
 
 const EASE = [0.16, 1, 0.3, 1] as const

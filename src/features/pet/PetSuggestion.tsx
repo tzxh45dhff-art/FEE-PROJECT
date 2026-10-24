@@ -29,7 +29,7 @@ export function PetSuggestion({
   suggestion: Suggestion | null
   name: string
   /** Above the pet, or below it where the pet sits at the top of the screen. */
-  placement: 'above' | 'below' | 'responsive'
+  placement: 'above' | 'below' | 'responsive' | 'left'
   onAccept: (action: SuggestAction) => void
   onDismiss: () => void
 }) {
@@ -49,6 +49,8 @@ export function PetSuggestion({
             placement === 'above' && 'bottom-full mb-2',
             placement === 'below' && 'top-full mt-2',
             placement === 'responsive' && 'top-full mt-2 sm:bottom-full sm:top-auto sm:mb-2 sm:mt-0',
+            /* Beside the pet, toward the middle of the screen — never over the dock it stands under. */
+            placement === 'left' && 'bottom-[30%] left-auto right-full mr-2 w-[min(15rem,calc(100vw-9rem))]',
           )}
         >
           <p className="text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-[#2a1f2f]/45">{name}</p>
