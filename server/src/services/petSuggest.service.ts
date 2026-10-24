@@ -12,7 +12,7 @@ import type { PetSnapshot } from '../models/pet.model.js'
  * minutes and a daily cap, so a busy room costs pennies, not rupees.
  */
 
-export const SUGGEST_ACTIONS = ['none', 'games', 'watch', 'study', 'call', 'feed', 'play'] as const
+export const SUGGEST_ACTIONS = ['none', 'games', 'watch', 'study', 'call', 'feed', 'play', 'music'] as const
 export type SuggestAction = (typeof SUGGEST_ACTIONS)[number]
 
 export const MOMENTS = ['arrived', 'back', 'idle', 'gameover', 'paused', 'break'] as const
@@ -29,6 +29,8 @@ export type SuggestContext = {
   onCall: boolean
   /** What the room is watching, if it is. */
   watching: string | null
+  /** What the room is listening to, if anything is playing. */
+  listening: string | null
   /** win / lose, after a game. */
   result: 'win' | 'lose' | null
 }
@@ -51,7 +53,7 @@ const MOMENT_TEXT: Record<Moment, string> = {
 }
 
 /** Things it would be silly to suggest from where they already are. */
-const ALREADY: Partial<Record<Activity, SuggestAction>> = { watch: 'watch', games: 'games', study: 'study' }
+const ALREADY: Partial<Record<Activity, SuggestAction>> = { watch: 'watch', games: 'games', study: 'study', music: 'music' }
 
 type Budget = { last: number; day: string; count: number; recent: string[] }
 const budgets = new Map<string, Budget>()
@@ -92,16 +94,17 @@ export function buildPrompt(pet: PetSnapshot, viewer: { id: string; name: string
     `It is ${context.hour}:00 for them.`,
     context.onCall ? 'They are on a voice call with the room.' : '',
     context.watching ? `The room is watching "${context.watching}".` : '',
+    context.listening ? `Music is playing in the room: "${context.listening}".` : '',
     context.result === 'win' ? 'They just won the game.' : context.result === 'lose' ? 'They just lost the game.' : '',
   ].filter(Boolean)
 
-  const actions = SUGGEST_ACTIONS.filter((a) => a !== ALREADY[context.activity] && !(a === 'call' && context.onCall) && !(a === 'call' && !others.length))
+  const actions = SUGGEST_ACTIONS.filter((a) => a !== ALREADY[context.activity] && !(a === 'call' && context.onCall) && !(a === 'call' && !others.length) && !(a === 'music' && context.listening))
   return [
     facts.join(' '),
     '',
     'Say ONE short thing to them, like a cute pet would: under 90 characters, warm, playful, in casual Indian-English (a little Hinglish is fine). Use their first name at most once. No hashtags, no quotes, at most one emoji.',
     'If it fits, nudge them toward one thing to do, from this list only:',
-    `${actions.join(', ')} — where games = open the party games, watch = watch something together, study = study together, call = start a voice call with the others, feed = feed you (the pet), play = play fetch with you (the pet, not a game), none = just chat.`,
+    `${actions.join(', ')} — where games = open the party games, watch = watch something together, study = study together, music = put some music on together, call = start a voice call with the others, feed = feed you (the pet), play = play fetch with you (the pet, not a game), none = just chat.`,
     'The action must match exactly what your line asks for; if the line is just a feeling or a joke, use none. Only suggest call if others are in the room. Do not nag. Late at night, be cosy, not productive. Vary how you start — not always with their name.',
     recent.length ? `Do not repeat these recent lines: ${recent.map((l) => `"${l}"`).join(' ')}` : '',
     '',
@@ -120,6 +123,7 @@ export function readSuggestion(raw: unknown, context: SuggestContext): Suggestio
   let action = (typeof value.action === 'string' ? value.action.trim().toLowerCase() : 'none') as SuggestAction
   if (!SUGGEST_ACTIONS.includes(action) || action === ALREADY[context.activity]) action = 'none'
   if (action === 'call' && context.onCall) action = 'none'
+  if (action === 'music' && context.listening) action = 'none'
   return { line, action }
 }
 
@@ -160,6 +164,7 @@ export function readContext(raw: unknown): SuggestContext | null {
   const activity = ACTIVITIES.includes(body.activity as Activity) ? (body.activity as Activity) : 'hub'
   const hour = Number.isInteger(body.hour) && (body.hour as number) >= 0 && (body.hour as number) < 24 ? (body.hour as number) : 12
   const watching = typeof body.watching === 'string' && body.watching.trim() ? body.watching.trim().slice(0, 80) : null
+  const listening = typeof body.listening === 'string' && body.listening.trim() ? body.listening.trim().slice(0, 120) : null
   const result = body.result === 'win' || body.result === 'lose' ? body.result : null
-  return { moment: body.moment as Moment, activity, hour, onCall: body.onCall === true, watching, result }
+  return { moment: body.moment as Moment, activity, hour, onCall: body.onCall === true, watching, listening, result }
 }

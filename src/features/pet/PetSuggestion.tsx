@@ -10,6 +10,7 @@ const LABEL: Record<Exclude<SuggestAction, 'none'>, string> = {
   call: 'Open call',
   feed: 'Feed me',
   play: 'Play with me',
+  music: 'Put some music on',
 }
 
 /**

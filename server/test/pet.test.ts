@@ -177,7 +177,15 @@ describe('pet over sockets', () => {
     // Rohan can't feed it until he apologises; Aditi still can.
     assert.equal((await ask<{ reaction: string }>(r, 'pet:act', { roomId, action: 'pet' })).reaction, 'turnaway')
 
-    const heard = next<{ action: string; reaction: string; by: { name: string } }>(a, 'pet:event')
+    /* Wait for the sorry itself: the stroke's event above can still be on its way to Aditi. */
+    const heard = new Promise<{ action: string; reaction: string; by: { name: string } }>((resolve) => {
+      const onEvent = (event: { action: string; reaction: string; by: { name: string } }) => {
+        if (event.action !== 'sorry') return
+        a.off('pet:event', onEvent)
+        resolve(event)
+      }
+      a.on('pet:event', onEvent)
+    })
     r.emit('chat:send', { roomId, body: 'ok sorry mochi 🥺' })
     const event = await heard
     assert.equal(event.action, 'sorry')

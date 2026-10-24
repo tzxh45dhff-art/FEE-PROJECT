@@ -53,6 +53,7 @@ const CUE: Record<PetCueKind, { face: Expression; bump: 'squash' | 'jump' | 'sha
   lose: { face: 'sad', bump: 'shake', line: ['Rematch?', 'Next time, for sure', '{name} got lucky.'], hearts: 1, glyph: '💧' },
   break: { face: 'happy', bump: 'jump', line: ['Break time! Stretch!', 'You earned it', 'Water? Snack?'], hearts: 3, glyph: '✨' },
   hello: { face: 'happy', bump: 'wiggle', line: ['You called?', 'Hi {name}!', 'That’s me!'], hearts: 2 },
+  tune: { face: 'happy', bump: 'jump', line: ['Ooh, I love this one!', 'Tuuune 🎶', 'Turn it up!'], hearts: 3, glyph: '♪' },
 }
 
 const DID: Record<PetEvent['action'], string> = { feed: 'fed me', pet: 'stroked me', poke: 'hit me', tickle: 'tickled me', play: 'played with me', talk: 'talked to me', sorry: 'said sorry' }
@@ -74,6 +75,7 @@ export function LivePet({
   onStroke,
   cue = null,
   scene = 'none',
+  dancing = false,
 }: {
   pet: Pet
   event: PetEvent | null
@@ -93,6 +95,8 @@ export function LivePet({
   cue?: PetCue | null
   /** What it is doing in the background: watching along, dozing, keeping quiet. */
   scene?: PetScene
+  /** Music is playing in the room: it bobs along. */
+  dancing?: boolean
 }) {
   const box = useRef<HTMLDivElement>(null)
   const [look, setLook] = useState({ x: 0, y: 0 })
@@ -190,6 +194,8 @@ export function LivePet({
     level > 0.04 || mimic === 'speaking' ? 'talk' : mimic === 'hearing' ? 'listen' : (reacting?.face ?? (mimic === 'listening' ? 'idle' : rest))
   const gaze = sulking ? { x: 0.25, y: 0.35 } : coldToMe ? { x: -look.x * 1.5, y: look.y } : look
   const scale = { baby: 0.78, kid: 0.88, teen: 0.96, grown: 1.04 }[pet.stage] * (sulking ? 0.82 : 1)
+  /* Bobbing to the music — unless it is upset, focusing, asleep, or mid-reaction. */
+  const grooving = dancing && !upset && scene !== 'focus' && scene !== 'dozing' && !reacting
 
   /*
    * One rule for a hand on the pet, decided by what the hand did rather than
@@ -282,9 +288,35 @@ export function LivePet({
         style={{ originY: 1 }}
         whileTap={{ scale: scale * 0.97 }}
       >
-        <PetArt species={pet.species} expression={face} look={gaze} mouth={level} bump={bump} bumpKind={bumpKind} className="size-full drop-shadow-[0_18px_30px_rgba(0,0,0,.35)]" />
+        <motion.div
+          className="size-full"
+          style={{ originY: 1 }}
+          animate={grooving ? { y: [0, -5, 0], rotate: [-3, 3, -3] } : { y: 0, rotate: 0 }}
+          transition={grooving ? { repeat: Infinity, duration: 0.9, ease: 'easeInOut' } : { duration: 0.3 }}
+        >
+          <PetArt species={pet.species} expression={face} look={gaze} mouth={level} bump={bump} bumpKind={bumpKind} className="size-full drop-shadow-[0_18px_30px_rgba(0,0,0,.35)]" />
+        </motion.div>
       </motion.button>
       )}
+
+      {/* Notes drifting off it while it grooves. */}
+      <AnimatePresence>
+        {grooving &&
+          [0, 1].map((i) => (
+            <motion.span
+              key={`note-${i}`}
+              aria-hidden
+              className="pointer-events-none absolute text-[1rem] font-bold text-white/70"
+              style={{ top: '18%', left: i ? '70%' : '22%' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 1, 0], y: [0, -22], x: [0, i ? 8 : -8], rotate: [0, i ? 14 : -14] }}
+              exit={{ opacity: 0 }}
+              transition={{ repeat: Infinity, duration: 2, delay: i * 1, ease: 'easeOut' }}
+            >
+              {i ? '♫' : '♪'}
+            </motion.span>
+          ))}
+      </AnimatePresence>
 
       {/* Dozing through a paused film. */}
       <AnimatePresence>

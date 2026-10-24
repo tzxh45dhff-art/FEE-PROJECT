@@ -10,7 +10,7 @@ import type { Food, Person, Pet, PetAction, PetEvent, Species } from '@/features
 
 type Reply = { ok?: boolean; error?: string; reaction?: string; pet?: Pet | null; suggestion?: PetSuggestion; skip?: string }
 
-export type SuggestAction = 'none' | 'games' | 'watch' | 'study' | 'call' | 'feed' | 'play'
+export type SuggestAction = 'none' | 'games' | 'watch' | 'study' | 'call' | 'feed' | 'play' | 'music'
 export type PetSuggestion = { id: string; line: string; action: SuggestAction }
 export type SuggestMoment = 'arrived' | 'back' | 'idle' | 'gameover' | 'paused' | 'break'
 export type SuggestContext = {
@@ -19,6 +19,7 @@ export type SuggestContext = {
   hour: number
   onCall: boolean
   watching: string | null
+  listening: string | null
   result: 'win' | 'lose' | null
 }
 export type VoiceClip = { id: string; by: Person; blob: Blob }

@@ -14,7 +14,7 @@ const pet: PetSnapshot = {
   pose: 'normal', away: null, grudges: [],
 }
 const viewer = { id: 'r', name: 'Rohan Mehta' }
-const hub: SuggestContext = { moment: 'idle', activity: 'hub', hour: 21, onCall: false, watching: null, result: null }
+const hub: SuggestContext = { moment: 'idle', activity: 'hub', hour: 21, onCall: false, watching: null, listening: null, result: null }
 
 describe('pet suggestions', () => {
   beforeEach(() => resetBudgets())
@@ -47,6 +47,11 @@ describe('pet suggestions', () => {
     assert.equal(readSuggestion({ line: 'hi', action: 'delete-room' }, hub)!.action, 'none')
     assert.equal(readSuggestion({ line: 'x'.repeat(500), action: 'games' }, hub)!.line.length, 120)
     assert.equal(readSuggestion({ action: 'games' }, hub), null)
+    // Music already on: "put some music on" makes no sense, and the model is told what is playing.
+    const playing = { ...hub, listening: 'Kesariya by Arijit Singh' }
+    assert.equal(readSuggestion({ line: 'Music?', action: 'music' }, playing)!.action, 'none')
+    assert.equal(readSuggestion({ line: 'Music?', action: 'music' }, hub)!.action, 'music')
+    assert.match(buildPrompt(pet, viewer, ['Rohan Mehta'], playing, []), /Music is playing in the room: "Kesariya by Arijit Singh"/)
   })
 
   it('tells the model who is here, how it feels about them, and not to offer a call to nobody', () => {

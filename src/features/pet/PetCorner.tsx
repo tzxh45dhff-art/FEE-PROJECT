@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 
+import { useMusic } from '@/features/music/MusicContext'
 import { LivePet } from '@/features/pet/LivePet'
 import { PetFeelings } from '@/features/pet/PetFeelings'
 import { PetSheet } from '@/features/pet/PetSheet'
@@ -33,6 +34,7 @@ const MOOD_LINE: Record<Pet['mood'], string> = {
 /** Where the companion sits in each activity, clear of that activity's own controls. */
 const COMPANION_SPOT: Record<string, string> = {
   watch: 'bottom-[10rem] left-3 sm:bottom-[7.5rem] sm:left-5',
+  music: 'bottom-[10rem] left-3 sm:bottom-[8rem] sm:left-5',
   games: 'bottom-20 left-3 sm:bottom-5 sm:left-5',
   study: 'bottom-3 left-3 sm:bottom-5 sm:left-5',
 }
@@ -56,7 +58,7 @@ export function PetCorner({
   messages: ChatMessage[]
   onCall: boolean
   /** Carry out what the pet suggested, for the things outside the pet itself. */
-  onSuggest: (action: 'games' | 'watch' | 'study' | 'call') => void
+  onSuggest: (action: 'games' | 'watch' | 'study' | 'call' | 'music') => void
 }) {
   const hidden = activity !== null
   const pets = usePet(roomId)
@@ -79,6 +81,22 @@ export function PetCorner({
     if (next.kind === 'break') window.setTimeout(() => ask.current('break'), 4000)
   })
   const scene = usePetScene()
+
+  /*
+   * The room's music, read from the shared session (never driven from here):
+   * it bobs along while something plays and notices when the song changes.
+   */
+  const music = useMusic()
+  const track = music.snapshot?.track ?? null
+  const dancing = !!track && !!music.snapshot?.playing
+  const lastTrack = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    const id = track?.id ?? null
+    const was = lastTrack.current
+    lastTrack.current = id
+    if (was !== undefined && id && id !== was && dancing) petCue('tune', track?.artist ?? undefined)
+  }, [track?.id, track?.artist, dancing])
+  const listening = dancing && track ? `${track.title}${track.artist ? ` by ${track.artist}` : ''}` : null
 
   /* The room's chat: it laughs along, goes soft at hearts, and answers to its name. */
   const mountedAt = useRef(Date.now())
@@ -128,8 +146,8 @@ export function PetCorner({
   const patience = useRef(4 * 60_000)
   const sheetOpen = useRef(false)
   sheetOpen.current = open
-  const now = useRef({ activity, onCall, scene, tucked, pet: pets.pet, suggest: pets.suggest })
-  now.current = { activity, onCall, scene, tucked, pet: pets.pet, suggest: pets.suggest }
+  const now = useRef({ activity, onCall, scene, tucked, listening, pet: pets.pet, suggest: pets.suggest })
+  now.current = { activity, onCall, scene, tucked, listening, pet: pets.pet, suggest: pets.suggest }
   const ask = useRef(async (_moment: SuggestMoment, _result: 'win' | 'lose' | null = null) => {})
   ask.current = async (moment, result = null) => {
     const c = now.current
@@ -145,6 +163,7 @@ export function PetCorner({
       hour: new Date().getHours(),
       onCall: c.onCall,
       watching: c.activity === 'watch' ? petWatching() : null,
+      listening: c.listening,
       result,
     })
     if (line) setSuggestion(line)
@@ -256,6 +275,7 @@ export function PetCorner({
                   onStroke={() => void pets.act('pet')}
                   cue={cue}
                   scene={scene}
+                  dancing={dancing}
                 />
                 <button
                   type="button"
@@ -322,6 +342,7 @@ export function PetCorner({
                     onStroke={() => void pets.act('pet')}
                     cue={cue}
                     scene={scene}
+                    dancing={dancing}
                   />
                   <div className="-mt-1 flex items-center gap-1">
                     <button

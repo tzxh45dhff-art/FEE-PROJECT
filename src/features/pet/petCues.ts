@@ -32,6 +32,7 @@ export type PetCueKind =
   | 'lose' // someone else won
   | 'break' // focus over: stretch
   | 'hello' // someone said its name
+  | 'tune' // a new song started
 
 export type PetCue = { id: string; kind: PetCueKind; who?: string }
 
