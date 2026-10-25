@@ -29,6 +29,8 @@ export type Ctx = {
   clearSchedule: () => void
   /** Content this room has had in earlier games, for `byFreshness`. */
   seen?: ReadonlySet<string>
+  /** Who is in the room right now, by user id — for games that hand over when someone leaves. */
+  present?: () => string[]
 }
 
 export type Result<S> = S | { error: string }
@@ -48,6 +50,13 @@ export interface GameDef<S, O = unknown> {
    * from the server, if the same game is still running.
    */
   background?: (roomId: string, options: O, state: S) => Promise<{ action: string; payload: Record<string, unknown> } | null>
+  /**
+   * Slow work prompted by a state, checked after every change — narration for
+   * a moment that just began, say. Return null when there is nothing to do;
+   * the game is responsible for not asking twice. What the promise resolves
+   * to is applied as a server action, if the same game is still running.
+   */
+  after?: (roomId: string, state: S) => Promise<{ action: string; payload: Record<string, unknown> } | null> | null
   start: (players: Player[], options: O, ctx: Ctx) => S
   /**
    * Apply an action. `by` is null for the server's own timers. Return the next
@@ -68,10 +77,15 @@ export const isError = (value: unknown): value is { error: string } =>
   typeof value === 'object' && value !== null && 'error' in value && typeof (value as { error: unknown }).error === 'string'
 
 /** The real context: crypto randomness and real timers. */
-export function liveCtx(dispatch: (action: string, payload: Record<string, unknown>) => void, seen?: ReadonlySet<string>): Ctx & { dispose: () => void } {
+export function liveCtx(
+  dispatch: (action: string, payload: Record<string, unknown>) => void,
+  seen?: ReadonlySet<string>,
+  present?: () => string[],
+): Ctx & { dispose: () => void } {
   const timers = new Set<NodeJS.Timeout>()
   return {
     seen,
+    present,
     now: () => Date.now(),
     random: (max) => (max <= 1 ? 0 : randomInt(max)),
     schedule: (ms, action, payload = {}) => {

@@ -776,7 +776,9 @@ export function DashboardPage() {
                 id: member.id,
                 name: member.name,
                 you: member.you,
+                character: member.character,
               }))}
+              call={call}
               origin={gamesOrigin}
               onClose={() => setActivity(null)}
               insetRight={inset}

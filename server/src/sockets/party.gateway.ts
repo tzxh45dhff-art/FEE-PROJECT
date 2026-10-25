@@ -6,6 +6,7 @@ import { isError, liveCtx, type GameDef, type Player } from '../games/engine.js'
 import { markSeen, seenFor } from '../services/seen.service.js'
 import { drawCanvas, drawGame } from '../games/draw.js'
 import { knowMe } from '../games/knowme.js'
+import { mafia } from '../games/mafia.js'
 import { trivia } from '../games/trivia.js'
 import { songQuiz } from '../games/songquiz.js'
 import { truthDare } from '../games/truthdare.js'
@@ -37,6 +38,7 @@ const GAMES: Record<string, AnyGame> = {
   [knowMe.id]: knowMe,
   [trivia.id]: trivia,
   [songQuiz.id]: songQuiz,
+  [mafia.id]: mafia,
 }
 
 /**
@@ -142,6 +144,31 @@ async function settle(roomId: string, session: Session) {
     .catch(() => undefined)
 }
 
+/** At most `burst` moves per `windowMs` from one connection, refilling smoothly. */
+function actLimiter(burst: number, windowMs: number) {
+  let tokens = burst
+  let refilled = Date.now()
+  return () => {
+    const now = Date.now()
+    tokens = Math.min(burst, tokens + ((now - refilled) / windowMs) * burst)
+    refilled = now
+    if (tokens < 1) return false
+    tokens -= 1
+    return true
+  }
+}
+
+/** Whatever slow work this state asks for, applied when it is done — if the same game is still on. */
+function followUp(io: Server, roomId: string, session: Session) {
+  const work = session.game.after?.(roomId, session.state)
+  if (!work) return
+  work
+    .then((result) => {
+      if (result && sessions.get(roomId) === session) apply(io, roomId, null, result.action, result.payload)
+    })
+    .catch(() => undefined)
+}
+
 function apply(io: Server, roomId: string, by: Player | null, action: string, payload: Record<string, unknown>) {
   const session = sessions.get(roomId)
   if (!session) return { error: 'No game is running' }
@@ -151,6 +178,7 @@ function apply(io: Server, roomId: string, by: Player | null, action: string, pa
   session.seq += 1
   publish(io, roomId)
   void settle(roomId, session)
+  followUp(io, roomId, session)
   return { ok: true }
 }
 
@@ -160,6 +188,8 @@ export function attachPartyGateway(io: Server) {
     if (!state) return
     const self: Player = { id: state.userId, name: state.name }
     const may = roomGuard(socket, self.id)
+    /* A person taps a few times a second at most; a flood is a bug or abuse, and must not take the server down. */
+    const allowAct = actLimiter(20, 4_000)
     const watching = new Set<string>()
 
     const unwatch = (roomId: string) => {
@@ -234,7 +264,11 @@ export function attachPartyGateway(io: Server) {
       const previous = sessions.get(roomId)
       previous?.ctx.dispose()
       remember(roomId, previous)
-      const ctx = liveCtx((action, payload) => apply(io, roomId, null, action, payload), seen)
+      const ctx = liveCtx(
+        (action, payload) => apply(io, roomId, null, action, payload),
+        seen,
+        () => presenceFor(roomId).map((p) => p.userId),
+      )
       const session = {
         game,
         state: game.start(players, options, ctx),
@@ -247,6 +281,7 @@ export function attachPartyGateway(io: Server) {
       sessions.set(roomId, session)
       publish(io, roomId)
       ack({ ok: true })
+      followUp(io, roomId, session)
 
       /* Whatever the game wants to do after it has started, without anyone waiting on it. */
       game.background?.(roomId, options, session.state)
@@ -258,6 +293,7 @@ export function attachPartyGateway(io: Server) {
 
     socket.on('party:act', async (raw: unknown, maybeAck: unknown) => {
       const ack = ackFrom(maybeAck)
+      if (!allowAct()) return ack({ error: 'Slow down a moment' })
       const body = (raw ?? {}) as Record<string, unknown>
       const roomId = await may(body.roomId)
       if (!roomId || typeof body.action !== 'string') return ack({ error: 'Not in this room' })

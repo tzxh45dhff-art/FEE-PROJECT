@@ -53,6 +53,17 @@ export const env = {
   youtubeApiKey: process.env.YOUTUBE_API_KEY ?? '',
   /** Optional song discovery. Without it Guess the Song uses iTunes metadata. */
   lastfmApiKey: process.env.LASTFM_API_KEY ?? '',
+  /**
+   * Optional: ElevenLabs for the Mafia narrator — a far more human voice than
+   * Azure's. Without a key the narrator uses Azure speech, then subtitles.
+   * Voice defaults to "Brian" (deep, resonant storyteller); model to the
+   * highest-quality one. eleven_flash_v2_5 costs half as much per character.
+   */
+  elevenlabs: {
+    key: process.env.ELEVENLABS_API_KEY ?? '',
+    voice: process.env.ELEVENLABS_VOICE_ID || 'nPczCjzI2devNBz1zQrb',
+    model: process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2',
+  },
 
   /**
    * Cloudflare R2, where video actually lives.

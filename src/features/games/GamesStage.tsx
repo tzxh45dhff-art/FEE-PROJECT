@@ -12,6 +12,11 @@ import { QuizTable, SongQuizSetup, TriviaSetup, type QuizView } from '@/features
 import { GamePicker, type GameId } from '@/features/party/GamePicker'
 import { TruthDareSetup, TruthDareTable, type TruthDareView } from '@/features/party/TruthDare'
 import { useParty, type PartyState } from '@/features/party/useParty'
+import { MafiaSetup } from '@/features/party/mafia/MafiaSetup'
+import { MafiaTable } from '@/features/party/mafia/MafiaTable'
+import type { MafiaOptions, MafiaView } from '@/features/party/mafia/types'
+import type { useMeshCall } from '@/features/room-panel/useMeshCall'
+import type { Character } from '@/lib/characters'
 import { EndGameButton } from '@/features/party/EndGameButton'
 import { usePageVisible } from '@/hooks/usePageVisible'
 import { cn } from '@/lib/utils'
@@ -23,7 +28,7 @@ const PenFightTable = lazyChunk(() => import('@/features/games/penfight/PenFight
 const EASE = [0.16, 1, 0.3, 1] as const
 
 /** Everyone standing in the room, as the lobby needs them. */
-export type GameCandidate = { id: string; name: string; you: boolean }
+export type GameCandidate = { id: string; name: string; you: boolean; character?: Character }
 
 /**
  * The Play stage.
@@ -42,6 +47,7 @@ export function GamesStage({
   onTogglePanel,
   unread = 0,
   origin,
+  call = null,
 }: {
   roomId: string
   selfId: string | undefined
@@ -53,6 +59,8 @@ export function GamesStage({
   unread?: number
   /** The control this opened from, so the reveal starts there. */
   origin?: DOMRect | null
+  /** The room's call, for games played face to face (Mafia's table of faces). Never a new call. */
+  call?: ReturnType<typeof useMeshCall> | null
 }) {
   const { snapshot, motion: live, connected, send } = useGameSession(roomId, true)
   const visible = usePageVisible()
@@ -97,6 +105,8 @@ export function GamesStage({
   const opponents = members.filter((member) => !member.you)
   /* What each quiz was last started with, so "Play again" is one tap. */
   const quizOptions = useRef<Partial<Record<'trivia' | 'songquiz', unknown>>>({})
+  const mafiaOptions = useRef<MafiaOptions | null>(null)
+  const [mafiaStarting, setMafiaStarting] = useState(false)
 
   const onMotion = useCallback(
     (pens: [WirePen, WirePen]) => send('game:motion', { pens }),
@@ -171,7 +181,12 @@ export function GamesStage({
               key={`party-${party.party!.session ?? party.party!.game}`}
               label={party.party!.label}
               connected={connected}
-              allowed={!!selfId && !!partyView?.players?.some((player) => player.id === selfId)}
+              allowed={
+                !!selfId &&
+                !!partyView?.players?.some((player) => player.id === selfId) &&
+                /* Mafia: the host ends it; anyone else asks the table, from the game's own menu. */
+                (party.party!.game !== 'mafia' || (partyView as { host?: string } | null)?.host === selfId)
+              }
               onEnd={() => party.act('end')}
             />
           ) : null}
@@ -218,6 +233,41 @@ export function GamesStage({
             onPick={setScreen}
           />
         )}
+
+        {screen === 'mafia' &&
+          (party.party?.game === 'mafia' ? (
+            <MafiaTable
+              party={party.party as PartyState<MafiaView>}
+              selfId={selfId}
+              act={(action, payload) => void party.act(action, payload)}
+              call={call}
+              people={members}
+              onLeave={() => {
+                void party.dismiss()
+                setScreen('picker')
+              }}
+              onPlayAgain={() => {
+                if (mafiaOptions.current) void party.start('mafia', { ...mafiaOptions.current, rematch: true })
+              }}
+            />
+          ) : party.party ? (
+            <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />
+          ) : (
+            <MafiaSetup
+              players={members}
+              error={party.error}
+              starting={mafiaStarting}
+              onStart={async (options) => {
+                mafiaOptions.current = options
+                setMafiaStarting(true)
+                try {
+                  await party.start('mafia', options)
+                } finally {
+                  setMafiaStarting(false)
+                }
+              }}
+            />
+          ))}
 
         {screen === 'truthdare' &&
           (party.party?.game === 'truthdare' ? (

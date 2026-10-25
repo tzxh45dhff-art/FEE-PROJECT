@@ -1,0 +1,145 @@
+/*
+ * Bombay Noir, 1956 — everything the Mafia screens share.
+ * Scoped under .noir so none of it leaks into the rest of Huddle.
+ * Motion is transform and opacity only; nothing here blurs.
+ */
+.noir {
+  --noir-ink: #0c0a08;
+  --noir-smoke: #16120e;
+  --noir-wood: #2a1d14;
+  --noir-paper: #efe3c8;
+  --noir-paper-dim: #c9b994;
+  --noir-sepia: #8a6a3d;
+  --noir-brass: #c8a45e;
+  --noir-brass-dim: #8f7440;
+  --noir-blood: #a3201c;
+  --noir-blood-bright: #d43a2f;
+  --noir-night: #0a1322;
+  --noir-felt: #1d3a2c;
+  --font-deco: 'Limelight', 'Playfair Display', serif;
+  --font-type: 'Special Elite', 'Courier New', monospace;
+  --font-old: 'Playfair Display', Georgia, serif;
+  background: var(--noir-ink);
+  color: var(--noir-paper);
+}
+.noir .font-deco { font-family: var(--font-deco); letter-spacing: 0.04em; }
+.noir .font-type { font-family: var(--font-type); }
+.noir .font-old { font-family: var(--font-old); }
+
+/* The room: a hanging lamp over the table, the dark beyond it. */
+.noir-room {
+  background:
+    radial-gradient(ellipse 60% 55% at 50% -5%, rgba(255, 214, 150, 0.22), transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 120%, rgba(0, 0, 0, 0.85), transparent 60%),
+    linear-gradient(180deg, #1a140f 0%, #0d0a07 100%);
+  transition: background 1.6s ease;
+}
+.noir-room[data-mood='night'] {
+  background:
+    radial-gradient(ellipse 50% 40% at 78% 12%, rgba(170, 200, 255, 0.12), transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 120%, rgba(0, 0, 0, 0.9), transparent 60%),
+    linear-gradient(180deg, #0b1424 0%, #05080f 100%);
+}
+
+/*
+ * Film grain: one static noise tile whose position jumps around — no filters,
+ * no blur. The layer itself never leaves the frame, so nothing can ever
+ * scroll the room sideways into it.
+ */
+.noir-grain {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0.07;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+  animation: noir-grain 0.9s steps(4) infinite;
+}
+@keyframes noir-grain {
+  0% { background-position: 0 0; }
+  25% { background-position: -37px 23px; }
+  50% { background-position: 29px -41px; }
+  75% { background-position: -19px -13px; }
+  100% { background-position: 11px 37px; }
+}
+
+/* Rain: two layers of streaks sliding down at different speeds. */
+.noir-rain {
+  pointer-events: none;
+  position: absolute;
+  inset: -20% 0 0 0;
+  opacity: 0;
+  transition: opacity 1.4s ease;
+}
+.noir-rain[data-on='true'] { opacity: 1; }
+.noir-rain::before,
+.noir-rain::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(104deg, transparent 0 22px, rgba(180, 205, 255, 0.11) 22px 23px, transparent 23px 47px);
+  animation: noir-rain 0.55s linear infinite;
+}
+.noir-rain::after {
+  background-image: repeating-linear-gradient(101deg, transparent 0 37px, rgba(200, 220, 255, 0.07) 37px 38px, transparent 38px 71px);
+  animation-duration: 0.9s;
+}
+@keyframes noir-rain {
+  from { transform: translate3d(0, -60px, 0); }
+  to { transform: translate3d(-14px, 0, 0); }
+}
+
+/* Paper, for dossiers, contracts and the morning edition. */
+.noir-paper {
+  color: #231a10;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(255, 255, 255, 0.35), transparent 60%),
+    radial-gradient(ellipse at 100% 100%, rgba(120, 80, 30, 0.22), transparent 55%),
+    linear-gradient(180deg, #f1e6cb, #e4d4ad);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset, 0 24px 60px -24px rgba(0, 0, 0, 0.9);
+}
+.noir-paper-edge { box-shadow: 0 0 0 1px rgba(60, 40, 15, 0.25) inset, 0 0 0 5px rgba(60, 40, 15, 0.06) inset; }
+
+/* Brass: the frames, the clock, the buttons. */
+.noir-brass {
+  background: linear-gradient(160deg, #e8cc8a 0%, #b8913f 45%, #7d5e25 100%);
+  color: #1d1408;
+}
+.noir-frame {
+  box-shadow: 0 0 0 1px rgba(232, 204, 138, 0.55), 0 0 0 4px rgba(0, 0, 0, 0.6), 0 0 0 5px rgba(200, 164, 94, 0.35), 0 18px 40px -18px rgba(0, 0, 0, 0.9);
+}
+
+/* A rubber stamp, slightly crooked, slightly faded. */
+.noir-stamp {
+  border: 3px double currentColor;
+  font-family: var(--font-deco);
+  letter-spacing: 0.14em;
+  transform: rotate(-8deg);
+  opacity: 0.9;
+}
+/* Ink soaks into paper; on a dark photograph it has to sit on top instead. */
+.noir-paper .noir-stamp { mix-blend-mode: multiply; }
+
+/* The street lamp's flicker at night. */
+@keyframes noir-flicker {
+  0%, 100% { opacity: 1; }
+  45% { opacity: 1; }
+  47% { opacity: 0.55; }
+  49% { opacity: 1; }
+  80% { opacity: 0.9; }
+}
+.noir-flicker { animation: noir-flicker 5.5s infinite; }
+
+/* A sepia wash over live video — an overlay, never a filter on the video itself. */
+.noir-sepia::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(112, 74, 30, 0.22), rgba(40, 20, 5, 0.32));
+  mix-blend-mode: multiply;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .noir-grain, .noir-rain::before, .noir-rain::after, .noir-flicker { animation: none; }
+}

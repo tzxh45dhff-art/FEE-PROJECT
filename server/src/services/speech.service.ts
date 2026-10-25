@@ -76,12 +76,20 @@ function escapeXml(text: string) {
  * lecturing rather than newsreading. The trailing pause is what stops two
  * consecutive clips running into each other when the player moves on.
  */
-function ssml(text: string, voice: string) {
-  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US"><voice name="${voice}"><mstts:express-as style="narration-professional"><prosody rate="-4%">${escapeXml(text)}</prosody></mstts:express-as><break time="350ms"/></voice></speak>`
+function ssml(text: string, voice: string, delivery?: Delivery) {
+  if (!delivery) {
+    return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US"><voice name="${voice}"><mstts:express-as style="narration-professional"><prosody rate="-4%">${escapeXml(text)}</prosody></mstts:express-as><break time="350ms"/></voice></speak>`
+  }
+  /* A storyteller's pause after each sentence: the silence is half the drama. */
+  const body = escapeXml(text).replace(/([.!?…])\s+/g, `$1<break time="${delivery.pause ?? 450}ms"/>`)
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US"><voice name="${voice}"><prosody rate="${delivery.rate}" pitch="${delivery.pitch}">${body}</prosody><break time="500ms"/></voice></speak>`
 }
 
+/** How a line is read, for voices that aren't lecturing — a noir narrator, say. */
+export type Delivery = { rate: string; pitch: string; pause?: number }
+
 /** One beat's narration, as MP3 bytes. */
-export async function speak(text: string, voice: string): Promise<Buffer> {
+export async function speak(text: string, voice: string, delivery?: Delivery): Promise<Buffer> {
   if (!configured()) {
     throw HttpError.unavailable('Narration is not configured on this server.')
   }
@@ -103,7 +111,7 @@ export async function speak(text: string, voice: string): Promise<Buffer> {
           'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3',
           'User-Agent': 'huddle-study',
         },
-        body: ssml(text, voice),
+        body: ssml(text, voice, delivery),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       })
     } catch (cause) {
