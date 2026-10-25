@@ -291,7 +291,8 @@ export function FloatingCall({
         ref={video}
         autoPlay
         playsInline
-        muted={isSelf}
+        /* Picture only — the sound comes from CallAudio. */
+        muted
         className={cn(
           'pointer-events-none size-full object-cover',
           isSelf && '-scale-x-100',

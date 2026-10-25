@@ -45,8 +45,9 @@ export function CallTile({
         ref={video}
         autoPlay
         playsInline
-        /* Never play your own audio back — that is what causes the howl. */
-        muted={isSelf}
+        /* Picture only: the call's sound plays from CallAudio, which stays on
+           when this panel is closed. (Your own would howl anyway.) */
+        muted
         className={cn(
           'size-full object-cover',
           /* Mirrored, because a self-view that moves the wrong way is

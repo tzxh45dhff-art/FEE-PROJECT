@@ -32,6 +32,7 @@ import { MusicStage } from '@/features/music/MusicStage'
 import { CallInvite } from '@/features/room-panel/CallInvite'
 import { RoomPanel, PANEL_MIN_REM, PANEL_WIDTH_REM } from '@/features/room-panel/RoomPanel'
 import { useChat } from '@/features/room-panel/useChat'
+import { CallAudio } from '@/features/room-panel/CallAudio'
 import { FloatingCall } from '@/features/room-panel/FloatingCall'
 import { ExtensionBridge } from '@/features/watch/ExtensionBridge'
 import { useMeshCall } from '@/features/room-panel/useMeshCall'
@@ -856,6 +857,9 @@ export function DashboardPage() {
           />
         )}
       </AnimatePresence>
+
+      {/* Everyone's voice, for as long as you're on the call — whatever panel or activity is open. */}
+      {call.status === 'live' && <CallAudio peers={call.peers} />}
 
       {call.status === 'live' && floating && (
         <FloatingCall
