@@ -234,24 +234,32 @@ export function MafiaTable({
   const [strings, setStrings] = useState<{ from: { x: number; y: number }; to: { x: number; y: number }; key: string }[]>([])
   useLayoutEffect(() => {
     if (phase !== 'vote' && !trial) return setStrings([])
+    /*
+     * Where each photograph sits in the wall's own layout — offsets, not the
+     * screen, so a card still sliding into place or the wall moving down the
+     * page never sends a string across something else.
+     */
     const measure = () => {
-      const box = wall.current?.getBoundingClientRect()
-      if (!box || box.width === 0) return setStrings([])
+      if (!wall.current || wall.current.offsetWidth === 0) return setStrings([])
+      const centre = (el: HTMLElement) => ({ x: el.offsetLeft + el.offsetWidth / 2, y: el.offsetTop + el.offsetHeight * 0.4 })
       const out: typeof strings = []
       for (const [voter, target] of Object.entries(view.votes)) {
         if (!target) continue
-        const a = seatEls.current.get(voter)?.getBoundingClientRect()
-        const b = seatEls.current.get(target)?.getBoundingClientRect()
-        if (!a || !b) continue
-        out.push({ key: `${voter}-${target}`, from: { x: a.left + a.width / 2 - box.left, y: a.top + a.height * 0.4 - box.top }, to: { x: b.left + b.width / 2 - box.left, y: b.top + b.height * 0.4 - box.top } })
+        const a = seatEls.current.get(voter)
+        const b = seatEls.current.get(target)
+        if (!a || !b || a.offsetParent !== wall.current || b.offsetParent !== wall.current) continue
+        out.push({ key: `${voter}-${target}`, from: centre(a), to: centre(b) })
       }
       setStrings(out)
     }
     measure()
     const observer = new ResizeObserver(measure)
-    if (wall.current) observer.observe(wall.current)
+    if (wall.current) {
+      observer.observe(wall.current)
+      for (const el of seatEls.current.values()) observer.observe(el)
+    }
     return () => observer.disconnect()
-  }, [view.votes, phase, layout, trial])
+  }, [view.votes, phase, layout, trial, view.players.length])
 
   /*
    * One place to choose, per screen: a phone picks from the dossier's grid,
@@ -295,6 +303,7 @@ export function MafiaTable({
             stream={m.stream}
             cameraOff={m.cameraOff}
             onCall={m.onCall && seat.presence === 'online'}
+            callLive={onCall}
             micMuted={m.muted}
             mood={phase === 'night' ? 'night' : 'day'}
             selectable={selectable}
@@ -303,7 +312,7 @@ export function MafiaTable({
             pins={phase === 'vote' || trial ? pins(seat.id) : undefined}
             spotlight={(trial || phase === 'verdict') && view.accused === seat.id}
             dim={trial && view.accused !== seat.id}
-            bubble={talking ? bubble(seat.id) : null}
+            bubble={talking && !(trial && view.plea && seat.id === view.accused) ? bubble(seat.id) : null}
             onPick={() => act('vote', { target: seat.id })}
           />
         )

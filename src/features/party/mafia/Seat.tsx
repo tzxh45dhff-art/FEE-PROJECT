@@ -45,6 +45,7 @@ export function Seat({
   stream,
   cameraOff,
   onCall,
+  callLive,
   micMuted,
   mood,
   selectable,
@@ -63,6 +64,8 @@ export function Seat({
   stream: MediaStream | null
   cameraOff: boolean
   onCall: boolean
+  /** Whether this screen is on the room call at all. */
+  callLive?: boolean
   micMuted: boolean
   mood: 'night' | 'day'
   selectable: boolean
@@ -94,7 +97,6 @@ export function Seat({
       ref={seatRef as never}
       type={selectable ? 'button' : undefined}
       onClick={selectable ? onPick : undefined}
-      layout
       whileHover={selectable ? { y: -3 } : undefined}
       whileTap={selectable ? { scale: 0.97 } : undefined}
       aria-pressed={selectable ? selected : undefined}
@@ -147,7 +149,8 @@ export function Seat({
             <Armchair aria-hidden className="size-3.5" />
           </span>
         )}
-        {!onCall && !seat.bot && seat.presence === 'online' && seat.alive && mood === 'day' && (
+        {/* Only worth saying when there is a call to be on. */}
+        {callLive && !onCall && !seat.bot && seat.presence === 'online' && seat.alive && mood === 'day' && (
           <span className="font-type absolute bottom-1.5 right-1.5 hidden rounded-sm bg-black/70 px-1.5 py-0.5 text-[0.64rem] uppercase tracking-wider text-[var(--noir-paper-dim)] sm:block">off the call</span>
         )}
         {onCall && micMuted && seat.alive && mood === 'day' && seat.presence === 'online' && (
@@ -188,7 +191,7 @@ export function Seat({
 
       {/* The name, typed on a card under the photograph. */}
       <div className="flex flex-col gap-0 border-t border-[var(--noir-brass)]/25 bg-[linear-gradient(180deg,#221a12,#15100b)] px-2 py-1.5 sm:px-2.5">
-        <span className="font-type min-w-0 truncate text-[0.86rem] text-[var(--noir-paper)]" title={seat.name}>
+        <span className="font-type min-w-0 truncate text-[0.86rem] text-[var(--noir-paper)]">
           {/* A small card has room for what the table calls you; a big one for the full name. */}
           <span className="sm:hidden">{callName(seat.name)}</span>
           <span className="hidden sm:inline">{seat.name}</span>

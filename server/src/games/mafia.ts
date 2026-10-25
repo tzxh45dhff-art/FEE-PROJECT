@@ -142,6 +142,8 @@ export type Mafia = {
   nightLog: { round: number; by: string; target: string }[]
   thinking: Thinking[]
   lastReplyAt: number
+  /** AIs answering AIs today — capped, so the table never talks itself in circles. */
+  replies: number
 }
 
 /* ── timings ───────────────────────────────────────────────────────────── */
@@ -269,7 +271,8 @@ export function sightFor(state: Mafia, id: string, replyTo: string | null, now =
     phase: state.phase,
     round: state.round,
     msLeft: left !== null && left >= 0 && left < 3_600_000 ? left : null,
-    players: v.players.map((p) => ({ id: p.id, name: p.name, alive: p.alive, role: p.role, died: p.died, bot: p.bot !== null, cover: seat(state, p.id)?.cover })),
+    /* Who is an AI is not on the list: to an AI, everyone at the table is simply a player. */
+    players: v.players.map((p) => ({ id: p.id, name: p.name, alive: p.alive, role: p.role, died: p.died, cover: seat(state, p.id)?.cover })),
     ledger: state.ledger,
     nights,
     mine: state.nightLog.filter((n) => n.by === id).map((n) => ({ round: n.round, target: n.target })),
@@ -281,6 +284,36 @@ export function sightFor(state: Mafia, id: string, replyTo: string | null, now =
     talk: state.talk.map((t) => ({ by: t.by, text: t.text, round: t.round })),
     replyTo,
   }
+}
+
+/** Which players a line speaks to, by any part of their name: "Rosie", "Lobo", "Father Pereira". */
+function namedIn(text: string, among: Seat[]) {
+  const words = new Set(text.toLowerCase().split(/[^\p{L}’']+/u))
+  return among.filter((p) => p.name.toLowerCase().split(/\s+/).some((w) => w.length > 2 && !TITLE_WORDS.has(w) && words.has(w)))
+}
+
+/**
+ * Somebody said something at the table; does an AI answer? Whoever was
+ * named answers (if an AI — a person answers for themselves), and now and
+ * then someone with an opinion chimes in when a person speaks. AIs answering
+ * AIs is capped per day so the talk keeps room for everyone else.
+ */
+function invite(state: Mafia, speaker: string, text: string, ctx: Ctx) {
+  if (state.phase !== 'day' && state.phase !== 'vote') return
+  const fromAI = isBot(seat(state, speaker)!)
+  if (fromAI && state.replies >= 10) return
+  const bots = living(state).filter((p) => isBot(p) && p.id !== speaker && p.id !== state.accused)
+  if (!bots.length) return
+  const named = namedIn(text, bots)
+  const who = named.length
+    ? named[ctx.random(named.length)]
+    : !fromAI && ctx.now() - state.lastReplyAt > 10_000 && ctx.random(2) === 0
+      ? bots[ctx.random(bots.length)]
+      : undefined
+  if (!who || ctx.now() - state.lastReplyAt < 4_000) return
+  state.lastReplyAt = ctx.now()
+  if (fromAI) state.replies += 1
+  ctx.schedule(1_500 + ctx.random(2_000), 'bot', { step: state.step, id: who.id, job: 'talk', replyTo: speaker })
 }
 
 function hear(state: Mafia, by: string, text: string, kind: Talk['kind'], ctx: Ctx) {
@@ -383,6 +416,7 @@ function enterNight(state: Mafia, ctx: Ctx) {
   state.votes = {}
   state.accused = null
   state.plea = null
+  state.replies = 0
   state.judgement = {}
   state.verdict = null
   state.thinking = []
@@ -764,6 +798,7 @@ export const mafia: GameDef<Mafia, Options> = {
       nightLog: [],
       thinking: [],
       lastReplyAt: 0,
+      replies: 0,
     }
     return options.story ? showPage(state, 0, ctx) : enterDeal(state, ctx)
   },
@@ -852,6 +887,8 @@ export const mafia: GameDef<Mafia, Options> = {
         const said = cleanText(payload.say)
         if (said) hear(state, bot.id, said, 'bot', ctx)
         if (said && thought.job === 'defence') state.plea = said
+        /* The AIs talk to each other as they talk to anyone: name someone, and they may answer. */
+        if (said && thought.job === 'talk') invite(state, bot.id, said, ctx)
         /* An AI rests its case once the town has had time to read it — not on a fixed clock. */
         if (thought.job === 'defence' && state.paused === null && state.deadline !== null) {
           const rest = Math.max(8_000, readMs(said) + READ_PAD_MS)
@@ -987,19 +1024,7 @@ export const mafia: GameDef<Mafia, Options> = {
         const state: Mafia = structuredClone(prev)
         hear(state, by.id, text, payload.heard === true ? 'heard' : 'say', ctx)
         if (state.phase === 'defence' && by.id === state.accused) state.plea = state.plea ? `${state.plea} ${text}`.slice(-480) : text
-        /* Somebody may answer: whoever was named, or now and then whoever has an opinion. */
-        const bots = living(state).filter((p) => isBot(p) && p.id !== state.accused)
-        if ((state.phase === 'day' || state.phase === 'vote') && bots.length) {
-          /* Any part of a name reaches its seat: "Rosie", "Lobo", "Father Pereira". */
-          const words = new Set(text.toLowerCase().split(/[^\p{L}’']+/u))
-          const named = bots.find((b) => b.name.toLowerCase().split(/\s+/).some((w) => w.length > 2 && !TITLE_WORDS.has(w) && words.has(w)))
-          /* Named, an AI always answers; otherwise someone often does — but nobody talks over the last reply. */
-          const who = named ?? (ctx.now() - state.lastReplyAt > 10_000 && ctx.random(2) === 0 ? bots[ctx.random(bots.length)] : undefined)
-          if (who && (named ? ctx.now() - state.lastReplyAt > 4_000 : true)) {
-            state.lastReplyAt = ctx.now()
-            ctx.schedule(1_500 + ctx.random(2_000), 'bot', { step: state.step, id: who.id, job: 'talk', replyTo: by.id })
-          }
-        }
+        invite(state, by.id, text, ctx)
         return state
       }
 

@@ -712,18 +712,39 @@ describe('mafia — AI players', () => {
     assert.match(briefing(sightFor(state, 'ai-5', null, clock)), /\[day 1\] .*Who wanted Aditi gone/)
   })
 
-  it('the AI Family never kill a person on the first night, and mostly go for the AIs after', () => {
+  it('an AI cannot tell a person from another AI, and the Family pick anyone with an equal chance', () => {
     clock = 0
     timers = []
     const state = mafia.start(people(1), options({ bots: 5 }), ctx())
     state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager', 'villager'] as Role[])[i]!))
     state.round = 1
+    const sight = sightFor(state, 'ai-1', null)
+    assert.ok(sight.players.every((p) => !('bot' in p)), 'nothing in what an AI sees marks who is an AI')
+    assert.doesNotMatch(briefing(sight), /\bAI\b/, 'nor in what it is told')
     const random = (n: number) => Math.floor(Math.random() * n)
-    for (let i = 0; i < 300; i++) assert.notEqual(nightPick(sightFor(state, 'ai-1', null), random), 'aditi')
-    state.round = 3
     let person = 0
-    for (let i = 0; i < 3000; i++) if (nightPick(sightFor(state, 'ai-1', null), random) === 'aditi') person++
-    assert.ok(person > 100 && person < 3000 / 4, `people are still in danger, just less (${person} of 3000)`)
+    for (let i = 0; i < 5000; i++) if (nightPick(sightFor(state, 'ai-1', null), random) === 'aditi') person++
+    assert.ok(person > 5000 * 0.15 && person < 5000 * 0.25, `the person is one of five, no more and no less (${person} of 5000)`)
+  })
+
+  it('the AIs talk to each other: name someone and they answer — but not forever', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(1), options({ bots: 4 }), ctx())
+    state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager'] as Role[])[i]!))
+    state = tick(tick(tick(tick(state))))
+    assert.equal(state.phase, 'day')
+    const name = (id: string) => state.players.find((p) => p.id === id)!.name.split(' ').at(-1)!
+    for (let i = 0; i < 14; i++) {
+      clock += 5_000
+      timers = []
+      state = act(state, null, 'bot', { step: state.step, id: 'ai-1', job: 'talk' })
+      state = act(state, null, 'botDone', { key: state.thinking.at(-1)!.key, say: `${name('ai-3')}, where were you on night one?` })
+      const answer = timers.find((t) => t.action === 'bot' && t.payload.job === 'talk')
+      if (i === 0) assert.equal(answer?.payload.id, 'ai-3', 'the one named answers')
+      if (i === 0) assert.equal(answer?.payload.replyTo, 'ai-1')
+      if (i >= 10) assert.equal(answer, undefined, 'a day’s AI-to-AI replies are capped')
+    }
   })
 
   it('an AI with nothing to go on names anyone — not whoever sits first', () => {

@@ -38,7 +38,8 @@ export type Sight = {
   round: number
   /** Time left on the current phase's clock. */
   msLeft?: number | null
-  players: { id: string; name: string; alive: boolean; role: Role | null; died: { round: number; how: 'killed' | 'voted' } | null; bot: boolean; cover?: string }[]
+  /** Everyone at the table — with nothing to say which of them are AIs. */
+  players: { id: string; name: string; alive: boolean; role: Role | null; died: { round: number; how: 'killed' | 'voted' } | null; cover?: string }[]
   ledger: { round: number; nominations: Record<string, string | null>; accused: string | null; judgement: Record<string, boolean>; outcome: string }[]
   /** The morning papers: who died each night, or that somebody was saved — and, if this AI would know, who was targeted. */
   nights?: { round: number; victim: string | null; saved: boolean; target: string | null }[]
@@ -91,15 +92,8 @@ export function nightPick(s: Sight, random: (n: number) => number): string | nul
     /* Go with the Family's call if someone has made one. */
     const called = Object.values(s.familyPicks)[0]
     if (called) return called
-    /*
-     * A party game is no fun from the afterlife. The AI Family never kill a
-     * person on the first night, and after that they mostly go for the other
-     * AIs — people still die, just not before they've had a chance to play.
-     */
-    const victims = alive.filter((p) => !family(p.role))
-    const ais = victims.filter((p) => p.bot)
-    if (s.round <= 1 && ais.length) return pickOne(ais, random)!.id
-    return pickOne([...ais, ...ais, ...ais, ...victims.filter((p) => !p.bot)], random)?.id ?? null
+    /* Anyone outside the Family, with an equal chance — an AI can't tell a person from another AI. */
+    return pickOne(alive.filter((p) => !family(p.role)), random)?.id ?? null
   }
   if (s.me.role === 'doctor') {
     const allowed = alive.filter((p) => p.id !== s.me.lastProtected && !(p.id === s.me.id && s.me.selfSaveUsed))
@@ -340,7 +334,7 @@ async function decide(job: Job, s: Sight, random: (n: number) => number): Promis
           {
             role: 'system',
             content:
-              'You play one character at a party game of Mafia, Bombay 1956 noir, as a real player would: you follow the game closely, remember who said and did what, and reason from it. You speak like a real person at the table — short, natural, a little colourful, never gory, no emojis, no stage directions. Stick to the facts you are given: never invent a death, a vote, or something someone said, and never talk to the dead. You only answer with JSON.',
+              'You play one character at a party game of Mafia, Bombay 1956 noir, as a real player would. Everyone else at the table is a player like you, each with their own secret card — judge them all by the same standard: what they said, how they voted, what happened. Follow the game closely, remember who said and did what, and reason from it. Talk to the others by name, answer questions put to you, and ask your own. You speak like a real person at the table — short, natural, a little colourful, never gory, no emojis, no stage directions. Never assume anyone\'s gender: use their name or "they". Stick to the facts you are given: never invent a death, a vote, or something someone said, and never talk to the dead. You only answer with JSON.',
           },
           { role: 'user', content: `${briefing(s)}\n\n${ASK[job](s)}` },
         ],
