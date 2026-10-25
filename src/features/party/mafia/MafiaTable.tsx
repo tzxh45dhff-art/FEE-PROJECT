@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Armchair, BookOpen, Flag, FolderLock, Mic, MicOff, MonitorSpeaker, MoreHorizontal, Pause, Play, Send, Video, Volume2, VolumeX, Wifi } from 'lucide-react'
+import { Armchair, BookOpen, CircleHelp, Flag, FolderLock, Mic, MicOff, MonitorSpeaker, MoreHorizontal, Pause, Play, Send, Video, Volume2, VolumeX, Wifi } from 'lucide-react'
 
 import { remaining, type PartyState } from '@/features/party/useParty'
 import type { useMeshCall } from '@/features/room-panel/useMeshCall'
@@ -11,7 +11,8 @@ import { callName, firstName } from './helpers'
 import { CaseFile, Clock, Newspaper, RoleCard, Subtitles } from './Pieces'
 import { Portrait, Seat } from './Seat'
 import { publicOnly, useNotes } from './notes'
-import { DossierSheet, NotebookSheet, Predict } from './Sheets'
+import { DossierSheet, HowToPlaySheet, NotebookSheet, Predict } from './Sheets'
+import { PhaseGuide, Prologue, RoleBrief } from './Story'
 import { ROLE_TITLE, isFamily, type MafiaView, type SeatView } from './types'
 import { canHear, useHearing } from './useHearing'
 import { useNarrator } from './useNarrator'
@@ -23,6 +24,7 @@ type Call = ReturnType<typeof useMeshCall>
 type Person = { id: string; name: string; character?: Character }
 
 const PHASE_TITLE: Record<MafiaView['phase'], string> = {
+  prologue: 'The story',
   deal: 'The deal',
   night: 'Night',
   hush: 'Stop the presses',
@@ -37,12 +39,12 @@ const PHASE_TITLE: Record<MafiaView['phase'], string> = {
 
 /** What each role is asked to do at night. Everyone has something, so nobody gives themselves away. */
 const NIGHT_ASK: Record<string, { title: string; hint: string; verb: string; doing: string }> = {
-  mafia: { title: 'Who sleeps with the fishes?', hint: 'Agree with the Family. If you split, a coin decides.', verb: 'Mark', doing: 'Marking' },
-  godfather: { title: 'Name the target', hint: 'Your word decides the kill.', verb: 'Mark', doing: 'Marking' },
-  doctor: { title: 'Who do you keep alive tonight?', hint: 'Not the same patient twice in a row. Yourself, once.', verb: 'Protect', doing: 'Protecting' },
-  detective: { title: 'Whose file do you open?', hint: 'By morning you will know if they work for the Family.', verb: 'Investigate', doing: 'Investigating' },
-  villager: { title: 'Who do you suspect?', hint: 'Your hunch goes in the case file.', verb: 'Suspect', doing: 'Suspecting' },
-  jester: { title: 'Who do you suspect?', hint: 'Play the part. Act suspicious tomorrow.', verb: 'Suspect', doing: 'Suspecting' },
+  mafia: { title: 'Who does the Family kill tonight?', hint: 'Agree on one name with the rest of the Family — if you split, a coin decides. Whoever you choose dies at dawn, unless the Doctor saves them.', verb: 'Mark', doing: 'Marking' },
+  godfather: { title: 'Name tonight’s target', hint: 'You run the Family: your choice is the kill. They die at dawn, unless the Doctor saves them.', verb: 'Mark', doing: 'Marking' },
+  doctor: { title: 'Who do you keep alive tonight?', hint: 'If the Family come for this person, they survive. Not the same patient two nights running; yourself, only once.', verb: 'Protect', doing: 'Protecting' },
+  detective: { title: 'Whose file do you open?', hint: 'By morning you’ll know — privately — whether they work for the Family.', verb: 'Investigate', doing: 'Investigating' },
+  villager: { title: 'Who do you suspect?', hint: 'You can’t act at night — just mark a private hunch. It can’t hurt anyone; it goes in the case file you’ll see at the end.', verb: 'Suspect', doing: 'Suspecting' },
+  jester: { title: 'Who do you suspect?', hint: 'A private hunch, like a citizen. Tomorrow, act just suspicious enough to get yourself hanged.', verb: 'Suspect', doing: 'Suspecting' },
 }
 
 const DEFENCE_MS = 25_000
@@ -106,7 +108,7 @@ export function MafiaTable({
   const isHost = selfId === view.host
   const presence = full.players.find((p) => p.id === selfId)?.presence ?? 'online'
   const layout: 'seats' | 'pocket' | 'square' = square ? 'square' : presence === 'table' ? 'pocket' : 'seats'
-  const mood: 'night' | 'day' = phase === 'night' || phase === 'deal' ? 'night' : 'day'
+  const mood: 'night' | 'day' = phase === 'night' || phase === 'deal' || phase === 'prologue' ? 'night' : 'day'
   /* AI players get a face from the same cast as everyone else, steady for the whole game. */
   const character = (id: string) => people.find((p) => p.id === id)?.character ?? (id.startsWith('ai-') ? characterFor(`${full.game}-${id}`) : undefined)
   const seatById = (id: string | null | undefined) => view.players.find((p) => p.id === id)
@@ -129,10 +131,11 @@ export function MafiaTable({
   }, [phase, view.options])
   /* The reading phases have no fixed length: their clock empties from whatever time they began with. */
   const [began, setBegan] = useState({ key: '', ms: 0 })
-  const phaseKey = `${view.game}-${phase}-${view.round}`
+  const phaseKey = `${view.game}-${phase}-${view.round}-${view.story?.at ?? ''}`
   if (began.key !== phaseKey || left > began.ms) setBegan({ key: phaseKey, ms: began.key !== phaseKey ? left : Math.max(began.ms, left) })
   const reading = phase === 'dawn' || phase === 'verdict' || phase === 'deal'
   const clockTotal = total || (reading ? began.ms : 0)
+  const pageLeft = phase === 'prologue' && began.ms > 0 ? left / began.ms : 0
 
   /* Sound. Pocket phones at a table stay silent — the town square does the talking. */
   const [soundOn, toggleSound] = useStored('huddle.mafiaSound', true)
@@ -140,8 +143,12 @@ export function MafiaTable({
   const { sting } = useNoirSound(phase === 'over' ? 'quiet' : mood === 'night' ? 'night' : 'day', narrates)
   useNarrator(view.narration, { enabled: narrates, volume: 1 })
   const lastPhase = useRef(phase)
+  const [guided, setGuided] = useState<Set<string>>(() => new Set())
   useEffect(() => {
     if (phase === lastPhase.current) return
+    /* A part of the round explains itself only the first time it comes up. */
+    const was = lastPhase.current
+    setGuided((done) => (done.has(was) ? done : new Set(done).add(was)))
     lastPhase.current = phase
     if (phase === 'dawn') sting('dawn')
     if (phase === 'verdict') sting('verdict')
@@ -178,7 +185,7 @@ export function MafiaTable({
   }
 
   /* Sheets and notes. */
-  const [sheet, setSheet] = useState<'dossier' | 'notebook' | null>(null)
+  const [sheet, setSheet] = useState<'dossier' | 'notebook' | 'howto' | null>(null)
   const [menu, setMenu] = useState(false)
   const { notes, cycle } = useNotes(view.game)
   const closeSheet = useCallback(() => setSheet(null), [])
@@ -480,18 +487,47 @@ export function MafiaTable({
 
   const centre = (
     <AnimatePresence mode="wait">
+      {phase === 'prologue' && (
+        <motion.div key="prologue" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="py-2">
+          <Prologue view={view} selfId={selfId} isHost={isHost} progress={pageLeft} character={character} onNext={() => act('next')} onSkip={() => act('skip')} />
+        </motion.div>
+      )}
       {phase === 'deal' && (
         <motion.div key="deal" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-4 py-4 [@media(max-height:520px)]:gap-2 [@media(max-height:520px)]:py-1">
           {me ? (
             <>
               <p className="font-type text-[0.82rem] uppercase tracking-[0.3em] text-[var(--noir-brass)]">{presence === 'table' ? 'Hold your card to look. Tell no one.' : 'Your card. Tell no one.'}</p>
-              <RoleCard role={me.role} title={me.title} line={me.line} hold={presence === 'table'} onSeen={() => act('seen')} />
-              {/* Only once the card is turned — before that, the line would give the card away. */}
-              {isFamily(me.role) && me.seen && (
-                <p className="font-type max-w-xs text-center text-[0.88rem] text-[var(--noir-paper-dim)]">
-                  The Family: {view.players.filter((p) => isFamily(p.role) && p.id !== me.id).map((p) => firstName(p)).join(', ') || 'just you — work alone'}
-                </p>
-              )}
+              <div className="flex w-full flex-col items-center gap-4 lg:flex-row lg:items-start lg:justify-center">
+                <RoleCard
+                  role={me.role}
+                  title={me.title}
+                  line={me.line}
+                  hold={presence === 'table'}
+                  onSeen={() => act('seen')}
+                  /* Once it's read, the card makes room for what it means. */
+                  className={me.seen && presence !== 'table' ? 'w-[clamp(6rem,calc((100dvh-15rem)*0.4),10rem)] lg:w-[clamp(6rem,calc((100dvh-15rem)*0.7),16rem)]' : undefined}
+                />
+                {/* Only once the card is turned — before that, it would give the card away. At a real table, the card keeps its own secret. */}
+                {me.seen &&
+                  (presence === 'table' ? (
+                    <BarButton on={view.next.includes(me.id)} onClick={() => act('next')}>
+                      {view.next.includes(me.id) ? 'Waiting for the others…' : 'I’ve read my card'}
+                    </BarButton>
+                  ) : (
+                    <RoleBrief
+                      role={me.role}
+                      title={me.title}
+                      friends={
+                        isFamily(me.role)
+                          ? `The Family: ${view.players.filter((p) => isFamily(p.role) && p.id !== me.id).map((p) => firstName(p)).join(', ') || 'just you — work alone'}`
+                          : null
+                      }
+                      ready={view.next.includes(me.id)}
+                      waiting={view.players.some((p) => !p.bot && p.id !== me.id)}
+                      onReady={() => act('next')}
+                    />
+                  ))}
+              </div>
             </>
           ) : (
             <div className="py-10 text-center">
@@ -612,15 +648,17 @@ export function MafiaTable({
 
   /* ── the frame ──────────────────────────────────────────────────────── */
 
-  const showCentre = phase === 'deal' || phase === 'hush' || phase === 'dawn' || phase === 'verdict' || phase === 'over'
+  const showCentre = phase === 'prologue' || phase === 'deal' || phase === 'hush' || phase === 'dawn' || phase === 'verdict' || phase === 'over'
   const showWall = layout === 'seats' && !showCentre
+  /* A first game explains each part of the round the first time it comes up; a rematch trusts you. */
+  const guide = view.options.story && !!me?.alive && layout !== 'square' && !guided.has(phase) && ['night', 'dawn', 'day', 'vote', 'defence', 'judgement'].includes(phase)
   const aside = movePanel || chat || prediction || talkFeed
   const endsNeeded = Math.floor(view.players.length / 2) + 1
 
   return (
     <div className="noir noir-room relative isolate flex h-full min-h-0 w-full flex-col overflow-clip" data-mood={mood}>
       <div className="noir-grain" aria-hidden />
-      <div className="noir-rain" data-on={phase === 'night' || phase === 'deal'} aria-hidden />
+      <div className="noir-rain" data-on={mood === 'night'} aria-hidden />
       {mood === 'night' && <Skyline className="pointer-events-none absolute inset-x-0 bottom-0 h-40 w-full text-[#03060c] opacity-90" />}
 
       {/* The top bar: where we are, the clock, the switches. */}
@@ -635,7 +673,7 @@ export function MafiaTable({
             {phase === 'hush' ? (view.after === 'dawn' ? 'Morning' : 'The count') : PHASE_TITLE[phase]}
           </h2>
         </div>
-        {clockTotal > 0 && left > 0 && <Clock left={left} total={clockTotal} paused={view.paused !== null} onTick={total > 0 ? tick : undefined} />}
+        {clockTotal > 0 && left > 0 && phase !== 'prologue' && <Clock left={left} total={clockTotal} paused={view.paused !== null} onTick={total > 0 ? tick : undefined} />}
         <div className="flex items-center gap-1.5">
           {me && phase !== 'over' && (
             <button
@@ -685,6 +723,9 @@ export function MafiaTable({
                           {presence === 'online' ? 'I’m sitting at the table' : 'I’m playing online'}
                         </MenuItem>
                       )}
+                      <MenuItem icon={CircleHelp} onClick={() => setSheet('howto')}>
+                        How to play
+                      </MenuItem>
                       {full.me && (
                         <MenuItem icon={MonitorSpeaker} onClick={toggleSquare}>
                           {squareHere ? 'Back to my own screen' : 'Use this screen as the town square'}
@@ -718,6 +759,14 @@ export function MafiaTable({
       {/* The body. */}
       {/* Room inside the edges for the photographs' brass frames and their lift on hover — nothing gets sliced off. */}
       <div className="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-2 sm:px-6" data-lenis-prevent>
+        {/* The first time a part of the round comes up, it explains itself — above everything else. */}
+        <AnimatePresence>
+          {guide && (
+            <div className="mx-auto mb-3 w-full max-w-6xl">
+              <PhaseGuide key={phase} phase={phase} role={me?.role ?? null} accused={iAmAccused} onClose={() => setGuided((done) => new Set(done).add(phase))} />
+            </div>
+          )}
+        </AnimatePresence>
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 lg:flex-row lg:items-start">
           <div className="flex min-w-0 flex-1 flex-col gap-4">
             {showCentre && centre}
@@ -759,7 +808,7 @@ export function MafiaTable({
       </div>
 
       {/* The narrator, in subtitles. */}
-      {phase !== 'over' && phase !== 'dawn' && view.narration && (
+      {phase !== 'over' && phase !== 'dawn' && phase !== 'prologue' && view.narration && (
         <div className="relative z-10 shrink-0 bg-[linear-gradient(0deg,rgba(0,0,0,.85),transparent)] pb-2 pt-4 [@media(max-height:520px)]:pb-1 [@media(max-height:520px)]:pt-1.5">
           <Subtitles id={view.narration.id} text={view.narration.text} />
         </div>
@@ -783,6 +832,7 @@ export function MafiaTable({
         <DossierSheet view={view} open={sheet === 'dossier'} onClose={closeSheet} onPredict={(winner) => act('predict', { winner })} notes={notes} onNote={cycle} />
       )}
       <NotebookSheet view={view} open={sheet === 'notebook'} onClose={closeSheet} />
+      <HowToPlaySheet view={view} open={sheet === 'howto'} onClose={closeSheet} />
     </div>
   )
 }

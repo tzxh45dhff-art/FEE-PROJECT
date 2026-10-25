@@ -38,7 +38,7 @@ export type Sight = {
   round: number
   /** Time left on the current phase's clock. */
   msLeft?: number | null
-  players: { id: string; name: string; alive: boolean; role: Role | null; died: { round: number; how: 'killed' | 'voted' } | null; bot: boolean }[]
+  players: { id: string; name: string; alive: boolean; role: Role | null; died: { round: number; how: 'killed' | 'voted' } | null; bot: boolean; cover?: string }[]
   ledger: { round: number; nominations: Record<string, string | null>; accused: string | null; judgement: Record<string, boolean>; outcome: string }[]
   /** The morning papers: who died each night, or that somebody was saved — and, if this AI would know, who was targeted. */
   nights?: { round: number; victim: string | null; saved: boolean; target: string | null }[]
@@ -68,7 +68,8 @@ const pickOne = <T>(list: T[], random: (n: number) => number): T | undefined => 
 function suspicion(s: Sight, random: (n: number) => number) {
   const scores = new Map<string, number>()
   const others = s.players.filter((p) => p.alive && p.id !== s.me.id)
-  for (const p of others) scores.set(p.id, random(3))
+  /* A hunch, with a fine-grained tie-break — never "whoever sits first", which was always the person who opened the table. */
+  for (const p of others) scores.set(p.id, random(300) / 100)
   for (const day of s.ledger) {
     for (const [voter, target] of Object.entries(day.nominations)) {
       if (target === s.me.id && scores.has(voter)) scores.set(voter, scores.get(voter)! + 2)
@@ -90,7 +91,15 @@ export function nightPick(s: Sight, random: (n: number) => number): string | nul
     /* Go with the Family's call if someone has made one. */
     const called = Object.values(s.familyPicks)[0]
     if (called) return called
-    return pickOne(alive.filter((p) => !family(p.role)), random)?.id ?? null
+    /*
+     * A party game is no fun from the afterlife. The AI Family never kill a
+     * person on the first night, and after that they mostly go for the other
+     * AIs — people still die, just not before they've had a chance to play.
+     */
+    const victims = alive.filter((p) => !family(p.role))
+    const ais = victims.filter((p) => p.bot)
+    if (s.round <= 1 && ais.length) return pickOne(ais, random)!.id
+    return pickOne([...ais, ...ais, ...ais, ...victims.filter((p) => !p.bot)], random)?.id ?? null
   }
   if (s.me.role === 'doctor') {
     const allowed = alive.filter((p) => p.id !== s.me.lastProtected && !(p.id === s.me.id && s.me.selfSaveUsed))
@@ -212,6 +221,8 @@ export function briefing(s: Sight): string {
   }
 
   /* The table as it stands. */
+  const cast = s.players.filter((p) => p.id !== me.id && p.cover).map((p) => `${first(p.name)} — ${p.cover}`)
+  if (cast.length) lines.push('', `WHO'S WHO at the Irani café tonight: ${cast.join('; ')}.`)
   const alive = s.players.filter((p) => p.alive && p.id !== me.id).map((p) => first(p.name))
   lines.push('', `THE TABLE: ${s.players.length} players began. Alive besides you (${alive.length}): ${alive.join(', ') || 'nobody'}.`)
   const dead = s.players.filter((p) => !p.alive)
@@ -284,11 +295,11 @@ const ASK: Record<Job, (s: Sight) => string> = {
   talk: (s) => {
     const who = first(s.players.find((p) => p.id === s.replyTo)?.name ?? 'Someone')
     const said = s.replyTo ? [...s.talk].reverse().find((t) => t.by === s.replyTo)?.text : undefined
-    return `${s.replyTo ? `${who} just said to the table: "${said ?? '…'}" — answer them directly. ` : ''}Say one thing to the table now: accuse, defend, question, or react to what was actually said. Build on the conversation — don't repeat yourself or others. Under 150 characters, spoken, in character, first names only.
+    return `${s.replyTo ? `${who} just said to the table: "${said ?? '…'}" — answer them directly. ` : ''}Say one thing to the table now: accuse, defend, question, or react to what was actually said. Build on the conversation — don't repeat yourself or others. Spread your attention around the table; don't keep coming back to the same person without a new reason. Under 150 characters, spoken, in character, first names only.
 Answer as JSON: {"say": "..."}`
   },
   vote: (s) =>
-    `Nominations are open. Choose who should stand trial, or nobody. Pick from these ids: ${s.players
+    `Nominations are open. Choose who should stand trial, or nobody. Decide from the record and what was actually said — a contradiction, a strange vote, a defence of someone suspicious. Do not pick someone just because they talked the most or are new to the table; ${s.round <= 1 ? 'on day 1 there is very little to go on, so a light hunch or "nobody" is fine' : 'follow the evidence'}. Pick from these ids: ${s.players
       .filter((p) => p.alive && p.id !== s.me.id)
       .map((p) => `${p.id} (${first(p.name)})`)
       .join(', ')}.

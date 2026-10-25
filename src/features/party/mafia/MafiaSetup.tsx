@@ -35,6 +35,7 @@ export function MafiaSetup({
   const [reveal, setReveal] = useState(true)
   const [godfather, setGodfather] = useState(true)
   const [jester, setJester] = useState(false)
+  const [story, setStory] = useState(true)
   /* AI regulars fill the empty chairs: enough for a game by default, more if you like. */
   const [aiWanted, setAi] = useState(() => Math.max(0, 4 - players.length))
   const ai = Math.max(0, Math.min(aiWanted, 12 - players.length))
@@ -52,6 +53,9 @@ export function MafiaSetup({
           <h1 className="font-deco mt-2 text-center text-[clamp(2.6rem,7vw,4.6rem)] leading-none text-[var(--noir-paper)] [text-shadow:0_4px_30px_rgba(0,0,0,.8)]">Mafia</h1>
           <p className="font-old mt-3 max-w-md text-center text-[1rem] italic text-[var(--noir-paper-dim)]">
             Somebody at this table works for the Family. By morning, somebody else will be dead.
+          </p>
+          <p className="font-type mt-2 max-w-md text-center text-[0.8rem] text-[var(--noir-paper-dim)]/80">
+            Never played? No need to read rules — the story explains everything as it goes.
           </p>
           {/* On a phone: a compact roster — everyone readable, nothing squeezed round an ellipse. */}
           <ul className="mt-6 grid w-full grid-cols-2 gap-1.5 sm:hidden" aria-label="Players">
@@ -150,6 +154,7 @@ export function MafiaSetup({
           </Field>
 
           <Field label="House rules">
+            <Toggle on={story} onChange={setStory} title="Tell the story first" note="A one-minute narrated opening that explains the game — best for new players" />
             <Toggle on={reveal} onChange={setReveal} title="Reveal the dead" note="Show a role when its owner dies" />
             <Toggle on={godfather} onChange={setGodfather} title="The Godfather" note="7+ players · reads clean to the Inspector" />
             <Toggle on={jester} onChange={setJester} title="The Jester" note="6+ players · wins if the town hangs them" />
@@ -168,7 +173,7 @@ export function MafiaSetup({
               disabled={!can}
               whileHover={can ? { rotate: -8, scale: 1.04 } : undefined}
               whileTap={can ? { scale: 0.92 } : undefined}
-              onClick={() => onStart({ nightSeconds: night, daySeconds: day, voteSeconds: vote, reveal, godfather, jester, together: where === 'table', bots: ai })}
+              onClick={() => onStart({ nightSeconds: night, daySeconds: day, voteSeconds: vote, reveal, godfather, jester, together: where === 'table', bots: ai, story })}
               className="relative grid size-24 place-items-center rounded-full bg-[radial-gradient(circle_at_35%_30%,#c4362d,#7a1410_70%)] text-[#f7d9c8] shadow-[0_10px_24px_-8px_rgba(80,10,5,.9),inset_0_-4px_10px_rgba(0,0,0,.35)] outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-[#2a2015] focus-visible:ring-offset-2 disabled:opacity-40"
             >
               <span className="absolute inset-2 rounded-full border-2 border-dashed border-[#f7d9c8]/40" />

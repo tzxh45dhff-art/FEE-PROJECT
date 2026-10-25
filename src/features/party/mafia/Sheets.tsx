@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { callName, firstName } from './helpers'
 import { Emblem } from './art'
 import { HUNCH_LABEL, type Hunch } from './notes'
+import { HowToPlay } from './Story'
 import { isFamily, type MafiaView, type Winner } from './types'
 
 /* ── a sheet: up from the bottom on a phone, in from the side on a computer ── */
@@ -249,6 +250,14 @@ export function NotebookSheet({ view, open, onClose }: { view: MafiaView; open: 
           })}
         </ol>
       )}
+    </Sheet>
+  )
+}
+
+export function HowToPlaySheet({ view, open, onClose }: { view: MafiaView; open: boolean; onClose: () => void }) {
+  return (
+    <Sheet open={open} onClose={onClose} kicker="New to Mafia?" title="How to play">
+      <HowToPlay view={view} />
     </Sheet>
   )
 }

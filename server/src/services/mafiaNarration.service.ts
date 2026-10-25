@@ -23,7 +23,7 @@ import { first } from '../games/mafia.roles.js'
  * either is late. The story never reveals more than the table already knows.
  */
 
-export type NarrationKind = 'intro' | 'nightfall' | 'dawn' | 'vote' | 'defence' | 'judgement' | 'verdict' | 'acquitted' | 'spared' | 'epilogue'
+export type NarrationKind = 'prologue' | 'intro' | 'nightfall' | 'dawn' | 'vote' | 'defence' | 'judgement' | 'verdict' | 'acquitted' | 'spared' | 'epilogue'
 
 export type NarrationFacts = {
   round?: number
@@ -49,7 +49,7 @@ const VOICE_MS = 7_000
 const FOLDER = path.join(UPLOAD_DIR, 'narration')
 
 /* Routine beats are hand-written and cached; only the moments that change the story are written fresh. */
-const STATIC: NarrationKind[] = ['intro', 'nightfall', 'vote', 'defence', 'judgement', 'acquitted', 'spared']
+const STATIC: NarrationKind[] = ['prologue', 'intro', 'nightfall', 'vote', 'defence', 'judgement', 'acquitted', 'spared']
 
 function within<T>(ms: number, work: Promise<T>): Promise<T | null> {
   return Promise.race([work, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))]).catch(() => null)

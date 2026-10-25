@@ -1,9 +1,10 @@
 /** Mafia, as one screen receives it — mirrors `view()` in server/src/games/mafia.ts. */
 
 export type Role = 'mafia' | 'godfather' | 'doctor' | 'detective' | 'villager' | 'jester'
-export type Phase = 'deal' | 'night' | 'hush' | 'dawn' | 'day' | 'vote' | 'defence' | 'judgement' | 'verdict' | 'over'
+export type Phase = 'prologue' | 'deal' | 'night' | 'hush' | 'dawn' | 'day' | 'vote' | 'defence' | 'judgement' | 'verdict' | 'over'
 export type Presence = 'online' | 'table'
 export type Winner = 'town' | 'family' | 'jester'
+export type StoryKey = 'city' | 'cast' | 'family' | 'town' | 'days'
 
 export type MafiaOptions = {
   nightSeconds: number
@@ -15,6 +16,8 @@ export type MafiaOptions = {
   together: boolean
   rematch?: boolean
   bots?: number
+  /** Open with the story before the cards. */
+  story?: boolean
 }
 
 export type SeatView = {
@@ -22,6 +25,8 @@ export type SeatView = {
   name: string
   alive: boolean
   presence: Presence
+  /** Who they are in the story: "jazz singer at a Colaba club". */
+  cover: string
   died: { round: number; how: 'killed' | 'voted' } | null
   role: Role | null
   /** An AI player: who they are, in a few words. */
@@ -76,6 +81,8 @@ export type MafiaView = {
   ready: string[]
   /** Who has read the morning paper or the verdict and wants to move on. */
   next: string[]
+  /** The opening story: which page is showing. */
+  story: { key: StoryKey; at: number; of: number } | null
   votes: Record<string, string | null>
   accused: string | null
   /** The accused's defence, in their own words — shown while the town decides. */

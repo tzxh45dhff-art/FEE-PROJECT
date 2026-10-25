@@ -19,7 +19,7 @@ import { narrate, type NarrationFacts, type NarrationKind } from '../services/ma
  * night, so nobody can tell who matters by who is tapping their screen.
  */
 
-export type Phase = 'deal' | 'night' | 'hush' | 'dawn' | 'day' | 'vote' | 'defence' | 'judgement' | 'verdict' | 'over'
+export type Phase = 'prologue' | 'deal' | 'night' | 'hush' | 'dawn' | 'day' | 'vote' | 'defence' | 'judgement' | 'verdict' | 'over'
 export type Presence = 'online' | 'table'
 export type Winner = 'town' | 'family' | 'jester'
 
@@ -35,6 +35,8 @@ export type Options = {
   together: boolean
   /** Straight back in after a game: a short opening, not the full one. */
   rematch: boolean
+  /** Open with the story — the city, the cast, the Family, how a day works — before the cards. */
+  story: boolean
   /** AI players to fill the table. */
   bots: number
 }
@@ -46,6 +48,8 @@ export type Seat = Player & {
   died?: { round: number; how: 'killed' | 'voted' }
   /** An AI player: which Bombay regular is in the seat. */
   bot?: number
+  /** Who they are in the story: "jazz singer at a Colaba club", "a young lawyer from the High Court". */
+  cover: string
 }
 
 /** A line said at the table: typed, heard through someone's microphone, or an AI's. */
@@ -90,6 +94,8 @@ export type Mafia = {
   /** Bumped on every phase change; timers carry it, so a stale timer does nothing. */
   step: number
   round: number
+  /** Which page of the opening story is showing. */
+  page: number
   host: string
   options: Options
   players: Seat[]
@@ -140,10 +146,12 @@ export type Mafia = {
 
 /* ── timings ───────────────────────────────────────────────────────────── */
 
-const DEAL_MS = 20_000
+const DEAL_MS = 25_000
 const REMATCH_DEAL_MS = 12_000
-/** Everyone has turned their card: long enough to read it, and the rules under it. */
-const SEEN_GRACE_MS = 7_000
+/** Everyone has turned their card: long enough to read it, and what it means — or tap Ready. */
+const SEEN_GRACE_MS = 10_000
+/** A page of the opening story: never shorter than this, however few its words. */
+const PAGE_MIN_MS = 9_000
 /** When everyone has acted, the phase closes this soon after, at a fixed time — time to see the last choice land. */
 const CLOSING_MS = 4_000
 /** Everyone has tapped "continue" on a story: a beat, then on. */
@@ -261,7 +269,7 @@ export function sightFor(state: Mafia, id: string, replyTo: string | null, now =
     phase: state.phase,
     round: state.round,
     msLeft: left !== null && left >= 0 && left < 3_600_000 ? left : null,
-    players: v.players.map((p) => ({ id: p.id, name: p.name, alive: p.alive, role: p.role, died: p.died, bot: p.bot !== null })),
+    players: v.players.map((p) => ({ id: p.id, name: p.name, alive: p.alive, role: p.role, died: p.died, bot: p.bot !== null, cover: seat(state, p.id)?.cover })),
     ledger: state.ledger,
     nights,
     mine: state.nightLog.filter((n) => n.by === id).map((n) => ({ round: n.round, target: n.target })),
@@ -296,6 +304,74 @@ function hostFor(state: Mafia, by: string, ctx: Ctx) {
 }
 
 /* ── phases ────────────────────────────────────────────────────────────── */
+
+export type StoryKey = 'city' | 'cast' | 'family' | 'town' | 'days'
+
+const COUNT = ['No one', 'One', 'Two', 'Three', 'Four']
+
+/**
+ * The opening: the city, the people at the table, the Family among them,
+ * what the town can do about it, and how a day goes. The rules, told as the
+ * story — so nobody reaches the first night wondering what is going on.
+ */
+export function storyPages(state: Pick<Mafia, 'players'>): { key: StoryKey; text: string }[] {
+  const n = state.players.length
+  const family = state.players.filter((p) => isFamily(p.role)).length
+  const has = (role: Role) => state.players.some((p) => p.role === role)
+  return [
+    {
+      key: 'city',
+      text: 'Bombay, nineteen fifty-six. The monsoon has not stopped for a week. Every night this month somebody in the neighbourhood has gone missing, and every morning another body turns up at the docks. The police shrug. Everyone whispers the same name — the Family.',
+    },
+    {
+      key: 'cast',
+      text: `Tonight, ${n} regulars have locked themselves inside the Irani café on the corner, with sweet chai and one flickering lamp. Look around the table. These are your neighbours — and your suspects.`,
+    },
+    {
+      key: 'family',
+      text:
+        family === 1
+          ? 'One of them secretly works for the Family. Every night, while the town sleeps, the Family choose one person at this table to kill. By morning, that person is gone.'
+          : `${COUNT[family] ?? family} of them secretly work for the Family, and they know each other. Every night, while the town sleeps, they choose one person at this table to kill. By morning, that person is gone.`,
+    },
+    {
+      key: 'town',
+      text: [
+        'Everyone else is the town — and the town is not helpless. The Doctor can save one life each night.',
+        has('detective') ? 'The Inspector can secretly check one person each night.' : '',
+        'The rest have their eyes, their ears, and their vote.',
+        has('godfather') ? 'Beware: the Godfather looks innocent to the Inspector.' : '',
+        has('jester') ? 'And somewhere at this table sits a Jester, who wins only if the town hangs them.' : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    },
+    {
+      key: 'days',
+      text: 'Each morning the paper names the dead. Then the town argues, names a suspect, hears their defence, and votes: guilty or innocent. Hang every member of the Family and the town wins. If the Family ever equal the town, Bombay is theirs.',
+    },
+  ]
+}
+
+function showPage(state: Mafia, page: number, ctx: Ctx) {
+  const text = storyPages(state)[page]!.text
+  state.phase = 'prologue'
+  state.step += 1
+  state.page = page
+  state.next = []
+  setNarration(state, 'prologue', 'prologue', {}, text)
+  schedule(state, ctx, Math.max(PAGE_MIN_MS, readMs(text) + READ_PAD_MS))
+  return state
+}
+
+function enterDeal(state: Mafia, ctx: Ctx) {
+  state.phase = 'deal'
+  state.step += 1
+  state.next = []
+  setNarration(state, 'intro', 'deal', {}, state.options.rematch ? REMATCH_INTRO : state.options.story ? STORY_DEAL : INTRO)
+  schedule(state, ctx, state.options.rematch ? REMATCH_DEAL_MS : DEAL_MS)
+  return state
+}
 
 function enterNight(state: Mafia, ctx: Ctx) {
   state.phase = 'night'
@@ -582,6 +658,23 @@ const SPARED = [
 const INTRO =
   'Bombay, nineteen fifty-six. The monsoon has not stopped for a week, and neither have the killings. Among you sits the Family. Look at your card. Tell no one.'
 const REMATCH_INTRO = 'Another hand, another night in Bombay. New cards. Trust nobody.'
+const STORY_DEAL = 'The cards come round the table, face down. Turn yours over — and tell no one what it says.'
+
+/** Who the people at the table are in the story; the AIs bring their own. */
+const COVERS = [
+  'a young lawyer from the High Court',
+  'a schoolteacher from Girgaum',
+  'a stranger just off the Frontier Mail',
+  'a clerk at the Port Trust',
+  'a nurse at J.J. Hospital',
+  'a sailor on shore leave',
+  'a typist at the Times of India',
+  'a college student mad about cricket',
+  'a music teacher from Dadar',
+  'a photographer for the film magazines',
+  'a bank cashier from Fort',
+  'a young doctor’s assistant from Byculla',
+]
 
 /* ── the game ──────────────────────────────────────────────────────────── */
 
@@ -590,7 +683,7 @@ const pickFrom = (allowed: number[], raw: unknown, fallback: number) => (allowed
 const cleanText = (raw: unknown) => (typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim().slice(0, 240) : '')
 const WINNERS: Winner[] = ['town', 'family', 'jester']
 /** Moves that are part of play — frozen while the host has the game paused. */
-const PLAY = new Set(['seen', 'pick', 'ready', 'vote', 'done', 'judge', 'say', 'next'])
+const PLAY = new Set(['seen', 'pick', 'ready', 'vote', 'done', 'judge', 'say', 'next', 'skip'])
 
 /** The slow, paid services this game leans on — swapped for stand-ins in tests. */
 export const services = { narrate, think }
@@ -616,6 +709,8 @@ export const mafia: GameDef<Mafia, Options> = {
       jester: body.jester === true,
       together: body.together === true,
       rematch: body.rematch === true,
+      /* A first game opens with the story; a rematch goes straight to the cards. */
+      story: body.story !== false && body.rematch !== true,
       bots: Number.isInteger(body.bots) ? Math.min(MAX_PLAYERS - 1, Math.max(0, body.bots as number)) : 0,
     }
   },
@@ -623,13 +718,18 @@ export const mafia: GameDef<Mafia, Options> = {
   start(people, options, ctx) {
     /* The AI regulars take the empty chairs. */
     const cast = shuffle(PERSONAS.map((_, i) => i), ctx).slice(0, Math.max(0, Math.min(options.bots, MAX_PLAYERS - people.length)))
-    const players: (Player & { bot?: number })[] = [...people, ...cast.map((persona, i) => ({ id: `ai-${i + 1}`, name: PERSONAS[persona]!.name, bot: persona }))]
+    const covers = shuffle(COVERS, ctx)
+    const players: (Player & { bot?: number; cover: string })[] = [
+      ...people.map((p, i) => ({ ...p, cover: covers[i % covers.length]! })),
+      ...cast.map((persona, i) => ({ id: `ai-${i + 1}`, name: PERSONAS[persona]!.name, bot: persona, cover: PERSONAS[persona]!.blurb })),
+    ]
     const roles = shuffle(roleSet(players.length, options), ctx)
     const state: Mafia = {
       game: `${ctx.now().toString(36)}${ctx.random(1_000_000).toString(36)}`,
       phase: 'deal',
       step: 1,
       round: 0,
+      page: 0,
       host: players[0]!.id,
       options,
       players: players.map((p, i) => ({ ...p, role: roles[i]!, alive: true, presence: options.together ? 'table' : 'online' })),
@@ -665,9 +765,7 @@ export const mafia: GameDef<Mafia, Options> = {
       thinking: [],
       lastReplyAt: 0,
     }
-    setNarration(state, 'intro', 'deal', {}, options.rematch ? REMATCH_INTRO : INTRO)
-    schedule(state, ctx, options.rematch ? REMATCH_DEAL_MS : DEAL_MS)
-    return state
+    return options.story ? showPage(state, 0, ctx) : enterDeal(state, ctx)
   },
 
   act(prev, by, action, payload, ctx) {
@@ -694,7 +792,7 @@ export const mafia: GameDef<Mafia, Options> = {
           return state.after === 'verdict' ? enterVerdict(state, ctx) : enterDawn(state, ctx)
         }
         /* A late story still gets its full reading. */
-        if ((state.phase === 'dawn' || state.phase === 'verdict') && state.deadline !== null && state.paused === null) {
+        if ((state.phase === 'prologue' || state.phase === 'dawn' || state.phase === 'verdict') && state.deadline !== null && state.paused === null) {
           const need = ctx.now() + readMs(narration.text) + READ_PAD_MS
           if (need > state.deadline) schedule(state, ctx, need - ctx.now())
         }
@@ -765,6 +863,8 @@ export const mafia: GameDef<Mafia, Options> = {
       if (action !== 'tick' || payload.step !== prev.step || prev.paused !== null) return prev
       const state: Mafia = structuredClone(prev)
       switch (state.phase) {
+        case 'prologue':
+          return state.page + 1 < storyPages(state).length ? showPage(state, state.page + 1, ctx) : enterDeal(state, ctx)
         case 'deal':
           return enterNight(state, ctx)
         case 'night':
@@ -947,13 +1047,21 @@ export const mafia: GameDef<Mafia, Options> = {
         return state
       }
 
+      /* "Continue": a page of the story, a card read, a paper, a verdict. */
       case 'next': {
-        if ((prev.phase !== 'dawn' && prev.phase !== 'verdict') || prev.next.includes(by.id)) return prev
+        if (!['prologue', 'deal', 'dawn', 'verdict'].includes(prev.phase) || prev.next.includes(by.id)) return prev
+        if (prev.phase === 'deal' && !prev.seen.includes(by.id)) return { error: 'Turn your card over first' }
         const state: Mafia = structuredClone(prev)
         state.next.push(by.id)
         /* Everyone has read it: on with the game. */
-        if (people(state, ctx).every((p) => state.next.includes(p.id))) closeSoon(state, ctx, CONTINUE_MS)
+        const allSeen = state.phase !== 'deal' || state.players.every((p) => state.seen.includes(p.id))
+        if (allSeen && people(state, ctx).every((p) => state.next.includes(p.id))) closeSoon(state, ctx, CONTINUE_MS)
         return state
+      }
+      case 'skip': {
+        if (prev.phase !== 'prologue') return prev
+        if (by.id !== hostFor(prev, by.id, ctx)) return { error: 'Only the host can skip the story' }
+        return enterDeal(structuredClone(prev), ctx)
       }
 
       case 'vote': {
@@ -1033,6 +1141,7 @@ export const mafia: GameDef<Mafia, Options> = {
         name: p.name,
         alive: p.alive,
         presence: p.presence,
+        cover: p.cover,
         died: p.died ?? null,
         role: known ? p.role : null,
         bot: isBot(p) ? PERSONAS[p.bot!]!.blurb : null,
@@ -1080,7 +1189,8 @@ export const mafia: GameDef<Mafia, Options> = {
           : null,
       dawn: state.phase === 'dawn' || state.phase === 'hush' ? state.dawn : null,
       ready: state.phase === 'day' ? state.ready : [],
-      next: state.phase === 'dawn' || state.phase === 'verdict' ? state.next : [],
+      next: ['prologue', 'deal', 'dawn', 'verdict'].includes(state.phase) ? state.next : [],
+      story: state.phase === 'prologue' ? { key: storyPages(state)[state.page]!.key, at: state.page, of: storyPages(state).length } : null,
       votes: publicVotes ? state.votes : {},
       accused: state.accused,
       plea: state.phase === 'defence' || state.phase === 'judgement' ? state.plea : null,
