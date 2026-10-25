@@ -4,6 +4,7 @@ import { MicOff, Armchair } from 'lucide-react'
 
 import type { Character } from '@/lib/characters'
 import { cn } from '@/lib/utils'
+import { callName } from './helpers'
 import { usePortrait, useSpeaking } from './hooks'
 import { ROLE_TITLE, isFamily, type SeatView } from './types'
 
@@ -159,29 +160,38 @@ export function Seat({
             <span className="grid h-6 min-w-6 place-items-center rounded-full bg-[var(--noir-blood)] px-1.5 font-deco text-[0.8rem] text-white shadow-[0_2px_6px_rgba(0,0,0,.6)]">{pins.length}</span>
           </div>
         )}
+
+        {/*
+         * What they just said — a typed slip along the bottom of the
+         * photograph, inside its frame so it is never cut off. The whole line
+         * is in table talk; this is the glance.
+         */}
+        <AnimatePresence>
+          {bubble && seat.alive && (
+            <motion.p
+              key={bubble.text ?? 'thinking'}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className={cn(
+                'font-type pointer-events-none absolute inset-x-1 bottom-1 z-10 max-h-[calc(100%-0.5rem)] overflow-hidden rounded-sm bg-[#efe3c8]/95 px-1.5 py-1 text-[0.7rem] leading-snug text-[#1c140b] shadow-[0_6px_16px_-6px_rgba(0,0,0,.9)] sm:px-2 sm:text-[0.78rem]',
+                bubble.text ? 'line-clamp-3 sm:line-clamp-4' : 'w-fit',
+              )}
+              aria-live="polite"
+            >
+              {bubble.text ?? <span className="inline-flex gap-1 py-0.5" aria-label={`${seat.name} is thinking`}><Dot /><Dot delay={0.15} /><Dot delay={0.3} /></span>}
+            </motion.p>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* What they just said — a typed slip pinned over the photograph. */}
-      <AnimatePresence>
-        {bubble && seat.alive && (
-          <motion.p
-            key={bubble.text ?? 'thinking'}
-            initial={{ opacity: 0, y: 6, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="font-type pointer-events-none absolute inset-x-1.5 top-8 z-10 line-clamp-4 rounded-sm bg-[#efe3c8] px-2 py-1.5 text-[0.78rem] leading-snug text-[#1c140b] shadow-[0_6px_16px_-6px_rgba(0,0,0,.9)]"
-            aria-live="polite"
-          >
-            {bubble.text ?? <span className="inline-flex gap-1 py-0.5" aria-label={`${seat.name} is thinking`}><Dot /><Dot delay={0.15} /><Dot delay={0.3} /></span>}
-          </motion.p>
-        )}
-      </AnimatePresence>
-
       {/* The name, typed on a card under the photograph. */}
-      <div className="flex flex-col gap-0 border-t border-[var(--noir-brass)]/25 bg-[linear-gradient(180deg,#221a12,#15100b)] px-2 py-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-2.5">
-        <span className="font-type min-w-0 truncate text-[0.86rem] text-[var(--noir-paper)]">
-          {seat.name}
+      <div className="flex flex-col gap-0 border-t border-[var(--noir-brass)]/25 bg-[linear-gradient(180deg,#221a12,#15100b)] px-2 py-1.5 sm:px-2.5">
+        <span className="font-type min-w-0 truncate text-[0.86rem] text-[var(--noir-paper)]" title={seat.name}>
+          {/* A small card has room for what the table calls you; a big one for the full name. */}
+          <span className="sm:hidden">{callName(seat.name)}</span>
+          <span className="hidden sm:inline">{seat.name}</span>
           {you && <span className="ml-1 text-[var(--noir-brass)]">(you)</span>}
         </span>
         {role && (

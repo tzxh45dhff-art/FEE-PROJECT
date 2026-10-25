@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 
 import type { Character } from '@/lib/characters'
 import { cn } from '@/lib/utils'
-import { dealLine } from './helpers'
+import { callName, dealLine } from './helpers'
 import { Portrait } from './Seat'
 import type { MafiaOptions } from './types'
 import { useNoirFonts } from './useNoirFonts'
@@ -58,7 +58,7 @@ export function MafiaSetup({
             {seats.map((p) => (
               <li key={p.id} className={cn('flex min-h-12 items-center gap-2.5 rounded-sm border px-2.5 py-1.5', p.ai ? 'border-dashed border-[var(--noir-brass)]/40 bg-[var(--noir-brass)]/[0.06]' : 'border-[var(--noir-brass)]/25 bg-black/30')}>
                 {p.ai ? <AiFace className="size-9" /> : <Portrait name={p.name} character={p.character} className="size-9 shrink-0 rounded-full ring-1 ring-[var(--noir-brass)]/60" />}
-                <span className="font-type min-w-0 flex-1 truncate text-[0.9rem] text-[var(--noir-paper)]">{p.ai ? 'AI player' : p.you ? 'You' : p.name.split(' ')[0]}</span>
+                <span className="font-type min-w-0 flex-1 truncate text-[0.9rem] text-[var(--noir-paper)]">{p.ai ? 'AI player' : p.you ? 'You' : callName(p.name)}</span>
                 {!p.ai && <span className="size-2 shrink-0 rounded-full bg-emerald-400" title="In the room" />}
               </li>
             ))}
@@ -86,7 +86,7 @@ export function MafiaSetup({
                   ) : (
                     <Portrait name={p.name} character={p.character} className="size-12 rounded-full ring-2 ring-[var(--noir-brass)]/70 sm:size-14" />
                   )}
-                  <span className="font-type mt-1 max-w-full truncate text-[0.72rem] text-[var(--noir-paper)]">{p.ai ? 'AI' : p.you ? 'You' : p.name.split(' ')[0]}</span>
+                  <span className="font-type mt-1 max-w-full truncate text-[0.72rem] text-[var(--noir-paper)]">{p.ai ? 'AI' : p.you ? 'You' : callName(p.name)}</span>
                 </motion.div>
               )
             })}

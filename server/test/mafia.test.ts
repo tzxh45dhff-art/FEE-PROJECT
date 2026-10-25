@@ -8,7 +8,7 @@ import { describe, it } from 'node:test'
 
 import type { Ctx, Player } from '../src/games/engine.js'
 import { familyChoice, mafia, services, sightFor, tally, winnerOf, type Mafia, type Options } from '../src/games/mafia.js'
-import { judgeByRules, lineByRules, voteByRules } from '../src/games/mafia.bots.js'
+import { briefing, composeMs, judgeByRules, lineByRules, voteByRules } from '../src/games/mafia.bots.js'
 import { roleSet, type Role } from '../src/games/mafia.roles.js'
 
 let clock = 0
@@ -99,7 +99,8 @@ describe('mafia — the deal', () => {
     let state = table(['mafia', 'doctor', 'detective', 'villager', 'villager'])
     for (const p of state.players) state = act(state, p.id, 'seen')
     assert.equal(state.phase, 'deal', 'a moment to read the card first')
-    assert.ok(timers.at(-1)!.at - clock <= 4_000)
+    const grace = timers.at(-1)!.at - clock
+    assert.ok(grace >= 5_000 && grace <= 8_000, 'long enough to read the card, short enough not to drag')
     state = tick(state)
     assert.equal(state.phase, 'night')
     assert.equal(state.round, 1)
@@ -183,7 +184,7 @@ describe('mafia — the night', () => {
     for (const [by, target] of [['aditi', 'meera'], ['rohan', 'kabir'], ['khushi', 'aditi'], ['kabir', 'aditi'], ['meera', 'aditi']]) {
       state = act(state, by!, 'pick', { target })
     }
-    assert.ok(timers.at(-1)!.at - clock <= 3_000, 'closes within a few seconds')
+    assert.ok(timers.at(-1)!.at - clock <= 4_000, 'closes within a few seconds')
     const closing = state.step
     state = act(state, 'meera', 'pick', { target: 'kabir' })
     assert.equal(state.step, closing, 'a change of mind in the last seconds does not push the close back')
@@ -521,6 +522,124 @@ describe('mafia — AI players', () => {
     state = act(state, 'aditi', 'say', { text: `${name}, where were you last night?`, heard: true })
     assert.equal(state.talk.at(-1)!.kind, 'heard')
     assert.ok(timers.some((t) => t.action === 'bot' && t.payload.id === 'ai-2' && t.payload.replyTo === 'aditi'))
+  })
+
+  it('the AIs never hurry the people: the vote opens early only once the person is ready, and the AIs follow', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(1), options({ bots: 4 }), ctx())
+    state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager'] as Role[])[i]!))
+    state = tick(tick(tick(tick(state))))
+    assert.equal(state.phase, 'day')
+    for (const id of ['ai-1', 'ai-2', 'ai-3', 'ai-4']) state = act(state, null, 'bot', { step: state.step, id, job: 'ready' })
+    assert.equal(state.phase, 'day', 'four ready AIs do not end the day for the one person still talking')
+    state = act(state, 'aditi', 'ready')
+    assert.equal(state.phase, 'vote', 'the person was the last one needed')
+  })
+
+  it('a ready person brings the AIs along within seconds', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(1), options({ bots: 4 }), ctx())
+    state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager'] as Role[])[i]!))
+    state = tick(tick(tick(tick(state))))
+    state = act(state, 'aditi', 'ready')
+    assert.equal(state.phase, 'day')
+    const follow = timers.filter((t) => t.action === 'bot' && t.payload.job === 'ready' && t.at - clock <= 4_000)
+    assert.equal(new Set(follow.map((t) => t.payload.id)).size, 4)
+  })
+
+  it('the day’s remarks take turns rather than landing together', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(1), options({ bots: 5, daySeconds: 120 }), ctx((n) => Math.floor(Math.random() * n)))
+    state = tick(tick(tick(tick(state))))
+    assert.equal(state.phase, 'day')
+    const talk = timers.filter((t) => t.action === 'bot' && t.payload.job === 'talk').map((t) => t.at).sort((a, b) => a - b)
+    assert.equal(talk.length, 10)
+    for (let i = 1; i < talk.length; i++) assert.ok(talk[i]! - talk[i - 1]! >= 2_000, 'at least a couple of seconds between lines')
+  })
+
+  it('an AI on trial rests its case only after the town has had time to read it', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(1), options({ bots: 4 }), ctx())
+    state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager'] as Role[])[i]!))
+    state = tick(tick(tick(tick(tick(state)))))
+    assert.equal(state.phase, 'vote')
+    for (const by of ['aditi', 'ai-2', 'ai-3']) state = by === 'aditi' ? act(state, by, 'vote', { target: 'ai-1' }) : act(state, null, 'bot', { step: state.step, id: by, job: 'vote' })
+    state = act(state, null, 'botDone', { key: state.thinking.find((t) => t.id === 'ai-2')!.key, target: 'ai-1', say: 'Them.' })
+    state = act(state, null, 'botDone', { key: state.thinking.find((t) => t.id === 'ai-3')!.key, target: 'ai-1', say: 'Them.' })
+    state = tick(state)
+    assert.equal(state.phase, 'defence')
+    assert.ok(!timers.some((t) => t.payload.job === 'rest'), 'no rest on a fixed clock')
+    state = act(state, null, 'bot', { step: state.step, id: 'ai-1', job: 'defence' })
+    const defence = 'You have the wrong person. I have lived in this city all my life — ask anyone on my street, they will tell you.'
+    state = act(state, null, 'botDone', { key: state.thinking[0]!.key, say: defence })
+    const rest = timers.find((t) => t.payload.job === 'rest')!
+    assert.ok(rest.at - clock >= (defence.length / 10) * 1000, 'rests after a relaxed reading of its defence')
+  })
+
+  it('an AI never answers faster than a person could', () => {
+    assert.ok(composeMs('talk', 'Hm.') >= 1_500)
+    assert.ok(composeMs('talk', 'x'.repeat(200)) > composeMs('talk', 'x'.repeat(40)))
+    assert.ok(composeMs('vote', 'x'.repeat(200)) <= 3_000, 'a vote still lands well before its clock')
+  })
+
+  it('the morning paper waits for its readers, and moves on once every person has read it', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(2), options({ bots: 3 }), ctx())
+    state.players.forEach((p, i) => (p.role = (['villager', 'villager', 'mafia', 'doctor', 'detective'] as Role[])[i]!))
+    state = tick(tick(tick(state)))
+    assert.equal(state.phase, 'dawn')
+    assert.ok(state.deadline! - clock >= 12_000, 'time to read the paper')
+    state = act(state, 'aditi', 'next')
+    assert.ok(state.deadline! - clock >= 10_000, 'one reader is not everyone')
+    assert.deepEqual((view(state, 'rohan') as unknown as { next: string[] }).next, ['aditi'])
+    state = act(state, 'rohan', 'next')
+    assert.ok(state.deadline! - clock <= 1_500, 'everyone has read it')
+    state = tick(state)
+    assert.equal(state.phase, 'day')
+  })
+
+  it('an AI knows what a real player would: the morning’s death, the phase, who said what — and its own secrets only', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(1), options({ bots: 5 }), ctx())
+    const roles: Role[] = ['villager', 'mafia', 'doctor', 'detective', 'villager', 'villager']
+    state.players.forEach((p, i) => (p.role = roles[i]!))
+    const name = (id: string) => state.players.find((p) => p.id === id)!.name.split(' ')[0]!
+    state = tick(state) // night 1
+    state = act(state, null, 'bot', { step: state.step, id: 'ai-2', job: 'pick' })
+    state = act(state, 'ai-1', 'pick', { target: 'aditi' })
+    state = act(state, 'ai-1', 'whisper', { text: 'Aditi talks too much.' })
+    state = tick(tick(tick(state))) // hush, dawn, day
+    assert.equal(state.phase, 'day')
+    state = act(state, null, 'bot', { step: state.step, id: 'ai-4', job: 'talk' })
+    state = act(state, null, 'botDone', { key: state.thinking[0]!.key, say: 'Who wanted Aditi gone?' })
+
+    const citizen = briefing(sightFor(state, 'ai-5', null, clock))
+    assert.match(citizen, /Night 1: Aditi was murdered by the Family — they were Citizen/, 'the morning’s death, plainly')
+    assert.match(citizen, /never address them: Aditi/, 'the dead are known to be dead')
+    assert.match(citizen, /RIGHT NOW: It is DAY 1: open discussion/)
+    assert.match(citizen, /minutes? left on the clock/)
+    assert.match(citizen, new RegExp(`${name('ai-4')}: "Who wanted Aditi gone\\?"`), 'who said what')
+    assert.doesNotMatch(citizen, /talks too much/, 'the Family’s whispers stay with the Family')
+    assert.doesNotMatch(citizen, /ONLY YOU KNOW/)
+
+    const family = briefing(sightFor(state, 'ai-1', null, clock))
+    assert.match(family, /Aditi talks too much/, 'the Family read their own whispers')
+    assert.match(family, /Night 1 you marked Aditi/)
+
+    /* Yesterday is remembered, not wiped at nightfall. */
+    state = tick(state) // vote
+    state = tick(state) // nobody named → hush
+    state = tick(state) // verdict
+    state = tick(state) // night 2
+    assert.equal(state.phase, 'night')
+    assert.equal((view(state, 'ai-3') as unknown as { talk: unknown[] }).talk.length, 0, 'screens start each day fresh')
+    assert.match(briefing(sightFor(state, 'ai-5', null, clock)), /\[day 1\] .*Who wanted Aditi gone/)
   })
 
   it('only people count towards asking to end', () => {

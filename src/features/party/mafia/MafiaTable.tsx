@@ -7,7 +7,7 @@ import type { useMeshCall } from '@/features/room-panel/useMeshCall'
 import { characterFor, type Character } from '@/lib/characters'
 import { cn } from '@/lib/utils'
 import { Skyline } from './art'
-import { firstName } from './helpers'
+import { callName, firstName } from './helpers'
 import { CaseFile, Clock, Newspaper, RoleCard, Subtitles } from './Pieces'
 import { Portrait, Seat } from './Seat'
 import { publicOnly, useNotes } from './notes'
@@ -29,9 +29,9 @@ const PHASE_TITLE: Record<MafiaView['phase'], string> = {
   dawn: 'Morning',
   day: 'The day',
   vote: 'The vote',
-  defence: 'The defence',
+  defence: 'Defence',
   judgement: 'Judgement',
-  verdict: 'The verdict',
+  verdict: 'Verdict',
   over: 'Case closed',
 }
 
@@ -127,6 +127,12 @@ export function MafiaTable({
     if (phase === 'defence') return DEFENCE_MS
     return 0
   }, [phase, view.options])
+  /* The reading phases have no fixed length: their clock empties from whatever time they began with. */
+  const [began, setBegan] = useState({ key: '', ms: 0 })
+  const phaseKey = `${view.game}-${phase}-${view.round}`
+  if (began.key !== phaseKey || left > began.ms) setBegan({ key: phaseKey, ms: began.key !== phaseKey ? left : Math.max(began.ms, left) })
+  const reading = phase === 'dawn' || phase === 'verdict' || phase === 'deal'
+  const clockTotal = total || (reading ? began.ms : 0)
 
   /* Sound. Pocket phones at a table stay silent — the town square does the talking. */
   const [soundOn, toggleSound] = useStored('huddle.mafiaSound', true)
@@ -203,7 +209,8 @@ export function MafiaTable({
   const serverNow = party.serverTime + (Date.now() - party.receivedAt)
   const bubble = (id: string): { text: string | null } | null => {
     const last = [...view.talk].reverse().find((t) => t.by === id)
-    if (last && serverNow - last.at < 9_000) return { text: last.text }
+    /* Up long enough to read at an easy pace, however long the line. */
+    if (last && serverNow - last.at < Math.max(7_000, last.text.length * 100 + 3_000)) return { text: last.text }
     return view.thinking.includes(id) && talking ? { text: null } : null
   }
   const [hearOn, toggleHear] = useStored('huddle.mafiaHear', false)
@@ -368,8 +375,22 @@ export function MafiaTable({
   /* ── the decision bar: your current choice, always in view ──────────── */
 
   const neededReady = Math.floor(alive.length / 2) + 1
+  const soloWithAIs = alive.filter((p) => !p.bot).length === 1 && alive.some((p) => p.bot)
   const decision = (() => {
-    if (!me || phase === 'over' || phase === 'deal' || phase === 'hush' || phase === 'dawn' || phase === 'verdict') return null
+    if (!me || phase === 'over' || phase === 'deal' || phase === 'hush') return null
+    if (phase === 'dawn' || phase === 'verdict') {
+      const done = view.next.includes(me.id)
+      const coming = phase === 'dawn' ? 'the day' : 'nightfall'
+      return {
+        line: done ? 'Waiting for the others…' : phase === 'dawn' ? 'Read the morning paper' : 'The verdict is in',
+        hint: done ? `On to ${coming} once everyone is ready, or when the clock runs out` : `Take your time — tap Continue when you’re ready for ${coming}`,
+        action: (
+          <BarButton on={done} onClick={() => act('next')}>
+            {done ? 'Ready' : 'Continue'}
+          </BarButton>
+        ),
+      }
+    }
     if (!me.alive) return { line: 'You are a ghost', hint: 'You see every card. Make your prediction in the dossier.', action: null }
     if (phase === 'night' && ask) {
       const pick = seatById(me.pick)
@@ -385,7 +406,13 @@ export function MafiaTable({
       const ready = view.ready.includes(me.id)
       return {
         line: ready ? 'Ready to vote' : 'Talk it out',
-        hint: ready ? `Waiting for the others · ${view.ready.length} of ${neededReady} needed` : `Nominations start when ${neededReady} are ready, or when the clock runs out`,
+        hint: soloWithAIs
+          ? ready
+            ? 'The AIs are wrapping up — the vote opens in a moment'
+            : 'Question the AIs in table talk. Tap Ready when you want to vote — they follow your lead'
+          : ready
+            ? `Waiting for the others · ${view.ready.length} of ${neededReady} needed`
+            : `Nominations start when ${neededReady} are ready, or when the clock runs out`,
         action: <BarButton on={ready} onClick={() => act('ready')}>{ready ? 'Not yet' : 'Ready to vote'}</BarButton>,
       }
     }
@@ -434,7 +461,7 @@ export function MafiaTable({
   /* The Inspector's telegram at dawn — and again, any time, in the dossier. */
   const file = me?.role === 'detective' && phase === 'dawn' ? me.files.find((f) => f.round === view.round) : undefined
   const telegram = file && (
-    <motion.div initial={{ y: 40, opacity: 0, rotate: 3 }} animate={{ y: 0, opacity: 1, rotate: 1.5 }} transition={{ delay: 1.2 }} className="noir-paper mx-auto mt-4 w-[min(23rem,calc(100vw-2rem))] rounded-sm px-4 py-3">
+    <motion.div initial={{ y: 40, opacity: 0, rotate: 3 }} animate={{ y: 0, opacity: 1, rotate: 1.5 }} transition={{ delay: 1.2 }} className="noir-paper mx-auto mt-4 w-full max-w-[23rem] rounded-sm px-4 py-3">
       <p className="font-type text-[0.72rem] uppercase tracking-[0.22em] text-[#6a5638]">Telegram · for the Inspector only</p>
       <p className="font-type mt-1 text-[1rem] text-[#1c140b]">
         FILE ON {firstName(seatById(file.target)).toUpperCase()} STOP {file.family ? 'WORKS FOR THE FAMILY' : 'NO FAMILY CONNECTION FOUND'} STOP
@@ -454,7 +481,7 @@ export function MafiaTable({
   const centre = (
     <AnimatePresence mode="wait">
       {phase === 'deal' && (
-        <motion.div key="deal" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-4 py-4">
+        <motion.div key="deal" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-4 py-4 [@media(max-height:520px)]:gap-2 [@media(max-height:520px)]:py-1">
           {me ? (
             <>
               <p className="font-type text-[0.82rem] uppercase tracking-[0.3em] text-[var(--noir-brass)]">{presence === 'table' ? 'Hold your card to look. Tell no one.' : 'Your card. Tell no one.'}</p>
@@ -503,7 +530,7 @@ export function MafiaTable({
         </motion.div>
       )}
       {phase === 'verdict' && (
-        <motion.div key={`verdict-${view.round}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-4 py-6">
+        <motion.div key={`verdict-${view.round}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-4 py-6 [@media(max-height:520px)]:gap-2 [@media(max-height:520px)]:py-1">
           {view.verdict?.target && verdictSeat ? (
             view.verdict.hanged ? (
               <>
@@ -512,12 +539,12 @@ export function MafiaTable({
                 </p>
                 {view.verdict.role ? (
                   <div className="relative">
-                    <RoleCard role={view.verdict.role} title={ROLE_TITLE[view.verdict.role]} line="" shown />
+                    <RoleCard role={view.verdict.role} title={ROLE_TITLE[view.verdict.role]} line="" shown className="w-[clamp(4.5rem,calc((100dvh-17rem)*0.7),14rem)] sm:w-[clamp(4.5rem,calc((100dvh-17rem)*0.7),16rem)]" />
                     <motion.span
                       initial={{ scale: 2.4, opacity: 0 }}
                       animate={{ scale: 1, opacity: 0.9 }}
                       transition={{ delay: 0.7, type: 'spring', stiffness: 220, damping: 12 }}
-                      className="noir-stamp absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm bg-[#efe3c8]/80 px-3 py-1 text-[1.4rem]"
+                      className="noir-stamp absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm bg-[#efe3c8]/80 px-3 py-1 text-[1.4rem] [@media(max-height:520px)]:px-2 [@media(max-height:520px)]:text-[0.95rem]"
                       style={{ color: view.verdict.jester ? '#6b3fa0' : isFamily(view.verdict.role) ? 'var(--noir-blood)' : '#1f5a3a' }}
                     >
                       {view.verdict.jester ? 'THE JESTER' : isFamily(view.verdict.role) ? 'FAMILY' : 'INNOCENT'}
@@ -529,7 +556,7 @@ export function MafiaTable({
               </>
             ) : (
               <>
-                <Portrait name={verdictSeat.name} character={character(verdictSeat.id)} className="aspect-[3/4] w-36 rounded-sm noir-frame" />
+                <Portrait name={verdictSeat.name} character={character(verdictSeat.id)} className="aspect-[3/4] w-36 rounded-sm noir-frame [@media(max-height:520px)]:w-24" />
                 <p className="font-deco text-center text-[1.8rem] text-[var(--noir-paper)]">{firstName(verdictSeat)} walks free</p>
                 <p className="font-type text-[0.9rem] text-[var(--noir-paper-dim)]">
                   {view.verdict.innocent}–{view.verdict.guilty} {view.verdict.innocent === view.verdict.guilty ? '· a tie goes to the accused' : 'for innocent'}
@@ -597,18 +624,18 @@ export function MafiaTable({
       {mood === 'night' && <Skyline className="pointer-events-none absolute inset-x-0 bottom-0 h-40 w-full text-[#03060c] opacity-90" />}
 
       {/* The top bar: where we are, the clock, the switches. */}
-      <header className="relative z-20 flex shrink-0 items-center gap-2 px-3 pb-2 pt-2 sm:gap-3 sm:px-6">
+      <header className="relative z-20 flex shrink-0 items-center gap-2 px-3 pb-2 pt-2 sm:gap-3 sm:px-6 [@media(max-height:520px)]:py-1">
         <div className="min-w-0 flex-1">
-          <p className="font-type truncate text-[0.74rem] uppercase tracking-[0.24em] text-[var(--noir-brass)]">
+          <p className="font-type truncate text-[0.74rem] uppercase tracking-[0.24em] text-[var(--noir-brass)] [@media(max-height:520px)]:text-[0.66rem]">
             {phase === 'over' || view.round === 0 ? 'Bombay · 1956' : `${mood === 'night' ? 'Night' : 'Day'} ${view.round}`}
             {layout === 'square' && ' · town square'}
             {me && !me.alive && phase !== 'over' && ' · you are a ghost'}
           </p>
-          <h2 className="font-deco truncate text-[1.3rem] leading-tight text-[var(--noir-paper)] sm:text-[1.9rem]">
+          <h2 className="font-deco truncate text-[1.15rem] leading-tight text-[var(--noir-paper)] min-[400px]:text-[1.3rem] sm:text-[1.9rem] [@media(max-height:520px)]:text-[1.2rem]">
             {phase === 'hush' ? (view.after === 'dawn' ? 'Morning' : 'The count') : PHASE_TITLE[phase]}
           </h2>
         </div>
-        {total > 0 && <Clock left={left} total={total} paused={view.paused !== null} onTick={tick} />}
+        {clockTotal > 0 && left > 0 && <Clock left={left} total={clockTotal} paused={view.paused !== null} onTick={total > 0 ? tick : undefined} />}
         <div className="flex items-center gap-1.5">
           {me && phase !== 'over' && (
             <button
@@ -689,14 +716,26 @@ export function MafiaTable({
       )}
 
       {/* The body. */}
-      <div className="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 sm:px-6" data-lenis-prevent>
+      {/* Room inside the edges for the photographs' brass frames and their lift on hover — nothing gets sliced off. */}
+      <div className="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-2 sm:px-6" data-lenis-prevent>
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 lg:flex-row lg:items-start">
           <div className="flex min-w-0 flex-1 flex-col gap-4">
             {showCentre && centre}
             {trial && accused && layout !== 'square' && (
-              <p className="font-deco text-center text-[1.35rem] text-[var(--noir-paper)] sm:text-[1.6rem]">
+              <p className="font-deco text-center text-[1.2rem] leading-tight text-[var(--noir-paper)] sm:text-[1.6rem]">
                 {phase === 'defence' ? `${firstName(accused)} makes their case` : `Guilty or innocent? ${view.judgement?.done ?? 0} of ${view.judgement?.of ?? 0} have decided`}
               </p>
+            )}
+            {trial && accused && view.plea && (
+              <motion.blockquote
+                key={view.plea}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="noir-paper noir-paper-edge mx-auto w-full max-w-2xl rounded-sm px-4 py-3 sm:px-5"
+              >
+                <p className="font-type text-[0.72rem] uppercase tracking-[0.22em] text-[#6a5638]">{firstName(accused)}’s defence</p>
+                <p className="font-old mt-1 text-[1rem] italic leading-relaxed text-[#1c140b] sm:text-[1.1rem]">“{view.plea}”</p>
+              </motion.blockquote>
             )}
             {showWall && seatWall}
             {layout === 'square' && !showCentre && <TownSquare view={view} />}
@@ -708,8 +747,8 @@ export function MafiaTable({
             )}
           </div>
           {aside && layout !== 'square' && (
-            /* On a phone your move comes first; chatter waits below the story. */
-            <aside className={cn('flex w-full flex-col gap-3 lg:sticky lg:top-0 lg:order-none lg:w-[22rem] lg:shrink-0', movePanel ? 'order-first' : 'order-last')}>
+            /* On a phone your move comes first, and by day the conversation does; the rest waits below the story. */
+            <aside className={cn('flex w-full flex-col gap-3 lg:sticky lg:top-0 lg:order-none lg:w-[22rem] lg:shrink-0', movePanel || (talkFeed && phase === 'day') ? 'order-first' : 'order-last')}>
               {movePanel}
               {talkFeed}
               {prediction}
@@ -721,18 +760,18 @@ export function MafiaTable({
 
       {/* The narrator, in subtitles. */}
       {phase !== 'over' && phase !== 'dawn' && view.narration && (
-        <div className="relative z-10 shrink-0 bg-[linear-gradient(0deg,rgba(0,0,0,.85),transparent)] pb-2 pt-4">
+        <div className="relative z-10 shrink-0 bg-[linear-gradient(0deg,rgba(0,0,0,.85),transparent)] pb-2 pt-4 [@media(max-height:520px)]:pb-1 [@media(max-height:520px)]:pt-1.5">
           <Subtitles id={view.narration.id} text={view.narration.text} />
         </div>
       )}
 
       {/* Your current choice, always in reach of a thumb. */}
       {decision && layout !== 'square' && (
-        <div className="relative z-10 shrink-0 border-t border-[var(--noir-brass)]/30 bg-[#0d0a07]/95 px-3 py-2.5 sm:px-6">
+        <div className="relative z-10 shrink-0 border-t border-[var(--noir-brass)]/30 bg-[#0d0a07]/95 px-3 py-2.5 sm:px-6 [@media(max-height:520px)]:py-1.5">
           <div className="mx-auto flex w-full max-w-6xl items-center gap-3">
             <div className="min-w-0 flex-1" aria-live="polite">
               <p className="font-type truncate text-[1rem] text-[var(--noir-paper)]">{decision.line}</p>
-              <p className="font-type text-[0.78rem] leading-snug text-[var(--noir-paper-dim)]">{decision.hint}</p>
+              <p className="font-type text-[0.78rem] leading-snug text-[var(--noir-paper-dim)] [@media(max-height:520px)]:hidden">{decision.hint}</p>
             </div>
             {decision.action && <div className="shrink-0">{decision.action}</div>}
           </div>
@@ -827,7 +866,7 @@ function TargetGrid({
 }) {
   if (!targets.length) return <p className="font-type mt-3 text-[0.86rem] text-[#5a4a35]">Nobody to choose from.</p>
   return (
-    <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-3">
+    <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-3 [@media(max-height:520px)]:grid-cols-5 [@media(max-height:520px)]:lg:grid-cols-4">
       {targets.map((t) => {
         const on = chosen === t.id
         return (
@@ -840,8 +879,8 @@ function TargetGrid({
             aria-label={`${verb} ${t.name}`}
             className={cn('relative flex flex-col overflow-hidden rounded-sm border text-left outline-none focus-visible:ring-2 focus-visible:ring-[#2a2015]', on ? (red ? 'border-[var(--noir-blood)] ring-2 ring-[var(--noir-blood)]' : 'border-[#2a2015] ring-2 ring-[#2a2015]') : 'border-[#2a2015]/30')}
           >
-            <Portrait name={t.name} character={character(t.id)} className="aspect-square w-full" />
-            <span className="font-type truncate bg-[#efe3c8] px-1.5 py-1.5 text-[0.84rem] text-[#1c140b]">{t.name.split(' ')[0]}</span>
+            <Portrait name={t.name} character={character(t.id)} className="aspect-square w-full [@media(max-height:520px)]:aspect-[4/3]" />
+            <span className="font-type truncate bg-[#efe3c8] px-1.5 py-1.5 text-[0.84rem] text-[#1c140b]">{callName(t.name)}</span>
             {t.bot && <span className="font-type absolute right-1 top-1 rounded-sm bg-[var(--noir-brass)] px-1 text-[0.62rem] font-bold text-[#1c140b]">AI</span>}
             {note(t.id) && <span className="font-type absolute left-1 top-1 rounded-sm bg-black/75 px-1.5 py-0.5 text-[0.7rem] text-[#f0d9a8]">{note(t.id)}</span>}
             {on && (
@@ -872,7 +911,7 @@ function TownSquare({ view }: { view: MafiaView }) {
         : view.phase === 'vote'
           ? `Nominations. ${Object.keys(view.votes).length} of ${alive.length} have voted.`
           : view.phase === 'defence' && accused
-            ? `${accused.name.split(' ')[0]} makes their case.`
+            ? `${callName(accused.name)} makes their case.`
             : view.phase === 'judgement' && accused
               ? `Guilty or innocent? ${view.judgement?.done ?? 0} of ${view.judgement?.of ?? 0} have decided.`
               : ''
@@ -890,7 +929,7 @@ function TownSquare({ view }: { view: MafiaView }) {
               p.id === view.accused && 'border-[var(--noir-blood)] bg-[var(--noir-blood)]/10',
             )}
           >
-            <span className={cn('truncate', !p.alive && 'line-through')}>{p.name.split(' ')[0]}</span>
+            <span className={cn('truncate', !p.alive && 'line-through')}>{callName(p.name)}</span>
             <span className="shrink-0 text-[0.72rem] uppercase text-[#6a5638]">
               {view.phase === 'day' && view.ready.includes(p.id) ? 'ready' : p.role && !p.alive ? ROLE_TITLE[p.role] : ''}
             </span>
@@ -903,7 +942,7 @@ function TownSquare({ view }: { view: MafiaView }) {
           <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1">
             {tallies.map(({ p, n }) => (
               <p key={p.id} className="font-deco text-[1.3rem] text-[var(--noir-blood)]">
-                {p.name.split(' ')[0]} · {n}
+                {callName(p.name)} · {n}
               </p>
             ))}
           </div>

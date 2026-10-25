@@ -7,6 +7,7 @@ import { env } from '../config/env.js'
 import * as azure from './azure.service.js'
 import * as speech from './speech.service.js'
 import { UPLOAD_DIR, UPLOAD_ROUTE } from './upload.service.js'
+import { first } from '../games/mafia.roles.js'
 
 /**
  * The narrator of Mafia: Bombay, 1956.
@@ -49,8 +50,6 @@ const FOLDER = path.join(UPLOAD_DIR, 'narration')
 
 /* Routine beats are hand-written and cached; only the moments that change the story are written fresh. */
 const STATIC: NarrationKind[] = ['intro', 'nightfall', 'vote', 'defence', 'judgement', 'acquitted', 'spared']
-
-const first = (name: string) => name.split(' ')[0] ?? name
 
 function within<T>(ms: number, work: Promise<T>): Promise<T | null> {
   return Promise.race([work, new Promise<null>((resolve) => setTimeout(() => resolve(null), ms))]).catch(() => null)

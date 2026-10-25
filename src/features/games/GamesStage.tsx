@@ -136,7 +136,7 @@ export function GamesStage({
     >
       <CoverAmbience palette={null} />
 
-      <header className="relative z-10 flex shrink-0 items-center justify-between gap-3 px-5 py-4">
+      <header className="relative z-10 flex shrink-0 items-center justify-between gap-3 px-5 py-4 [@media(max-height:520px)]:py-1.5">
         <span className="flex min-w-0 items-center gap-2">
           {screen !== 'picker' && (
             <button

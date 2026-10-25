@@ -41,3 +41,11 @@ export const ROLE_INFO: Record<Role, { title: string; line: string }> = {
   villager: { title: 'Citizen of Bombay', line: 'No tricks up your sleeve — only your eyes, your ears, and your vote.' },
   jester: { title: 'The Jester', line: 'You win only if the town hangs you. Make them believe it.' },
 }
+
+const TITLES = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'father', 'uncle', 'aunty', 'auntie'])
+/** What the table calls someone: the first name — or "Mrs Lobo", never just "Mrs". */
+export const first = (name: string) => {
+  const [head, next] = name.trim().split(/\s+/)
+  if (!head) return name
+  return next && TITLES.has(head.toLowerCase().replace(/\.$/, '')) ? `${head} ${next}` : head
+}

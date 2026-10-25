@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { firstName } from './helpers'
+import { callName, firstName } from './helpers'
 import { Emblem } from './art'
 import { HUNCH_LABEL, type Hunch } from './notes'
 import { isFamily, type MafiaView, type Winner } from './types'
@@ -162,7 +162,7 @@ export function DossierSheet({
                   note === 'suspect' ? 'border-[var(--noir-blood)] bg-[var(--noir-blood)]/10' : note === 'trust' ? 'border-[#1f5a3a] bg-[#1f5a3a]/10' : 'border-[#2a2015]/25',
                 )}
               >
-                <span className={cn('truncate', !p.alive && 'line-through')}>{p.name.split(' ')[0]}</span>
+                <span className={cn('truncate', !p.alive && 'line-through')}>{callName(p.name)}</span>
                 <span className={cn('shrink-0 text-[0.72rem] uppercase tracking-wider', note === 'suspect' ? 'text-[var(--noir-blood)]' : note === 'trust' ? 'text-[#1f5a3a]' : 'text-[#6a5638]')}>
                   {note ? HUNCH_LABEL[note] : '—'}
                 </span>

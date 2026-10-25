@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto'
 
 import { isError, shuffle, type Ctx, type GameDef, type Later, type Player } from './engine.js'
 import { PERSONAS, nightPick, think, type Job, type Sight } from './mafia.bots.js'
-import { MAX_PLAYERS, MIN_PLAYERS, ROLE_INFO, roleSet, teamOf, type Role } from './mafia.roles.js'
+import { MAX_PLAYERS, MIN_PLAYERS, ROLE_INFO, first, roleSet, teamOf, type Role } from './mafia.roles.js'
 import { narrate, type NarrationFacts, type NarrationKind } from '../services/mafiaNarration.service.js'
 
 /**
@@ -49,7 +49,7 @@ export type Seat = Player & {
 }
 
 /** A line said at the table: typed, heard through someone's microphone, or an AI's. */
-export type Talk = { by: string; text: string; at: number; kind: 'say' | 'heard' | 'bot' }
+export type Talk = { by: string; text: string; at: number; kind: 'say' | 'heard' | 'bot'; round: number }
 /** An AI working out what to do; answered by Luna, or by rules. */
 export type Thinking = { key: string; id: string; job: Job; replyTo: string | null }
 
@@ -104,9 +104,13 @@ export type Mafia = {
   dawn: { victim: string | null; saved: boolean } | null
   files: { round: number; target: string; family: boolean }[]
   ready: string[]
+  /** People who have read the morning paper or the verdict and want to move on. */
+  next: string[]
   /** Today's nominations: who each person points at, or no one. */
   votes: Record<string, string | null>
   accused: string | null
+  /** What the accused said in their defence — kept in view while the town decides. */
+  plea: string | null
   /** Today's judgement of the accused: guilty (true) or innocent (false). */
   judgement: Record<string, boolean>
   verdict: { target: string | null; guilty: number; innocent: number; role: Role | null; jester: boolean } | null
@@ -126,35 +130,43 @@ export type Mafia = {
   endVotes: string[]
   speaker: string | null
   narration: Narration | null
-  /** Today's table talk — what the AI players can "hear". */
+  /** What has been said at the table, every day of the game — screens show today's; the AIs remember it all. */
   talk: Talk[]
+  /** Every night's choice by every player — private: each AI recalls only its own, the Family its own team's. */
+  nightLog: { round: number; by: string; target: string }[]
   thinking: Thinking[]
   lastReplyAt: number
 }
 
 /* ── timings ───────────────────────────────────────────────────────────── */
 
-const DEAL_MS = 16_000
-const REMATCH_DEAL_MS = 10_000
-const SEEN_GRACE_MS = 4_000
-/** When everyone has acted, the phase closes this soon after, at a fixed time. */
-const CLOSING_MS = 2_500
+const DEAL_MS = 20_000
+const REMATCH_DEAL_MS = 12_000
+/** Everyone has turned their card: long enough to read it, and the rules under it. */
+const SEEN_GRACE_MS = 7_000
+/** When everyone has acted, the phase closes this soon after, at a fixed time — time to see the last choice land. */
+const CLOSING_MS = 4_000
+/** Everyone has tapped "continue" on a story: a beat, then on. */
+const CONTINUE_MS = 1_200
 const NIGHTFALL_LEAD_MS = 5_000
 const HUSH_MIN_MS = 2_400
 const HUSH_MAX_MS = 6_500
-const DAWN_MIN_MS = 9_000
+const DAWN_MIN_MS = 12_000
 const DEFENCE_MS = 25_000
-const VERDICT_MIN_MS = 8_500
-const READ_RATE = 12.5
+const VERDICT_MIN_MS = 10_000
+/** Characters a second — a relaxed reading pace, with the narrator speaking over it. */
+const READ_RATE = 10
+/** After the last word: a moment to take it in before the game moves. */
+const READ_PAD_MS = 4_000
 
-const readMs = (text: string) => Math.round((text.length / READ_RATE) * 1000)
+export const readMs = (text: string) => Math.round((text.length / READ_RATE) * 1000)
 
 /* ── helpers ───────────────────────────────────────────────────────────── */
 
 const seat = (state: Mafia, id: string) => state.players.find((p) => p.id === id)
 const living = (state: Mafia) => state.players.filter((p) => p.alive)
 const isFamily = (role: Role) => teamOf(role) === 'family'
-const first = (name: string) => name.split(' ')[0] ?? name
+const TITLE_WORDS = new Set(['mrs', 'miss', 'father'])
 
 function schedule(state: Mafia, ctx: Ctx, ms: number) {
   ctx.clearSchedule()
@@ -167,10 +179,10 @@ function setNarration(state: Mafia, kind: NarrationKind, phase: Phase, facts: Na
 }
 
 /** Close a phase soon — once. Changing your mind in the last seconds doesn't push the close back. */
-function closeSoon(state: Mafia, ctx: Ctx) {
-  if ((state.deadline ?? 0) - ctx.now() <= CLOSING_MS) return
+function closeSoon(state: Mafia, ctx: Ctx, ms = CLOSING_MS) {
+  if ((state.deadline ?? 0) - ctx.now() <= ms) return
   state.step += 1
-  schedule(state, ctx, CLOSING_MS)
+  schedule(state, ctx, ms)
 }
 
 /* ── the AI players ────────────────────────────────────────────────────── */
@@ -190,48 +202,81 @@ function planBots(state: Mafia, ctx: Ctx) {
   const span = Math.max(0, state.deadline - ctx.now())
   const between = (lo: number, hi: number) => Math.round(lo + ctx.random(Math.max(1, Math.round(Math.max(hi, lo + 1) - lo))))
   const plan = (ms: number, id: string, job: string) => ctx.schedule(Math.max(500, ms), 'bot', { step: state.step, id, job })
+  /*
+   * The day's remarks take turns: one voice at a time, evenly spread through
+   * the first three quarters of the day with a little jitter — never two
+   * lines landing together, never a burst and then silence.
+   */
+  if (state.phase === 'day') {
+    const order = shuffle([...bots, ...bots], ctx)
+    const from = 4_000
+    const gap = Math.max(4_000, (span * 0.75 - from) / order.length)
+    order.forEach((bot, i) => plan(from + i * gap + between(0, gap * 0.4), bot.id, 'talk'))
+  }
   for (const bot of bots) {
     if (state.phase === 'night' && !state.picks[bot.id]) plan(between(2_500, Math.min(span - 7_000, 15_000)), bot.id, 'pick')
-    if (state.phase === 'day') {
-      plan(between(3_000, span * 0.4), bot.id, 'talk')
-      plan(between(span * 0.45, span * 0.8), bot.id, 'talk')
-      if (!state.ready.includes(bot.id)) plan(between(span * 0.55, span * 0.85), bot.id, 'ready')
-    }
-    if (state.phase === 'vote' && state.votes[bot.id] === undefined) plan(between(2_500, span - 8_000), bot.id, 'vote')
-    if (state.phase === 'judgement' && bot.id !== state.accused && state.judgement[bot.id] === undefined) plan(between(2_500, span - 8_000), bot.id, 'judge')
-    if (state.phase === 'defence' && bot.id === state.accused) {
-      plan(1_200, bot.id, 'defence')
-      plan(Math.min(span - 1_000, 14_000), bot.id, 'rest')
-    }
+    if (state.phase === 'day' && !state.ready.includes(bot.id)) plan(between(span * 0.6, span * 0.9), bot.id, 'ready')
+    /* Votes trickle in one by one, so each reason can be read. */
+    if (state.phase === 'vote' && state.votes[bot.id] === undefined) plan(between(4_000, span - 8_000), bot.id, 'vote')
+    if (state.phase === 'judgement' && bot.id !== state.accused && state.judgement[bot.id] === undefined) plan(between(4_000, span - 8_000), bot.id, 'judge')
+    /* The accused speaks at once; they rest only once the town has had time to read it (see botDone). */
+    if (state.phase === 'defence' && bot.id === state.accused) plan(1_200, bot.id, 'defence')
   }
 }
 
-/** What one AI can see: its own screen's view, and today's talk. Never the game itself. */
-export function sightFor(state: Mafia, id: string, replyTo: string | null): Sight {
+/** The people at the table (not the AIs) — those still in the room, if we know who that is. */
+function people(state: Mafia, ctx: Ctx) {
+  const here = ctx.present?.()
+  return state.players.filter((p) => !isBot(p) && (!here || here.includes(p.id)))
+}
+
+/**
+ * What one AI knows — exactly what a person in its seat would: its own
+ * screen's view, everything said at the table since the game began, the
+ * public record of every night and day, the clock, and its own private
+ * memory (its night choices, the Inspector's files, the Family's whispers).
+ * Never the game itself.
+ */
+export function sightFor(state: Mafia, id: string, replyTo: string | null, now = Date.now()): Sight {
   const v = mafia.view(state, id) as {
     me: { role: Role; files: Sight['me']['files']; lastProtected: string | null; selfSaveUsed: boolean }
     players: { id: string; name: string; alive: boolean; role: Role | null; died: Sight['players'][number]['died']; bot: string | null }[]
     night: { family: { id: string; pick: string | null }[] | null } | null
     votes: Record<string, string | null>
+    whispers: { by: string; text: string }[]
   }
+  const me = seat(state, id)!
   const familyPicks: Record<string, string> = {}
   for (const f of v.night?.family ?? []) if (f.pick && f.id !== id) familyPicks[f.id] = f.pick
+  /* The morning papers: who died, or that somebody was saved. The Family know who they went for; the Doctor who they kept alive. */
+  const nights: Sight['nights'] = []
+  for (const e of state.history) {
+    if (e.kind === 'kill') nights.push({ round: e.round, victim: e.victim, saved: false, target: isFamily(me.role) ? e.victim : null })
+    if (e.kind === 'saved') nights.push({ round: e.round, victim: null, saved: true, target: isFamily(me.role) || e.by === id ? e.target : null })
+    if (e.kind === 'quiet') nights.push({ round: e.round, victim: null, saved: false, target: null })
+  }
+  const left = state.deadline !== null ? state.deadline - now : state.paused
   return {
-    me: { id, role: v.me.role, persona: PERSONAS[seat(state, id)!.bot ?? 0]!, files: v.me.files, lastProtected: v.me.lastProtected, selfSaveUsed: v.me.selfSaveUsed },
+    me: { id, role: v.me.role, persona: PERSONAS[me.bot ?? 0]!, files: v.me.files, lastProtected: v.me.lastProtected, selfSaveUsed: v.me.selfSaveUsed },
     phase: state.phase,
     round: state.round,
+    msLeft: left !== null && left >= 0 && left < 3_600_000 ? left : null,
     players: v.players.map((p) => ({ id: p.id, name: p.name, alive: p.alive, role: p.role, died: p.died, bot: p.bot !== null })),
     ledger: state.ledger,
+    nights,
+    mine: state.nightLog.filter((n) => n.by === id).map((n) => ({ round: n.round, target: n.target })),
     votes: v.votes,
     accused: state.accused,
+    plea: state.plea,
     familyPicks,
-    talk: state.talk.map((t) => ({ by: t.by, text: t.text })),
+    whispers: v.whispers.map((w) => ({ by: w.by, text: w.text })),
+    talk: state.talk.map((t) => ({ by: t.by, text: t.text, round: t.round })),
     replyTo,
   }
 }
 
 function hear(state: Mafia, by: string, text: string, kind: Talk['kind'], ctx: Ctx) {
-  state.talk = [...state.talk, { by, text, at: ctx.now(), kind }].slice(-80)
+  state.talk = [...state.talk, { by, text, at: ctx.now(), kind, round: state.round }].slice(-200)
 }
 
 /** The Family win when they can no longer be outvoted; the town when the Family is gone. */
@@ -261,9 +306,9 @@ function enterNight(state: Mafia, ctx: Ctx) {
   state.ready = []
   state.votes = {}
   state.accused = null
+  state.plea = null
   state.judgement = {}
   state.verdict = null
-  state.talk = []
   state.thinking = []
   const line = NIGHTFALL[(state.round - 1) % NIGHTFALL.length]!
   setNarration(state, 'nightfall', 'night', { round: state.round }, line)
@@ -302,6 +347,10 @@ function resolveNight(state: Mafia, ctx: Ctx) {
     const family = seat(state, filed)!.role === 'mafia'
     state.files.push({ round: state.round, target: filed, family })
     state.history.push({ round: state.round, kind: 'file', by: detective.id, target: filed, family })
+  }
+  for (const player of living(state)) {
+    const pick = state.picks[player.id]
+    if (pick) state.nightLog.push({ round: state.round, by: player.id, target: pick })
   }
   for (const player of living(state)) {
     if (isFamily(player.role) || player.role === 'doctor' || player.role === 'detective') continue
@@ -349,7 +398,8 @@ function enterDawn(state: Mafia, ctx: Ctx) {
   state.phase = 'dawn'
   state.step += 1
   state.after = null
-  schedule(state, ctx, Math.max(DAWN_MIN_MS, readMs(state.narration?.text ?? '') + 2_500))
+  state.next = []
+  schedule(state, ctx, Math.max(DAWN_MIN_MS, readMs(state.narration?.text ?? '') + READ_PAD_MS))
   return state
 }
 
@@ -479,7 +529,8 @@ function enterVerdict(state: Mafia, ctx: Ctx) {
   state.phase = 'verdict'
   state.step += 1
   state.after = null
-  schedule(state, ctx, Math.max(VERDICT_MIN_MS, readMs(state.narration?.text ?? '') + 2_500))
+  state.next = []
+  schedule(state, ctx, Math.max(VERDICT_MIN_MS, readMs(state.narration?.text ?? '') + READ_PAD_MS))
   return state
 }
 
@@ -539,7 +590,7 @@ const pickFrom = (allowed: number[], raw: unknown, fallback: number) => (allowed
 const cleanText = (raw: unknown) => (typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim().slice(0, 240) : '')
 const WINNERS: Winner[] = ['town', 'family', 'jester']
 /** Moves that are part of play — frozen while the host has the game paused. */
-const PLAY = new Set(['seen', 'pick', 'ready', 'vote', 'done', 'judge', 'say'])
+const PLAY = new Set(['seen', 'pick', 'ready', 'vote', 'done', 'judge', 'say', 'next'])
 
 /** The slow, paid services this game leans on — swapped for stand-ins in tests. */
 export const services = { narrate, think }
@@ -591,8 +642,10 @@ export const mafia: GameDef<Mafia, Options> = {
       dawn: null,
       files: [],
       ready: [],
+      next: [],
       votes: {},
       accused: null,
+      plea: null,
       judgement: {},
       verdict: null,
       after: null,
@@ -608,6 +661,7 @@ export const mafia: GameDef<Mafia, Options> = {
       speaker: null,
       narration: null,
       talk: [],
+      nightLog: [],
       thinking: [],
       lastReplyAt: 0,
     }
@@ -641,7 +695,7 @@ export const mafia: GameDef<Mafia, Options> = {
         }
         /* A late story still gets its full reading. */
         if ((state.phase === 'dawn' || state.phase === 'verdict') && state.deadline !== null && state.paused === null) {
-          const need = ctx.now() + readMs(narration.text) + 2_000
+          const need = ctx.now() + readMs(narration.text) + READ_PAD_MS
           if (need > state.deadline) schedule(state, ctx, need - ctx.now())
         }
         return state
@@ -699,6 +753,12 @@ export const mafia: GameDef<Mafia, Options> = {
         }
         const said = cleanText(payload.say)
         if (said) hear(state, bot.id, said, 'bot', ctx)
+        if (said && thought.job === 'defence') state.plea = said
+        /* An AI rests its case once the town has had time to read it — not on a fixed clock. */
+        if (thought.job === 'defence' && state.paused === null && state.deadline !== null) {
+          const rest = Math.max(8_000, readMs(said) + READ_PAD_MS)
+          if (state.deadline - ctx.now() > rest + 2_000) ctx.schedule(rest, 'bot', { step: state.step, id: bot.id, job: 'rest' })
+        }
         return state
       }
 
@@ -826,15 +886,18 @@ export const mafia: GameDef<Mafia, Options> = {
         if (!TALKING.includes(prev.phase)) return { error: 'The table is quiet at night' }
         const state: Mafia = structuredClone(prev)
         hear(state, by.id, text, payload.heard === true ? 'heard' : 'say', ctx)
+        if (state.phase === 'defence' && by.id === state.accused) state.plea = state.plea ? `${state.plea} ${text}`.slice(-480) : text
         /* Somebody may answer: whoever was named, or now and then whoever has an opinion. */
         const bots = living(state).filter((p) => isBot(p) && p.id !== state.accused)
-        if (state.phase === 'day' && bots.length && ctx.now() - state.lastReplyAt > 12_000) {
-          const lower = text.toLowerCase()
-          const named = bots.find((b) => lower.includes(first(b.name).toLowerCase()))
-          const who = named ?? (ctx.random(3) === 0 ? bots[ctx.random(bots.length)] : undefined)
-          if (who) {
+        if ((state.phase === 'day' || state.phase === 'vote') && bots.length) {
+          /* Any part of a name reaches its seat: "Rosie", "Lobo", "Father Pereira". */
+          const words = new Set(text.toLowerCase().split(/[^\p{L}’']+/u))
+          const named = bots.find((b) => b.name.toLowerCase().split(/\s+/).some((w) => w.length > 2 && !TITLE_WORDS.has(w) && words.has(w)))
+          /* Named, an AI always answers; otherwise someone often does — but nobody talks over the last reply. */
+          const who = named ?? (ctx.now() - state.lastReplyAt > 10_000 && ctx.random(2) === 0 ? bots[ctx.random(bots.length)] : undefined)
+          if (who && (named ? ctx.now() - state.lastReplyAt > 4_000 : true)) {
             state.lastReplyAt = ctx.now()
-            ctx.schedule(2_500 + ctx.random(2_500), 'bot', { step: state.step, id: who.id, job: 'talk', replyTo: by.id })
+            ctx.schedule(1_500 + ctx.random(2_000), 'bot', { step: state.step, id: who.id, job: 'talk', replyTo: by.id })
           }
         }
         return state
@@ -867,7 +930,29 @@ export const mafia: GameDef<Mafia, Options> = {
         if (prev.phase !== 'day' || !me.alive) return prev
         const state: Mafia = structuredClone(prev)
         state.ready = state.ready.includes(by.id) ? state.ready.filter((id) => id !== by.id) : [...state.ready, by.id]
-        if (state.ready.length > living(state).length / 2) return enterVote(state, ctx)
+        /*
+         * The AIs never hurry the people: the vote opens early only once most
+         * of the living people are ready too. When they are, the AIs follow
+         * within a few seconds.
+         */
+        const folk = living(state).filter((p) => !isBot(p))
+        const folkReady = folk.filter((p) => state.ready.includes(p.id)).length
+        const peopleAgree = folk.length === 0 || folkReady > folk.length / 2
+        if (peopleAgree && state.ready.length > living(state).length / 2) return enterVote(state, ctx)
+        if (peopleAgree && !isBot(me)) {
+          for (const bot of living(state).filter((p) => isBot(p) && !state.ready.includes(p.id))) {
+            ctx.schedule(1_500 + ctx.random(2_500), 'bot', { step: state.step, id: bot.id, job: 'ready' })
+          }
+        }
+        return state
+      }
+
+      case 'next': {
+        if ((prev.phase !== 'dawn' && prev.phase !== 'verdict') || prev.next.includes(by.id)) return prev
+        const state: Mafia = structuredClone(prev)
+        state.next.push(by.id)
+        /* Everyone has read it: on with the game. */
+        if (people(state, ctx).every((p) => state.next.includes(p.id))) closeSoon(state, ctx, CONTINUE_MS)
         return state
       }
 
@@ -995,8 +1080,10 @@ export const mafia: GameDef<Mafia, Options> = {
           : null,
       dawn: state.phase === 'dawn' || state.phase === 'hush' ? state.dawn : null,
       ready: state.phase === 'day' ? state.ready : [],
+      next: state.phase === 'dawn' || state.phase === 'verdict' ? state.next : [],
       votes: publicVotes ? state.votes : {},
       accused: state.accused,
+      plea: state.phase === 'defence' || state.phase === 'judgement' ? state.plea : null,
       /* How the judgement is going: a count while it runs; names go in the notebook once it's decided. */
       judgement:
         state.phase === 'judgement'
@@ -1017,7 +1104,7 @@ export const mafia: GameDef<Mafia, Options> = {
       ghosts: ghost || over ? state.ghosts : [],
       endVotes: state.endVotes.length,
       /* What's said at the table is public; so is an AI pausing to think. */
-      talk: state.talk,
+      talk: state.talk.filter((t) => t.round === state.round),
       thinking: [...new Set(state.thinking.map((t) => t.id))],
       narration,
       winner: state.winner,

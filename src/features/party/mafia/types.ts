@@ -74,8 +74,12 @@ export type MafiaView = {
   night: { chosen: number; of: number; family: { id: string; pick: string | null }[] | null } | null
   dawn: { victim: string | null; saved: boolean } | null
   ready: string[]
+  /** Who has read the morning paper or the verdict and wants to move on. */
+  next: string[]
   votes: Record<string, string | null>
   accused: string | null
+  /** The accused's defence, in their own words — shown while the town decides. */
+  plea: string | null
   judgement: { done: number; of: number } | null
   verdict: { target: string | null; guilty: number; innocent: number; role: Role | null; jester: boolean; hanged: boolean } | null
   after: 'dawn' | 'verdict' | null
@@ -85,7 +89,7 @@ export type MafiaView = {
   winner: Winner | null
   ledger: Ledger[]
   endVotes: number
-  talk: { by: string; text: string; at: number; kind: 'say' | 'heard' | 'bot' }[]
+  talk: { by: string; text: string; at: number; kind: 'say' | 'heard' | 'bot'; round?: number }[]
   thinking: string[]
   history: CaseEvent[] | null
   suspicions: { round: number; by: string; target: string }[] | null

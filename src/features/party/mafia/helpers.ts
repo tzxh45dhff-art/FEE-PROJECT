@@ -13,5 +13,14 @@ export function dealLine(n: number, godfather: boolean, jester: boolean) {
   return `${n} at the table: ${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}.`
 }
 
+const TITLES = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'father', 'uncle', 'aunty', 'auntie'])
+
+/** What the table calls someone: the first name — or "Mrs Lobo", never just "Mrs". */
+export function callName(name: string) {
+  const [head, next] = name.trim().split(/\s+/)
+  if (!head) return name
+  return next && TITLES.has(head.toLowerCase().replace(/\.$/, '')) ? `${head} ${next}` : head
+}
+
 /** A seat's display name, first name only. */
-export const firstName = (seat: SeatView | undefined) => seat?.name.split(' ')[0] ?? 'Someone'
+export const firstName = (seat: SeatView | undefined) => (seat ? callName(seat.name) : 'Someone')

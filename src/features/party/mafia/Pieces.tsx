@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 
 import { cn } from '@/lib/utils'
 import { Emblem } from './art'
+import { callName } from './helpers'
 import { ROLE_TITLE, isFamily, type CaseEvent, type MafiaView, type Role, type Winner } from './types'
 
 /* ── the role card ────────────────────────────────────────────────────── */
@@ -51,7 +52,11 @@ export function RoleCard({
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') reveal(!turned)
       }}
-      className={cn('relative aspect-[5/7] w-56 select-none touch-none outline-none focus-visible:ring-2 focus-visible:ring-[var(--noir-brass)] sm:w-64', className)}
+      className={cn(
+        /* As wide as fits — and never taller than the screen has room for, sideways on a phone included. */
+        '@container relative aspect-[5/7] w-[clamp(6rem,calc((100dvh-15rem)*0.7),14rem)] select-none touch-none outline-none focus-visible:ring-2 focus-visible:ring-[var(--noir-brass)] sm:w-[clamp(6rem,calc((100dvh-15rem)*0.7),16rem)]',
+        className,
+      )}
     >
       {/* A flip that works everywhere: the card narrows to its edge, turns over, and opens again. */}
       <AnimatePresence mode="wait" initial={false}>
@@ -66,9 +71,9 @@ export function RoleCard({
           >
             <div className="grid size-[84%] place-items-center rounded-lg border-2 border-double border-[var(--noir-brass)]/80 bg-[#2a0807]/60">
               <div className="text-center">
-                <p className="font-deco text-[1.6rem] text-[var(--noir-brass)]">BOMBAY</p>
+                <p className="font-deco text-[clamp(1rem,11cqw,1.6rem)] text-[var(--noir-brass)]">BOMBAY</p>
                 <p className="font-type mt-1 text-[0.7rem] uppercase tracking-[0.4em] text-[var(--noir-paper-dim)]">1956</p>
-                <p className="font-type mt-6 text-[0.72rem] text-[var(--noir-paper-dim)]/80">{hold ? 'hold to look' : 'tap to turn'}</p>
+                <p className="font-type mt-[8cqw] text-[0.72rem] text-[var(--noir-paper-dim)]/80">{hold ? 'hold to look' : 'tap to turn'}</p>
               </div>
             </div>
           </motion.div>
@@ -79,18 +84,18 @@ export function RoleCard({
             animate={{ scaleX: 1 }}
             exit={{ scaleX: 0 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="absolute inset-0 flex flex-col items-center justify-between rounded-xl px-5 py-4 noir-paper noir-paper-edge"
+            className="absolute inset-0 flex flex-col items-center justify-between rounded-xl px-[8cqw] py-[6cqw] noir-paper noir-paper-edge"
           >
-            <div className="flex w-full justify-between font-deco text-[1rem]" style={{ color: red ? 'var(--noir-blood)' : '#2b2015' }}>
+            <div className="flex w-full justify-between font-deco text-[clamp(0.75rem,6.5cqw,1rem)]" style={{ color: red ? 'var(--noir-blood)' : '#2b2015' }}>
               <span>{ROLE_TITLE[role][0]}</span>
               <span>{ROLE_TITLE[role][0]}</span>
             </div>
-            <Emblem role={role} className={cn('w-[62%]', red ? 'text-[var(--noir-blood)]' : 'text-[#2b2015]')} />
+            <Emblem role={role} className={cn('min-h-0 w-[62%] shrink', line && 'w-[50%]', red ? 'text-[var(--noir-blood)]' : 'text-[#2b2015]')} />
             <div className="text-center">
-              <p className="font-deco text-[1.5rem] leading-tight" style={{ color: red ? 'var(--noir-blood)' : '#2b2015' }}>
+              <p className="font-deco text-[clamp(0.85rem,9.5cqw,1.5rem)] leading-tight" style={{ color: red ? 'var(--noir-blood)' : '#2b2015' }}>
                 {title}
               </p>
-              {line && <p className="font-type mt-2 text-[0.8rem] leading-snug text-[#3a2c1c]">{line}</p>}
+              {line && <p className="font-type mt-[3cqw] text-[clamp(0.58rem,5.2cqw,0.8rem)] leading-snug text-[#3a2c1c]">{line}</p>}
             </div>
           </motion.div>
         )}
@@ -114,7 +119,7 @@ export function Newspaper({ round, headline, fact, story, photo }: { round: numb
       animate={{ rotate: -2, scale: 1, opacity: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
       transition={{ type: 'spring', stiffness: 150, damping: 17 }}
-      className="noir-paper noir-paper-edge mx-auto w-[min(34rem,calc(100vw-2rem))] rounded-sm px-5 py-4 sm:px-7 sm:py-6"
+      className="noir-paper noir-paper-edge mx-auto w-[calc(100%-0.5rem)] max-w-[34rem] rounded-sm px-5 py-4 sm:px-7 sm:py-6"
     >
       <header className="border-b-[3px] border-double border-[#2a2015] pb-2 text-center">
         <p className="font-old text-[2rem] font-black leading-none tracking-tight text-[#1c140b] sm:text-[2.6rem]">The Bombay Herald</p>
@@ -148,13 +153,13 @@ export function Clock({ left, total, paused, onTick }: { left: number; total: nu
   }, [seconds, paused, onTick])
   const label = seconds >= 60 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}`
   return (
-    <div className="relative grid size-14 shrink-0 place-items-center rounded-full noir-brass shadow-[0_6px_18px_-6px_rgba(0,0,0,.8)] sm:size-16" role="timer" aria-label={paused ? 'Paused' : `${seconds} seconds left`}>
+    <div className="relative grid size-14 shrink-0 place-items-center rounded-full noir-brass shadow-[0_6px_18px_-6px_rgba(0,0,0,.8)] sm:size-16 [@media(max-height:520px)]:size-11" role="timer" aria-label={paused ? 'Paused' : `${seconds} seconds left`}>
       <div
         className="absolute inset-[3px] rounded-full"
         style={{ background: `conic-gradient(${seconds <= 10 ? '#a3201c' : '#2a1d10'} ${share * 360}deg, #120d07 0deg)` }}
       />
       <div className="absolute inset-[7px] rounded-full bg-[#efe3c8] shadow-[inset_0_2px_6px_rgba(0,0,0,.45)]" />
-      <span className={cn('font-deco relative text-[1rem] text-[#1c140b] sm:text-[1.15rem]', seconds <= 10 && !paused && 'text-[var(--noir-blood)]')}>
+      <span className={cn('font-deco relative text-[0.95rem] tracking-normal text-[#1c140b] sm:text-[1.15rem] [@media(max-height:520px)]:text-[0.78rem]', seconds <= 10 && !paused && 'text-[var(--noir-blood)]')}>
         {paused ? '❚❚' : label}
       </span>
     </div>
@@ -180,7 +185,7 @@ export function Subtitles({ id, text }: { id: string | null; text: string | null
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
-          className="font-old mx-auto max-w-3xl px-4 text-center text-[0.95rem] italic leading-snug text-[var(--noir-paper)] [text-shadow:0_2px_12px_rgba(0,0,0,.9)] sm:text-[1.15rem] sm:leading-relaxed"
+          className="font-old mx-auto max-w-3xl px-4 text-center text-[0.95rem] italic leading-snug text-[var(--noir-paper)] [text-shadow:0_2px_12px_rgba(0,0,0,.9)] sm:text-[1.15rem] sm:leading-relaxed [@media(max-height:520px)]:text-[0.85rem] [@media(max-height:520px)]:leading-snug"
           aria-live="polite"
         >
           {text.slice(0, shown)}
@@ -220,7 +225,10 @@ export function CaseFile({
 }) {
   const v = VERDICT[view.winner ?? 'none']
   const seat = (id: string | null | undefined) => view.players.find((p) => p.id === id)
-  const name = (id: string | null | undefined) => seat(id)?.name.split(' ')[0] ?? 'someone'
+  const name = (id: string | null | undefined) => {
+    const s = seat(id)
+    return s ? callName(s.name) : 'someone'
+  }
   const rounds = new Map<number, CaseEvent[]>()
   for (const e of view.history ?? []) rounds.set(e.round, [...(rounds.get(e.round) ?? []), e])
   const playing = !!selfId && view.players.some((p) => p.id === selfId)
@@ -255,7 +263,7 @@ export function CaseFile({
   const myBluff = selfId ? view.bluff?.[selfId] : undefined
 
   return (
-    <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} className="noir-paper noir-paper-edge relative mx-auto w-[min(46rem,calc(100vw-1.5rem))] rounded-sm px-5 pb-6 pt-5 sm:px-8">
+    <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} className="noir-paper noir-paper-edge relative mx-auto w-full max-w-[46rem] rounded-sm px-5 pb-6 pt-5 sm:px-8">
       <div className="absolute -top-3 left-6 rounded-t-md bg-[#d9c79c] px-4 py-1 font-type text-[0.74rem] uppercase tracking-[0.22em] text-[#4a3a26]">Case file · Bombay police</div>
       <div className="flex flex-col-reverse items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
         <div>
@@ -271,7 +279,7 @@ export function CaseFile({
       <ul className="mt-2 grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 sm:grid-cols-3">
         {view.players.map((p) => (
           <li key={p.id} className="flex items-center justify-between gap-2 rounded-sm border border-[#2a2015]/20 bg-white/30 px-2.5 py-1.5">
-            <span className={cn('font-type truncate text-[0.88rem]', !p.alive && 'line-through decoration-[#2a2015]/50')}>{p.name.split(' ')[0]}</span>
+            <span className={cn('font-type truncate text-[0.88rem]', !p.alive && 'line-through decoration-[#2a2015]/50')}>{callName(p.name)}</span>
             <span className="font-type shrink-0 text-[0.7rem] uppercase tracking-wider" style={{ color: isFamily(p.role) ? 'var(--noir-blood)' : '#4a3a26' }}>
               {p.role ? ROLE_TITLE[p.role] : '—'}
             </span>
@@ -371,7 +379,7 @@ export function CaseFile({
                   myBluff === p.id ? 'border-[#2a2015] bg-[#2a2015] text-[#efe3c8]' : 'border-[#2a2015]/30 text-[#2b2015] hover:bg-black/5',
                 )}
               >
-                {p.name.split(' ')[0]}
+                {callName(p.name)}
                 {bluffs.get(p.id) ? ` · ${bluffs.get(p.id)}` : ''}
               </button>
             ))}
