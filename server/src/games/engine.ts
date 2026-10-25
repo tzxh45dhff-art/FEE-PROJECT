@@ -35,11 +35,16 @@ export type Ctx = {
 
 export type Result<S> = S | { error: string }
 
+/** Slow work whose answer comes back as a server action. */
+export type Later = Promise<{ action: string; payload: Record<string, unknown> } | null>
+
 export interface GameDef<S, O = unknown> {
   id: string
   label: string
   minPlayers: number
   maxPlayers: number
+  /** People needed with these options — fewer when the game fills seats itself. */
+  minPeople?: (options: O) => number
   /** Validate and normalise the options from the client. */
   options: (raw: unknown) => O | { error: string }
   /** Anything that needs the database before the game can start — the room's songs. */
@@ -56,7 +61,7 @@ export interface GameDef<S, O = unknown> {
    * the game is responsible for not asking twice. What the promise resolves
    * to is applied as a server action, if the same game is still running.
    */
-  after?: (roomId: string, state: S) => Promise<{ action: string; payload: Record<string, unknown> } | null> | null
+  after?: (roomId: string, state: S) => Later | Later[] | null
   start: (players: Player[], options: O, ctx: Ctx) => S
   /**
    * Apply an action. `by` is null for the server's own timers. Return the next

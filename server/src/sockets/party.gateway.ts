@@ -162,11 +162,13 @@ function actLimiter(burst: number, windowMs: number) {
 function followUp(io: Server, roomId: string, session: Session) {
   const work = session.game.after?.(roomId, session.state)
   if (!work) return
-  work
-    .then((result) => {
-      if (result && sessions.get(roomId) === session) apply(io, roomId, null, result.action, result.payload)
-    })
-    .catch(() => undefined)
+  for (const later of Array.isArray(work) ? work : [work]) {
+    later
+      .then((result) => {
+        if (result && sessions.get(roomId) === session) apply(io, roomId, null, result.action, result.payload)
+      })
+      .catch(() => undefined)
+  }
 }
 
 function apply(io: Server, roomId: string, by: Player | null, action: string, payload: Record<string, unknown>) {
@@ -246,12 +248,13 @@ export function attachPartyGateway(io: Server) {
       /* Everyone standing in the room plays, starter first. */
       const here = presenceFor(roomId).map((p) => ({ id: p.userId, name: p.name }))
       const players = [self, ...here.filter((p) => p.id !== self.id)].slice(0, game.maxPlayers)
-      if (players.length < game.minPlayers) {
-        return ack({ error: `${game.label} needs at least ${game.minPlayers} people in the room` })
-      }
-
       const parsed = game.options(body.options)
       if (isError(parsed)) return ack(parsed)
+      const needed = game.minPeople?.(parsed) ?? game.minPlayers
+      if (players.length < needed) {
+        return ack({ error: `${game.label} needs at least ${needed} ${needed === 1 ? 'person' : 'people'} in the room` })
+      }
+
       const options = game.prepare ? await game.prepare(roomId, parsed) : parsed
       if (isError(options)) return ack(options)
       const seen = game.used ? await seenFor(roomId, game.id) : undefined

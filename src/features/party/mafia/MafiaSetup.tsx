@@ -35,7 +35,11 @@ export function MafiaSetup({
   const [reveal, setReveal] = useState(true)
   const [godfather, setGodfather] = useState(true)
   const [jester, setJester] = useState(false)
-  const n = players.length
+  /* AI regulars fill the empty chairs: enough for a game by default, more if you like. */
+  const [aiWanted, setAi] = useState(() => Math.max(0, 4 - players.length))
+  const ai = Math.max(0, Math.min(aiWanted, 12 - players.length))
+  const n = players.length + ai
+  const seats: (Person & { ai?: boolean })[] = [...players, ...Array.from({ length: ai }, (_, i) => ({ id: `ai-${i}`, name: 'AI player', you: false, ai: true }))]
   const can = n >= 4 && n <= 12 && !starting
 
   return (
@@ -51,23 +55,23 @@ export function MafiaSetup({
           </p>
           {/* On a phone: a compact roster — everyone readable, nothing squeezed round an ellipse. */}
           <ul className="mt-6 grid w-full grid-cols-2 gap-1.5 sm:hidden" aria-label="Players">
-            {players.map((p) => (
-              <li key={p.id} className="flex min-h-12 items-center gap-2.5 rounded-sm border border-[var(--noir-brass)]/25 bg-black/30 px-2.5 py-1.5">
-                <Portrait name={p.name} character={p.character} className="size-9 shrink-0 rounded-full ring-1 ring-[var(--noir-brass)]/60" />
-                <span className="font-type min-w-0 flex-1 truncate text-[0.9rem] text-[var(--noir-paper)]">{p.you ? 'You' : p.name.split(' ')[0]}</span>
-                <span className="size-2 shrink-0 rounded-full bg-emerald-400" title="In the room" />
+            {seats.map((p) => (
+              <li key={p.id} className={cn('flex min-h-12 items-center gap-2.5 rounded-sm border px-2.5 py-1.5', p.ai ? 'border-dashed border-[var(--noir-brass)]/40 bg-[var(--noir-brass)]/[0.06]' : 'border-[var(--noir-brass)]/25 bg-black/30')}>
+                {p.ai ? <AiFace className="size-9" /> : <Portrait name={p.name} character={p.character} className="size-9 shrink-0 rounded-full ring-1 ring-[var(--noir-brass)]/60" />}
+                <span className="font-type min-w-0 flex-1 truncate text-[0.9rem] text-[var(--noir-paper)]">{p.ai ? 'AI player' : p.you ? 'You' : p.name.split(' ')[0]}</span>
+                {!p.ai && <span className="size-2 shrink-0 rounded-full bg-emerald-400" title="In the room" />}
               </li>
             ))}
-            <li className="font-type col-span-2 pt-1 text-center text-[0.8rem] text-[var(--noir-paper-dim)]">{n} seated · 4 to 12 players</li>
+            <li className="font-type col-span-2 pt-1 text-center text-[0.8rem] text-[var(--noir-paper-dim)]">{n} seated · 4 to 12</li>
           </ul>
           <div className="relative mt-8 hidden aspect-[16/10] w-[calc(100%-4rem)] max-w-[34rem] sm:block">
             <div className="absolute inset-[12%] rounded-[50%] bg-[radial-gradient(ellipse_at_50%_40%,#2f5a44,#163024_70%)] shadow-[0_0_0_10px_#3a2618,0_0_0_12px_#1a1009,0_30px_80px_-20px_rgba(0,0,0,.95),inset_0_10px_40px_rgba(0,0,0,.5)]" />
             <div className="absolute left-1/2 top-[34%] -translate-x-1/2 text-center">
               <p className="font-deco text-[1.1rem] text-[var(--noir-brass)]/80">{n} seated</p>
-              <p className="font-type text-[0.65rem] uppercase tracking-[0.25em] text-[var(--noir-paper-dim)]/70">4 to 12 players</p>
+              <p className="font-type text-[0.65rem] uppercase tracking-[0.25em] text-[var(--noir-paper-dim)]/70">4 to 12 seats</p>
             </div>
-            {players.slice(0, 12).map((p, i) => {
-              const angle = (i / Math.max(players.length, 1)) * Math.PI * 2 - Math.PI / 2
+            {seats.slice(0, 12).map((p, i) => {
+              const angle = (i / Math.max(seats.length, 1)) * Math.PI * 2 - Math.PI / 2
               return (
                 <motion.div
                   key={p.id}
@@ -77,8 +81,12 @@ export function MafiaSetup({
                   className="absolute flex w-16 -translate-x-1/2 -translate-y-1/2 flex-col items-center sm:w-20"
                   style={{ left: `${50 + Math.cos(angle) * 44}%`, top: `${50 + Math.sin(angle) * 44}%` }}
                 >
-                  <Portrait name={p.name} character={p.character} className="size-12 rounded-full ring-2 ring-[var(--noir-brass)]/70 sm:size-14" />
-                  <span className="font-type mt-1 max-w-full truncate text-[0.68rem] text-[var(--noir-paper)]">{p.you ? 'You' : p.name.split(' ')[0]}</span>
+                  {p.ai ? (
+                    <AiFace className="size-12 sm:size-14" />
+                  ) : (
+                    <Portrait name={p.name} character={p.character} className="size-12 rounded-full ring-2 ring-[var(--noir-brass)]/70 sm:size-14" />
+                  )}
+                  <span className="font-type mt-1 max-w-full truncate text-[0.72rem] text-[var(--noir-paper)]">{p.ai ? 'AI' : p.you ? 'You' : p.name.split(' ')[0]}</span>
                 </motion.div>
               )
             })}
@@ -89,6 +97,25 @@ export function MafiaSetup({
         <div className="noir-paper noir-paper-edge relative rounded-sm px-5 pb-6 pt-5 sm:px-7">
           <p className="font-deco text-[1.5rem] text-[#1c140b]">The terms</p>
           <p className="font-type text-[0.86rem] text-[#5a4a35]">{dealLine(n, godfather, jester)}</p>
+
+          <Field label="AI players">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <p className="font-type text-[0.82rem] leading-snug text-[#5a4a35]">
+                Bombay regulars who argue, lie and vote. They read the table talk, and can listen if you let them.
+              </p>
+              <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+                <Step label="One fewer AI player" disabled={ai === 0} onClick={() => setAi(ai - 1)}>
+                  −
+                </Step>
+                <span className="font-deco w-8 text-center text-[1.3rem] text-[#1c140b]" aria-live="polite">
+                  {ai}
+                </span>
+                <Step label="One more AI player" disabled={n >= 12} onClick={() => setAi(ai + 1)}>
+                  +
+                </Step>
+              </div>
+            </div>
+          </Field>
 
           <Field label="Where are you playing?">
             <div className="grid grid-cols-3 gap-1.5">
@@ -135,13 +162,13 @@ export function MafiaSetup({
           )}
 
           <div className="mt-6 flex items-center justify-end gap-4">
-            <span className="font-type text-[0.84rem] text-[#5a4a35]">{can ? 'Press the seal to deal' : n < 4 ? 'Waiting for more players…' : ''}</span>
+            <span className="font-type text-[0.84rem] text-[#5a4a35]">{can ? 'Press the seal to deal' : n < 4 ? 'Four seats at least — add an AI player or wait for friends' : ''}</span>
             <motion.button
               type="button"
               disabled={!can}
               whileHover={can ? { rotate: -8, scale: 1.04 } : undefined}
               whileTap={can ? { scale: 0.92 } : undefined}
-              onClick={() => onStart({ nightSeconds: night, daySeconds: day, voteSeconds: vote, reveal, godfather, jester, together: where === 'table' })}
+              onClick={() => onStart({ nightSeconds: night, daySeconds: day, voteSeconds: vote, reveal, godfather, jester, together: where === 'table', bots: ai })}
               className="relative grid size-24 place-items-center rounded-full bg-[radial-gradient(circle_at_35%_30%,#c4362d,#7a1410_70%)] text-[#f7d9c8] shadow-[0_10px_24px_-8px_rgba(80,10,5,.9),inset_0_-4px_10px_rgba(0,0,0,.35)] outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-[#2a2015] focus-visible:ring-offset-2 disabled:opacity-40"
             >
               <span className="absolute inset-2 rounded-full border-2 border-dashed border-[#f7d9c8]/40" />
@@ -151,6 +178,29 @@ export function MafiaSetup({
         </div>
       </div>
     </div>
+  )
+}
+
+function Step({ label, disabled, onClick, children }: { label: string; disabled: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="font-type grid size-11 place-items-center rounded-sm border border-[#2a2015]/40 text-[1.3rem] text-[#1c140b] outline-none hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-[#2a2015] disabled:opacity-30"
+    >
+      {children}
+    </button>
+  )
+}
+
+/** An empty chair waiting for an AI: a brass monogram rather than a face. */
+function AiFace({ className }: { className?: string }) {
+  return (
+    <span className={cn('font-deco grid shrink-0 place-items-center rounded-full border border-dashed border-[var(--noir-brass)]/70 bg-[#1c140b] text-[0.8rem] text-[var(--noir-brass)]', className)}>
+      AI
+    </span>
   )
 }
 

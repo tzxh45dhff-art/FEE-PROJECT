@@ -20,7 +20,7 @@ type Entry = {
 }
 
 const GAMES: Entry[] = [
-  { id: 'mafia', title: 'Mafia', line: 'Bombay, 1956. Someone here works for the Family. Find them before morning.', players: '4–12', art: '🎩', tone: 'from-red-900/60 via-stone-800/30 to-transparent', ready: true },
+  { id: 'mafia', title: 'Mafia', line: 'Bombay, 1956. Someone here works for the Family. Find them before morning.', players: '1–12', art: '🎩', tone: 'from-red-900/60 via-stone-800/30 to-transparent', ready: true },
   { id: 'truthdare', title: 'Truth or dare', line: 'The game picks the questions. You pick how spicy.', players: '2+', art: '🍾', tone: 'from-red-500/35 via-rose-600/20 to-transparent', ready: true },
   { id: 'draw', title: 'Draw and guess', line: 'One draws, everyone races to guess.', players: '2+', art: '🎨', tone: 'from-amber-400/50 via-orange-500/20 to-transparent', ready: true },
   { id: 'knowme', title: 'How well do you know me?', line: 'Answer about yourself. They guess. Truth comes out.', players: '2+', art: '💞', tone: 'from-pink-400/50 via-fuchsia-500/20 to-transparent', ready: true },

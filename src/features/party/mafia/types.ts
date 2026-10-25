@@ -14,6 +14,7 @@ export type MafiaOptions = {
   jester: boolean
   together: boolean
   rematch?: boolean
+  bots?: number
 }
 
 export type SeatView = {
@@ -23,6 +24,8 @@ export type SeatView = {
   presence: Presence
   died: { round: number; how: 'killed' | 'voted' } | null
   role: Role | null
+  /** An AI player: who they are, in a few words. */
+  bot: string | null
 }
 
 export type CaseEvent =
@@ -82,6 +85,8 @@ export type MafiaView = {
   winner: Winner | null
   ledger: Ledger[]
   endVotes: number
+  talk: { by: string; text: string; at: number; kind: 'say' | 'heard' | 'bot' }[]
+  thinking: string[]
   history: CaseEvent[] | null
   suspicions: { round: number; by: string; target: string }[] | null
   predictions: Record<string, Winner> | null

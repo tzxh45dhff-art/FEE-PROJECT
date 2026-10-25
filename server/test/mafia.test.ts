@@ -7,7 +7,8 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import type { Ctx, Player } from '../src/games/engine.js'
-import { familyChoice, mafia, tally, winnerOf, type Mafia, type Options } from '../src/games/mafia.js'
+import { familyChoice, mafia, services, sightFor, tally, winnerOf, type Mafia, type Options } from '../src/games/mafia.js'
+import { judgeByRules, lineByRules, voteByRules } from '../src/games/mafia.bots.js'
 import { roleSet, type Role } from '../src/games/mafia.roles.js'
 
 let clock = 0
@@ -422,5 +423,114 @@ describe('mafia — endings, ghosts and the host', () => {
     assert.equal(view(state, 'kabir').narration, null, 'the dawn story waits for dawn')
     state = tick(state)
     assert.ok(view(state, 'kabir').narration)
+  })
+})
+
+describe('mafia — AI players', () => {
+  /* No model, no voice: the narrator keeps its own line and the AIs think by rules. */
+  services.narrate = async (_kind, _facts, text, headline) => ({ text, headline, audio: null })
+  services.think = async (job, sight, random) =>
+    job === 'vote'
+      ? { target: voteByRules(sight, random), say: 'My money is on them.' }
+      : job === 'judge'
+        ? { guilty: judgeByRules(sight, random), say: 'Guilty.' }
+        : { say: lineByRules(job, sight, random) }
+
+  /** Run the game's own timers and the AIs' thinking until it ends, or `limit` steps. */
+  async function play(state: Mafia, limit = 400, human?: (s: Mafia) => Mafia) {
+    for (let i = 0; i < limit && state.phase !== 'over'; i++) {
+      if (human) state = human(state)
+      const work = mafia.after!('room', state)
+      for (const later of Array.isArray(work) ? work : work ? [work] : []) {
+        const result = await later
+        if (result) state = act(state, null, result.action, result.payload)
+      }
+      timers.sort((a, b) => a.at - b.at)
+      const next = timers.shift()
+      if (!next) break
+      clock = Math.max(clock, next.at)
+      state = act(state, null, next.action, next.payload)
+    }
+    return state
+  }
+
+  it('one person and the AIs make a table; the AIs never need to look at a card', () => {
+    assert.equal(mafia.minPeople!(options({ bots: 3 })), 1)
+    assert.equal(mafia.minPeople!(options()), 4)
+    assert.equal(options({ bots: 99 }).bots, 11)
+    clock = 0
+    timers = []
+    const state = mafia.start(people(1), options({ bots: 4 }), ctx())
+    assert.equal(state.players.length, 5)
+    assert.equal(state.players.filter((p) => p.bot !== undefined).length, 4)
+    assert.deepEqual(state.seen.sort(), ['ai-1', 'ai-2', 'ai-3', 'ai-4'])
+    const seen = view(state, 'aditi') as unknown as { players: { id: string; bot: string | null }[] }
+    assert.ok(seen.players.filter((p) => p.id.startsWith('ai-')).every((p) => typeof p.bot === 'string'), 'everyone knows who is an AI')
+  })
+
+  it('an AI sees only what its own seat could see', () => {
+    clock = 0
+    timers = []
+    const state = mafia.start(people(1), options({ bots: 5 }), ctx())
+    const roles: Role[] = ['villager', 'mafia', 'doctor', 'detective', 'villager', 'mafia']
+    state.players.forEach((p, i) => (p.role = roles[i]!))
+    const citizen = sightFor(state, 'ai-4', null)
+    assert.ok(citizen.players.filter((p) => p.id !== 'ai-4').every((p) => p.role === null), 'a citizen AI knows nobody')
+    const family = sightFor(state, 'ai-1', null)
+    assert.deepEqual(family.players.filter((p) => p.role).map((p) => p.id).sort(), ['ai-1', 'ai-5'])
+  })
+
+  it('a whole game with four AIs plays itself out — picks, talk, votes, verdicts', async () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(1), options({ bots: 4, nightSeconds: 30, daySeconds: 120, voteSeconds: 30 }), ctx((n) => Math.floor(Math.random() * n)))
+    let talked = 0
+    state = await play(state, 600, (s) => {
+      talked = Math.max(talked, s.talk.filter((t) => t.kind === 'bot').length)
+      if (s.phase === 'deal' && !s.seen.includes('aditi')) return act(s, 'aditi', 'seen')
+      return s
+    })
+    assert.equal(state.phase, 'over', 'the game reaches an end')
+    assert.ok(talked > 0, 'the AIs spoke at the table')
+    assert.ok(state.ledger.length > 0, 'at least one day was voted on')
+    assert.ok(Object.keys(state.ledger[0]!.nominations).some((id) => id.startsWith('ai-')), 'the AIs voted')
+  })
+
+  it('the AIs in the Family follow a person’s call at night', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(1), options({ bots: 6 }), ctx())
+    const roles: Role[] = ['mafia', 'mafia', 'doctor', 'detective', 'villager', 'villager', 'villager']
+    state.players.forEach((p, i) => (p.role = roles[i]!))
+    state = tick(state)
+    state = act(state, 'aditi', 'pick', { target: 'ai-3' })
+    assert.equal(state.picks['ai-1'], 'ai-3')
+  })
+
+  it('table talk: by day only, the living only — and a named AI answers', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(1), options({ bots: 4 }), ctx())
+    state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager'] as Role[])[i]!))
+    state = tick(state)
+    assert.throws(() => act(state, 'aditi', 'say', { text: 'hello' }), /quiet/)
+    state = tick(tick(tick(state)))
+    assert.equal(state.phase, 'day')
+    clock += 20_000
+    const name = state.players.find((p) => p.id === 'ai-2')!.name.split(' ')[0]!
+    state = act(state, 'aditi', 'say', { text: `${name}, where were you last night?`, heard: true })
+    assert.equal(state.talk.at(-1)!.kind, 'heard')
+    assert.ok(timers.some((t) => t.action === 'bot' && t.payload.id === 'ai-2' && t.payload.replyTo === 'aditi'))
+  })
+
+  it('only people count towards asking to end', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(3), options({ bots: 3 }), ctx())
+    state = tick(state)
+    state = act(state, 'rohan', 'end')
+    assert.equal(state.phase, 'night', 'one of three people is not enough')
+    state = act(state, 'khushi', 'end')
+    assert.equal(state.phase, 'over', 'two of three people is — the AIs are not counted')
   })
 })

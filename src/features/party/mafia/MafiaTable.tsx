@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Armchair, BookOpen, Flag, FolderLock, MonitorSpeaker, MoreHorizontal, Pause, Play, Send, Video, Volume2, VolumeX, Wifi } from 'lucide-react'
+import { Armchair, BookOpen, Flag, FolderLock, Mic, MicOff, MonitorSpeaker, MoreHorizontal, Pause, Play, Send, Video, Volume2, VolumeX, Wifi } from 'lucide-react'
 
 import { remaining, type PartyState } from '@/features/party/useParty'
 import type { useMeshCall } from '@/features/room-panel/useMeshCall'
-import type { Character } from '@/lib/characters'
+import { characterFor, type Character } from '@/lib/characters'
 import { cn } from '@/lib/utils'
 import { Skyline } from './art'
 import { firstName } from './helpers'
@@ -13,6 +13,7 @@ import { Portrait, Seat } from './Seat'
 import { publicOnly, useNotes } from './notes'
 import { DossierSheet, NotebookSheet, Predict } from './Sheets'
 import { ROLE_TITLE, isFamily, type MafiaView, type SeatView } from './types'
+import { canHear, useHearing } from './useHearing'
 import { useNarrator } from './useNarrator'
 import { useNoirFonts } from './useNoirFonts'
 import { useNoirSound } from './useNoirSound'
@@ -106,7 +107,8 @@ export function MafiaTable({
   const presence = full.players.find((p) => p.id === selfId)?.presence ?? 'online'
   const layout: 'seats' | 'pocket' | 'square' = square ? 'square' : presence === 'table' ? 'pocket' : 'seats'
   const mood: 'night' | 'day' = phase === 'night' || phase === 'deal' ? 'night' : 'day'
-  const character = (id: string) => people.find((p) => p.id === id)?.character
+  /* AI players get a face from the same cast as everyone else, steady for the whole game. */
+  const character = (id: string) => people.find((p) => p.id === id)?.character ?? (id.startsWith('ai-') ? characterFor(`${full.game}-${id}`) : undefined)
   const seatById = (id: string | null | undefined) => view.players.find((p) => p.id === id)
   const alive = view.players.filter((p) => p.alive)
 
@@ -195,6 +197,22 @@ export function MafiaTable({
   const iAmAccused = !!me && view.accused === me.id
   const trial = phase === 'defence' || phase === 'judgement'
 
+  /* Table talk: who said what just now, and which AIs are mid-thought. */
+  const hasBots = view.players.some((p) => p.bot)
+  const talking = phase === 'day' || phase === 'vote' || phase === 'defence' || phase === 'judgement'
+  const serverNow = party.serverTime + (Date.now() - party.receivedAt)
+  const bubble = (id: string): { text: string | null } | null => {
+    const last = [...view.talk].reverse().find((t) => t.by === id)
+    if (last && serverNow - last.at < 9_000) return { text: last.text }
+    return view.thinking.includes(id) && talking ? { text: null } : null
+  }
+  const [hearOn, toggleHear] = useStored('huddle.mafiaHear', false)
+  const mutedNow = presence === 'online' && call?.status === 'live' && call.muted
+  const hearing = useHearing(
+    hearOn && hasBots && talking && !!me?.alive && !mutedNow && layout !== 'square',
+    useCallback((text: string) => act('say', { text, heard: true }), [act]),
+  )
+
   /* ── the seat wall and its strings ──────────────────────────────────── */
 
   const wall = useRef<HTMLDivElement>(null)
@@ -271,6 +289,7 @@ export function MafiaTable({
             pins={phase === 'vote' || trial ? pins(seat.id) : undefined}
             spotlight={(trial || phase === 'verdict') && view.accused === seat.id}
             dim={trial && view.accused !== seat.id}
+            bubble={talking ? bubble(seat.id) : null}
             onPick={() => act('vote', { target: seat.id })}
           />
         )
@@ -355,7 +374,7 @@ export function MafiaTable({
     if (phase === 'night' && ask) {
       const pick = seatById(me.pick)
       return {
-        line: pick ? `${ask.doing} ${firstName(pick)}` : `Nothing chosen yet — tap a name to ${ask.verb.toLowerCase()}`,
+        line: pick ? `${ask.doing} ${firstName(pick)}` : `Tap a name to ${ask.verb.toLowerCase()}`,
         hint: pick
           ? `You can change this until night ends · ${view.night?.chosen ?? 0} of ${view.night?.of ?? 0} have chosen`
           : 'Everyone chooses someone at night, so nobody gives themselves away',
@@ -440,7 +459,8 @@ export function MafiaTable({
             <>
               <p className="font-type text-[0.82rem] uppercase tracking-[0.3em] text-[var(--noir-brass)]">{presence === 'table' ? 'Hold your card to look. Tell no one.' : 'Your card. Tell no one.'}</p>
               <RoleCard role={me.role} title={me.title} line={me.line} hold={presence === 'table'} onSeen={() => act('seen')} />
-              {isFamily(me.role) && (
+              {/* Only once the card is turned — before that, the line would give the card away. */}
+              {isFamily(me.role) && me.seen && (
                 <p className="font-type max-w-xs text-center text-[0.88rem] text-[var(--noir-paper-dim)]">
                   The Family: {view.players.filter((p) => isFamily(p.role) && p.id !== me.id).map((p) => firstName(p)).join(', ') || 'just you — work alone'}
                 </p>
@@ -553,11 +573,21 @@ export function MafiaTable({
     </div>
   )
 
+  const talkFeed = hasBots && talking && layout !== 'square' && (
+    <TableTalk
+      lines={view.talk.map((t) => ({ ...t, who: firstName(seatById(t.by)), bot: !!seatById(t.by)?.bot }))}
+      thinking={view.thinking.filter((id) => seatById(id)?.alive).map((id) => firstName(seatById(id)))}
+      canSpeak={!!me?.alive}
+      onSay={(text) => act('say', { text })}
+      hear={{ on: hearOn, toggle: toggleHear, listening: hearing.listening, denied: hearing.denied, muted: !!mutedNow }}
+    />
+  )
+
   /* ── the frame ──────────────────────────────────────────────────────── */
 
   const showCentre = phase === 'deal' || phase === 'hush' || phase === 'dawn' || phase === 'verdict' || phase === 'over'
   const showWall = layout === 'seats' && !showCentre
-  const aside = movePanel || chat || prediction
+  const aside = movePanel || chat || prediction || talkFeed
   const endsNeeded = Math.floor(view.players.length / 2) + 1
 
   return (
@@ -681,6 +711,7 @@ export function MafiaTable({
             /* On a phone your move comes first; chatter waits below the story. */
             <aside className={cn('flex w-full flex-col gap-3 lg:sticky lg:top-0 lg:order-none lg:w-[22rem] lg:shrink-0', movePanel ? 'order-first' : 'order-last')}>
               {movePanel}
+              {talkFeed}
               {prediction}
               {chat}
             </aside>
@@ -811,6 +842,7 @@ function TargetGrid({
           >
             <Portrait name={t.name} character={character(t.id)} className="aspect-square w-full" />
             <span className="font-type truncate bg-[#efe3c8] px-1.5 py-1.5 text-[0.84rem] text-[#1c140b]">{t.name.split(' ')[0]}</span>
+            {t.bot && <span className="font-type absolute right-1 top-1 rounded-sm bg-[var(--noir-brass)] px-1 text-[0.62rem] font-bold text-[#1c140b]">AI</span>}
             {note(t.id) && <span className="font-type absolute left-1 top-1 rounded-sm bg-black/75 px-1.5 py-0.5 text-[0.7rem] text-[#f0d9a8]">{note(t.id)}</span>}
             {on && (
               <span className="noir-stamp absolute left-1/2 top-[38%] -translate-x-1/2 -translate-y-1/2 rounded-sm bg-[#efe3c8]/85 px-1.5 text-[0.8rem]" style={{ color: red ? 'var(--noir-blood)' : '#1c140b' }}>
@@ -877,6 +909,94 @@ function TownSquare({ view }: { view: MafiaView }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** What's being said at the table — typed, heard, or from the AIs — and a way to join in. */
+function TableTalk({
+  lines,
+  thinking,
+  canSpeak,
+  onSay,
+  hear,
+}: {
+  lines: { by: string; who: string; text: string; at: number; kind: 'say' | 'heard' | 'bot'; bot: boolean }[]
+  thinking: string[]
+  canSpeak: boolean
+  onSay: (text: string) => void
+  hear: { on: boolean; toggle: () => void; listening: boolean; denied: boolean; muted: boolean }
+}) {
+  const [draft, setDraft] = useState('')
+  const list = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    list.current?.scrollTo({ top: list.current.scrollHeight, behavior: 'smooth' })
+  }, [lines.length, thinking.length])
+  const status = !hear.on
+    ? 'The AIs read what you type here.'
+    : hear.denied
+      ? 'Microphone blocked — allow it in the browser to be heard.'
+      : hear.muted
+        ? 'You are muted, so the AIs can’t hear you.'
+        : hear.listening
+          ? 'Listening — what you say reaches the AIs as text.'
+          : 'The AIs hear you by day.'
+  return (
+    <div className="rounded-sm border border-[var(--noir-brass)]/35 bg-[#14100c]/90 px-3 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-type text-[0.74rem] uppercase tracking-[0.2em] text-[var(--noir-brass)]">Table talk</p>
+        {canHear && canSpeak && (
+          <button
+            type="button"
+            onClick={hear.toggle}
+            aria-pressed={hear.on}
+            className={cn(
+              'font-type flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-[0.78rem] outline-none focus-visible:ring-2 focus-visible:ring-[var(--noir-brass)]',
+              hear.on ? 'border-[var(--noir-blood-bright)]/60 bg-[var(--noir-blood)]/25 text-[var(--noir-paper)]' : 'border-[var(--noir-brass)]/40 text-[var(--noir-paper-dim)] hover:text-[var(--noir-paper)]',
+            )}
+          >
+            {hear.on ? <Mic className="size-3.5" /> : <MicOff className="size-3.5" />}
+            {hear.on && hear.listening && <span className="size-1.5 animate-pulse rounded-full bg-[var(--noir-blood-bright)]" />}
+            Let the AIs hear me
+          </button>
+        )}
+      </div>
+      <div ref={list} className="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1" data-lenis-prevent>
+        {lines.length === 0 && thinking.length === 0 && <p className="font-type text-[0.84rem] text-[var(--noir-paper-dim)]/80">Nobody has said anything yet. Say something — the AIs answer when named.</p>}
+        {lines.map((l) => (
+          <p key={`${l.by}-${l.at}`} className="font-type text-[0.88rem] leading-snug text-[var(--noir-paper)]">
+            <span className={l.bot ? 'text-[var(--noir-brass)]' : 'text-[#9fb4d8]'}>{l.who}</span>
+            {l.kind === 'heard' && <Mic aria-label="said aloud" className="mx-1 inline size-3 text-[var(--noir-paper-dim)]" />}
+            <span className="text-[var(--noir-paper-dim)]">: </span>
+            {l.text}
+          </p>
+        ))}
+        {thinking.length > 0 && <p className="font-type text-[0.8rem] italic text-[var(--noir-paper-dim)]">{thinking.join(', ')} {thinking.length === 1 ? 'is' : 'are'} thinking…</p>}
+      </div>
+      {canSpeak && (
+        <form
+          className="mt-2 flex gap-1.5"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!draft.trim()) return
+            onSay(draft.trim())
+            setDraft('')
+          }}
+        >
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            maxLength={240}
+            placeholder="Say something to the table…"
+            aria-label="Say something to the table"
+            className="font-type min-h-11 min-w-0 flex-1 rounded-sm border border-[var(--noir-brass)]/30 bg-black/40 px-2.5 text-[0.9rem] text-[var(--noir-paper)] outline-none placeholder:text-[var(--noir-paper-dim)]/50 focus:border-[var(--noir-brass)]"
+          />
+          <button type="submit" aria-label="Say it" className="grid size-11 place-items-center rounded-sm bg-[var(--noir-brass)] text-[#1c140b] outline-none focus-visible:ring-2 focus-visible:ring-white">
+            <Send className="size-4" />
+          </button>
+        </form>
+      )}
+      <p className="font-type mt-1.5 text-[0.74rem] text-[var(--noir-paper-dim)]/80">{status}</p>
     </div>
   )
 }

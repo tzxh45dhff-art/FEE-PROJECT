@@ -1,4 +1,7 @@
-import { shuffle, type Ctx, type GameDef, type Player } from './engine.js'
+import { randomInt } from 'node:crypto'
+
+import { isError, shuffle, type Ctx, type GameDef, type Later, type Player } from './engine.js'
+import { PERSONAS, nightPick, think, type Job, type Sight } from './mafia.bots.js'
 import { MAX_PLAYERS, MIN_PLAYERS, ROLE_INFO, roleSet, teamOf, type Role } from './mafia.roles.js'
 import { narrate, type NarrationFacts, type NarrationKind } from '../services/mafiaNarration.service.js'
 
@@ -32,6 +35,8 @@ export type Options = {
   together: boolean
   /** Straight back in after a game: a short opening, not the full one. */
   rematch: boolean
+  /** AI players to fill the table. */
+  bots: number
 }
 
 export type Seat = Player & {
@@ -39,7 +44,14 @@ export type Seat = Player & {
   alive: boolean
   presence: Presence
   died?: { round: number; how: 'killed' | 'voted' }
+  /** An AI player: which Bombay regular is in the seat. */
+  bot?: number
 }
+
+/** A line said at the table: typed, heard through someone's microphone, or an AI's. */
+export type Talk = { by: string; text: string; at: number; kind: 'say' | 'heard' | 'bot' }
+/** An AI working out what to do; answered by Luna, or by rules. */
+export type Thinking = { key: string; id: string; job: Job; replyTo: string | null }
 
 export type Narration = {
   id: string
@@ -114,6 +126,10 @@ export type Mafia = {
   endVotes: string[]
   speaker: string | null
   narration: Narration | null
+  /** Today's table talk — what the AI players can "hear". */
+  talk: Talk[]
+  thinking: Thinking[]
+  lastReplyAt: number
 }
 
 /* ── timings ───────────────────────────────────────────────────────────── */
@@ -157,6 +173,67 @@ function closeSoon(state: Mafia, ctx: Ctx) {
   schedule(state, ctx, CLOSING_MS)
 }
 
+/* ── the AI players ────────────────────────────────────────────────────── */
+
+const isBot = (p: Seat) => p.bot !== undefined
+const TALKING = ['day', 'vote', 'defence', 'judgement']
+
+/**
+ * Give each AI its moments in this phase, at human-looking times: a pick in
+ * the night, a couple of remarks in the day, a vote, a verdict. Called after
+ * the phase's own clock is set (setting a clock clears every timer).
+ */
+function planBots(state: Mafia, ctx: Ctx) {
+  if (state.paused !== null || state.deadline === null) return
+  const bots = living(state).filter(isBot)
+  if (!bots.length) return
+  const span = Math.max(0, state.deadline - ctx.now())
+  const between = (lo: number, hi: number) => Math.round(lo + ctx.random(Math.max(1, Math.round(Math.max(hi, lo + 1) - lo))))
+  const plan = (ms: number, id: string, job: string) => ctx.schedule(Math.max(500, ms), 'bot', { step: state.step, id, job })
+  for (const bot of bots) {
+    if (state.phase === 'night' && !state.picks[bot.id]) plan(between(2_500, Math.min(span - 7_000, 15_000)), bot.id, 'pick')
+    if (state.phase === 'day') {
+      plan(between(3_000, span * 0.4), bot.id, 'talk')
+      plan(between(span * 0.45, span * 0.8), bot.id, 'talk')
+      if (!state.ready.includes(bot.id)) plan(between(span * 0.55, span * 0.85), bot.id, 'ready')
+    }
+    if (state.phase === 'vote' && state.votes[bot.id] === undefined) plan(between(2_500, span - 8_000), bot.id, 'vote')
+    if (state.phase === 'judgement' && bot.id !== state.accused && state.judgement[bot.id] === undefined) plan(between(2_500, span - 8_000), bot.id, 'judge')
+    if (state.phase === 'defence' && bot.id === state.accused) {
+      plan(1_200, bot.id, 'defence')
+      plan(Math.min(span - 1_000, 14_000), bot.id, 'rest')
+    }
+  }
+}
+
+/** What one AI can see: its own screen's view, and today's talk. Never the game itself. */
+export function sightFor(state: Mafia, id: string, replyTo: string | null): Sight {
+  const v = mafia.view(state, id) as {
+    me: { role: Role; files: Sight['me']['files']; lastProtected: string | null; selfSaveUsed: boolean }
+    players: { id: string; name: string; alive: boolean; role: Role | null; died: Sight['players'][number]['died']; bot: string | null }[]
+    night: { family: { id: string; pick: string | null }[] | null } | null
+    votes: Record<string, string | null>
+  }
+  const familyPicks: Record<string, string> = {}
+  for (const f of v.night?.family ?? []) if (f.pick && f.id !== id) familyPicks[f.id] = f.pick
+  return {
+    me: { id, role: v.me.role, persona: PERSONAS[seat(state, id)!.bot ?? 0]!, files: v.me.files, lastProtected: v.me.lastProtected, selfSaveUsed: v.me.selfSaveUsed },
+    phase: state.phase,
+    round: state.round,
+    players: v.players.map((p) => ({ id: p.id, name: p.name, alive: p.alive, role: p.role, died: p.died, bot: p.bot !== null })),
+    ledger: state.ledger,
+    votes: v.votes,
+    accused: state.accused,
+    familyPicks,
+    talk: state.talk.map((t) => ({ by: t.by, text: t.text })),
+    replyTo,
+  }
+}
+
+function hear(state: Mafia, by: string, text: string, kind: Talk['kind'], ctx: Ctx) {
+  state.talk = [...state.talk, { by, text, at: ctx.now(), kind }].slice(-80)
+}
+
 /** The Family win when they can no longer be outvoted; the town when the Family is gone. */
 export function winnerOf(state: Pick<Mafia, 'players'>): Winner | null {
   const alive = state.players.filter((p) => p.alive)
@@ -186,9 +263,12 @@ function enterNight(state: Mafia, ctx: Ctx) {
   state.accused = null
   state.judgement = {}
   state.verdict = null
+  state.talk = []
+  state.thinking = []
   const line = NIGHTFALL[(state.round - 1) % NIGHTFALL.length]!
   setNarration(state, 'nightfall', 'night', { round: state.round }, line)
   schedule(state, ctx, state.options.nightSeconds * 1000 + NIGHTFALL_LEAD_MS)
+  planBots(state, ctx)
   return state
 }
 
@@ -281,6 +361,7 @@ function enterDay(state: Mafia, ctx: Ctx) {
   state.ready = []
   state.narration = null
   schedule(state, ctx, state.options.daySeconds * 1000)
+  planBots(state, ctx)
   return state
 }
 
@@ -290,6 +371,7 @@ function enterVote(state: Mafia, ctx: Ctx) {
   state.votes = {}
   setNarration(state, 'vote', 'vote', { round: state.round }, 'The town gathers under the clock tower. Name the one you suspect.')
   schedule(state, ctx, state.options.voteSeconds * 1000)
+  planBots(state, ctx)
   return state
 }
 
@@ -320,6 +402,7 @@ function resolveNomination(state: Mafia, ctx: Ctx) {
     state.phase = 'defence'
     setNarration(state, 'defence', 'defence', {}, `${first(accused.name)}, the town points at you. The floor is yours — make it count.`)
     schedule(state, ctx, DEFENCE_MS)
+    planBots(state, ctx)
     return state
   }
   state.ledger.push({ round: state.round, nominations: { ...state.votes }, accused: null, judgement: {}, outcome: 'nobody' })
@@ -339,6 +422,7 @@ function enterJudgement(state: Mafia, ctx: Ctx) {
   state.judgement = {}
   setNarration(state, 'judgement', 'judgement', {}, 'You have heard the defence. Guilty, or innocent? Decide.')
   schedule(state, ctx, state.options.voteSeconds * 1000)
+  planBots(state, ctx)
   return state
 }
 
@@ -455,7 +539,10 @@ const pickFrom = (allowed: number[], raw: unknown, fallback: number) => (allowed
 const cleanText = (raw: unknown) => (typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim().slice(0, 240) : '')
 const WINNERS: Winner[] = ['town', 'family', 'jester']
 /** Moves that are part of play — frozen while the host has the game paused. */
-const PLAY = new Set(['seen', 'pick', 'ready', 'vote', 'done', 'judge'])
+const PLAY = new Set(['seen', 'pick', 'ready', 'vote', 'done', 'judge', 'say'])
+
+/** The slow, paid services this game leans on — swapped for stand-ins in tests. */
+export const services = { narrate, think }
 
 /** In-flight narration, so a state published twice is narrated once. */
 const asked = new Set<string>()
@@ -465,6 +552,7 @@ export const mafia: GameDef<Mafia, Options> = {
   label: 'Mafia',
   minPlayers: MIN_PLAYERS,
   maxPlayers: MAX_PLAYERS,
+  minPeople: (options) => Math.max(1, MIN_PLAYERS - options.bots),
 
   options(raw) {
     const body = (raw ?? {}) as Record<string, unknown>
@@ -477,10 +565,14 @@ export const mafia: GameDef<Mafia, Options> = {
       jester: body.jester === true,
       together: body.together === true,
       rematch: body.rematch === true,
+      bots: Number.isInteger(body.bots) ? Math.min(MAX_PLAYERS - 1, Math.max(0, body.bots as number)) : 0,
     }
   },
 
-  start(players, options, ctx) {
+  start(people, options, ctx) {
+    /* The AI regulars take the empty chairs. */
+    const cast = shuffle(PERSONAS.map((_, i) => i), ctx).slice(0, Math.max(0, Math.min(options.bots, MAX_PLAYERS - people.length)))
+    const players: (Player & { bot?: number })[] = [...people, ...cast.map((persona, i) => ({ id: `ai-${i + 1}`, name: PERSONAS[persona]!.name, bot: persona }))]
     const roles = shuffle(roleSet(players.length, options), ctx)
     const state: Mafia = {
       game: `${ctx.now().toString(36)}${ctx.random(1_000_000).toString(36)}`,
@@ -492,7 +584,7 @@ export const mafia: GameDef<Mafia, Options> = {
       players: players.map((p, i) => ({ ...p, role: roles[i]!, alive: true, presence: options.together ? 'table' : 'online' })),
       deadline: null,
       paused: null,
-      seen: [],
+      seen: players.filter((p) => p.bot !== undefined).map((p) => p.id),
       picks: {},
       lastProtected: null,
       selfSaveUsed: false,
@@ -515,6 +607,9 @@ export const mafia: GameDef<Mafia, Options> = {
       endVotes: [],
       speaker: null,
       narration: null,
+      talk: [],
+      thinking: [],
+      lastReplyAt: 0,
     }
     setNarration(state, 'intro', 'deal', {}, options.rematch ? REMATCH_INTRO : INTRO)
     schedule(state, ctx, options.rematch ? REMATCH_DEAL_MS : DEAL_MS)
@@ -549,6 +644,61 @@ export const mafia: GameDef<Mafia, Options> = {
           const need = ctx.now() + readMs(narration.text) + 2_000
           if (need > state.deadline) schedule(state, ctx, need - ctx.now())
         }
+        return state
+      }
+
+      /* An AI's moment has come: a rule-based move now, or a thought for Luna. */
+      if (action === 'bot') {
+        if (payload.step !== prev.step || prev.paused !== null) return prev
+        const bot = typeof payload.id === 'string' ? seat(prev, payload.id) : undefined
+        if (!bot || !bot.alive || !isBot(bot)) return prev
+        const as = { id: bot.id, name: bot.name }
+        const job = payload.job
+        if (job === 'pick') {
+          const target = nightPick(sightFor(prev, bot.id, null), ctx.random)
+          if (!target) return prev
+          const next = mafia.act(prev, as, 'pick', { target }, ctx)
+          if (isError(next)) return prev
+          if (isFamily(bot.role) && living(next).filter((p) => isFamily(p.role)).length > 1) {
+            next.whispers = [...next.whispers, { by: bot.id, text: `I’m marking ${first(seat(next, target)!.name)}.`, at: ctx.now() }].slice(-40)
+          }
+          return next
+        }
+        if (job === 'ready') {
+          if (prev.phase !== 'day' || prev.ready.includes(bot.id)) return prev
+          const next = mafia.act(prev, as, 'ready', {}, ctx)
+          return isError(next) ? prev : next
+        }
+        if (job === 'rest') {
+          const next = mafia.act(prev, as, 'done', {}, ctx)
+          return isError(next) ? prev : next
+        }
+        if (job !== 'talk' && job !== 'vote' && job !== 'judge' && job !== 'defence') return prev
+        const state: Mafia = structuredClone(prev)
+        state.thinking.push({ key: `${state.game}-${state.step}-${bot.id}-${job}-${ctx.now()}`, id: bot.id, job, replyTo: typeof payload.replyTo === 'string' ? payload.replyTo : null })
+        return state
+      }
+
+      /* An AI has made up its mind. */
+      if (action === 'botDone') {
+        const thought = prev.thinking.find((t) => t.key === payload.key)
+        if (!thought) return prev
+        let state: Mafia = structuredClone(prev)
+        state.thinking = state.thinking.filter((t) => t.key !== thought.key)
+        const bot = seat(state, thought.id)
+        const when: Record<Job, Phase[]> = { talk: ['day', 'vote', 'defence', 'judgement'], vote: ['vote'], judge: ['judgement'], defence: ['defence'] }
+        if (!bot || !bot.alive || !when[thought.job].includes(state.phase)) return state
+        const as = { id: bot.id, name: bot.name }
+        if (thought.job === 'vote') {
+          const next = mafia.act(state, as, 'vote', { target: typeof payload.target === 'string' ? payload.target : null }, ctx)
+          if (!isError(next)) state = next
+        }
+        if (thought.job === 'judge' && typeof payload.guilty === 'boolean') {
+          const next = mafia.act(state, as, 'judge', { guilty: payload.guilty }, ctx)
+          if (!isError(next)) state = next
+        }
+        const said = cleanText(payload.say)
+        if (said) hear(state, bot.id, said, 'bot', ctx)
         return state
       }
 
@@ -598,9 +748,9 @@ export const mafia: GameDef<Mafia, Options> = {
         const state: Mafia = structuredClone(prev)
         state.host = hostFor(state, by.id, ctx)
         if (by.id === state.host) return enterOver(state, null, ctx)
-        /* Anyone else is asking: when most of the table agrees, the case is dropped. */
+        /* Anyone else is asking: when most of the people (not the AIs) agree, the case is dropped. */
         if (!state.endVotes.includes(by.id)) state.endVotes.push(by.id)
-        if (state.endVotes.length > state.players.length / 2) return enterOver(state, null, ctx)
+        if (state.endVotes.length > state.players.filter((p) => !isBot(p)).length / 2) return enterOver(state, null, ctx)
         return state
       }
 
@@ -624,6 +774,7 @@ export const mafia: GameDef<Mafia, Options> = {
         const left = state.paused!
         state.paused = null
         schedule(state, ctx, left)
+        planBots(state, ctx)
         return state
       }
 
@@ -669,6 +820,26 @@ export const mafia: GameDef<Mafia, Options> = {
         return state
       }
 
+      case 'say': {
+        const text = cleanText(payload.text)
+        if (!text || !me.alive || isBot(me)) return prev
+        if (!TALKING.includes(prev.phase)) return { error: 'The table is quiet at night' }
+        const state: Mafia = structuredClone(prev)
+        hear(state, by.id, text, payload.heard === true ? 'heard' : 'say', ctx)
+        /* Somebody may answer: whoever was named, or now and then whoever has an opinion. */
+        const bots = living(state).filter((p) => isBot(p) && p.id !== state.accused)
+        if (state.phase === 'day' && bots.length && ctx.now() - state.lastReplyAt > 12_000) {
+          const lower = text.toLowerCase()
+          const named = bots.find((b) => lower.includes(first(b.name).toLowerCase()))
+          const who = named ?? (ctx.random(3) === 0 ? bots[ctx.random(bots.length)] : undefined)
+          if (who) {
+            state.lastReplyAt = ctx.now()
+            ctx.schedule(2_500 + ctx.random(2_500), 'bot', { step: state.step, id: who.id, job: 'talk', replyTo: by.id })
+          }
+        }
+        return state
+      }
+
       case 'pick': {
         if (prev.phase !== 'night') return { error: 'The night is over' }
         if (!me.alive) return { error: 'The dead keep their own counsel' }
@@ -683,6 +854,8 @@ export const mafia: GameDef<Mafia, Options> = {
         }
         const state: Mafia = structuredClone(prev)
         state.picks[by.id] = target.id
+        /* The AIs in the Family follow a person's call. */
+        if (isFamily(me.role) && !isBot(me)) for (const p of living(state)) if (isBot(p) && isFamily(p.role)) state.picks[p.id] = target.id
         const everyone = living(state).every((p) => state.picks[p.id])
         const family = living(state).filter((p) => isFamily(p.role))
         const agreed = family.some((p) => p.role === 'godfather') || new Set(family.map((p) => state.picks[p.id])).size === 1
@@ -733,13 +906,29 @@ export const mafia: GameDef<Mafia, Options> = {
 
   /* Narration, written and voiced off the game's own clock. */
   after(roomId, state) {
+    const work: Later[] = []
+    const once = (key: string) => {
+      if (asked.has(`${roomId}:${key}`)) return false
+      asked.add(`${roomId}:${key}`)
+      if (asked.size > 2_000) asked.delete(asked.values().next().value!)
+      return true
+    }
     const n = state.narration
-    if (!n || n.ready) return null
-    const key = `${roomId}:${n.id}`
-    if (asked.has(key)) return null
-    asked.add(key)
-    if (asked.size > 500) asked.delete(asked.values().next().value!)
-    return narrate(n.kind, n.facts, n.text, n.headline).then((line) => ({ action: 'narrate', payload: { id: n.id, ...line } }))
+    if (n && !n.ready && once(n.id)) {
+      work.push(services.narrate(n.kind, n.facts, n.text, n.headline).then((line) => ({ action: 'narrate', payload: { id: n.id, ...line } })))
+    }
+    /* Every AI thinks for itself, at the same time as the others. */
+    for (const thought of state.thinking) {
+      if (!once(thought.key)) continue
+      const sight = sightFor(state, thought.id, thought.replyTo)
+      work.push(
+        services.think(thought.job, sight, (max) => (max <= 1 ? 0 : randomInt(max))).then((answer) => ({
+          action: 'botDone',
+          payload: { key: thought.key, say: answer.say, target: answer.target ?? null, guilty: answer.guilty },
+        })),
+      )
+    }
+    return work.length ? work : null
   },
 
   view(state, viewer) {
@@ -754,7 +943,15 @@ export const mafia: GameDef<Mafia, Options> = {
         ghost ||
         (family && isFamily(p.role)) ||
         (!p.alive && (state.options.reveal || (p.died?.how === 'voted' && p.role === 'jester')))
-      return { id: p.id, name: p.name, alive: p.alive, presence: p.presence, died: p.died ?? null, role: known ? p.role : null }
+      return {
+        id: p.id,
+        name: p.name,
+        alive: p.alive,
+        presence: p.presence,
+        died: p.died ?? null,
+        role: known ? p.role : null,
+        bot: isBot(p) ? PERSONAS[p.bot!]!.blurb : null,
+      }
     })
     const n = state.narration
     const narration = n && n.phase === state.phase ? { id: n.id, kind: n.kind, text: n.text, headline: n.headline, audio: n.audio, ready: n.ready } : null
@@ -819,6 +1016,9 @@ export const mafia: GameDef<Mafia, Options> = {
       whispers: family || ghost || over ? state.whispers : [],
       ghosts: ghost || over ? state.ghosts : [],
       endVotes: state.endVotes.length,
+      /* What's said at the table is public; so is an AI pausing to think. */
+      talk: state.talk,
+      thinking: [...new Set(state.thinking.map((t) => t.id))],
       narration,
       winner: state.winner,
       history: over ? state.history : null,

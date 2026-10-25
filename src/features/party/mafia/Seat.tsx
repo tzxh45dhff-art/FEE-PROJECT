@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { MicOff, Armchair } from 'lucide-react'
 
 import type { Character } from '@/lib/characters'
@@ -52,6 +52,7 @@ export function Seat({
   badge,
   pins,
   spotlight,
+  bubble,
   onPick,
   seatRef,
 }: {
@@ -71,6 +72,8 @@ export function Seat({
   /** Accusing hands: who is voting for this seat. */
   pins?: string[]
   spotlight?: boolean
+  /** What they just said at the table — or `null` text while an AI is thinking. */
+  bubble?: { text: string | null } | null
   onPick?: () => void
   seatRef?: (el: HTMLElement | null) => void
 }) {
@@ -133,12 +136,17 @@ export function Seat({
             {badge}
           </span>
         )}
-        {seat.presence === 'table' && (
+        {seat.bot && (
+          <span title={`AI player · ${seat.bot}`} className="font-type absolute right-1.5 top-1.5 rounded-sm bg-[var(--noir-brass)] px-1.5 py-0.5 text-[0.66rem] font-bold uppercase tracking-wider text-[#1c140b]">
+            AI
+          </span>
+        )}
+        {seat.presence === 'table' && !seat.bot && (
           <span title="At the table" className="absolute right-1.5 top-1.5 grid size-6 place-items-center rounded-full bg-black/70 text-[var(--noir-paper-dim)]">
             <Armchair aria-hidden className="size-3.5" />
           </span>
         )}
-        {!onCall && seat.presence === 'online' && seat.alive && mood === 'day' && (
+        {!onCall && !seat.bot && seat.presence === 'online' && seat.alive && mood === 'day' && (
           <span className="font-type absolute bottom-1.5 right-1.5 hidden rounded-sm bg-black/70 px-1.5 py-0.5 text-[0.64rem] uppercase tracking-wider text-[var(--noir-paper-dim)] sm:block">off the call</span>
         )}
         {onCall && micMuted && seat.alive && mood === 'day' && seat.presence === 'online' && (
@@ -152,6 +160,23 @@ export function Seat({
           </div>
         )}
       </div>
+
+      {/* What they just said — a typed slip pinned over the photograph. */}
+      <AnimatePresence>
+        {bubble && seat.alive && (
+          <motion.p
+            key={bubble.text ?? 'thinking'}
+            initial={{ opacity: 0, y: 6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="font-type pointer-events-none absolute inset-x-1.5 top-8 z-10 line-clamp-4 rounded-sm bg-[#efe3c8] px-2 py-1.5 text-[0.78rem] leading-snug text-[#1c140b] shadow-[0_6px_16px_-6px_rgba(0,0,0,.9)]"
+            aria-live="polite"
+          >
+            {bubble.text ?? <span className="inline-flex gap-1 py-0.5" aria-label={`${seat.name} is thinking`}><Dot /><Dot delay={0.15} /><Dot delay={0.3} /></span>}
+          </motion.p>
+        )}
+      </AnimatePresence>
 
       {/* The name, typed on a card under the photograph. */}
       <div className="flex flex-col gap-0 border-t border-[var(--noir-brass)]/25 bg-[linear-gradient(180deg,#221a12,#15100b)] px-2 py-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-2.5">
@@ -167,5 +192,15 @@ export function Seat({
       </div>
 
     </Tag>
+  )
+}
+
+function Dot({ delay = 0 }: { delay?: number }) {
+  return (
+    <motion.span
+      className="size-1.5 rounded-full bg-[#1c140b]"
+      animate={{ opacity: [0.25, 1, 0.25] }}
+      transition={{ repeat: Infinity, duration: 0.9, delay }}
+    />
   )
 }
