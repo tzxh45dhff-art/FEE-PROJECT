@@ -192,7 +192,7 @@ export function GamesStage({
             live={party.party?.game ?? null}
             liveLabel={party.party?.label ?? null}
             liveBy={party.party?.startedBy.name ?? null}
-            people={members.length}
+            members={members}
             onPick={setScreen}
           />
         )}
