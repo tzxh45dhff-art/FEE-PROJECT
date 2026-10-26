@@ -4,6 +4,9 @@ import confetti from 'canvas-confetti'
 import { music, onSoundSettings, sfx, soundSettings, unlockAudio } from './geoSound'
 import type { GeoView } from './types'
 
+/** How long before the end the music starts to build. */
+const BUILD_MS = 15_000
+
 export const still = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /**
@@ -21,18 +24,17 @@ export function useGeoSound(v: GeoView, clockMs: number, playing: boolean) {
 
   const settings = useSoundSettings()
   const seconds = Math.ceil(clockMs / 1000)
-  const total = v.options.seconds * 1000
 
-  /* The music: on from the countdown through the round, building as time runs out. */
+  /* The music: on from the countdown through the round. */
   const live = playing && (v.phase === 'countdown' || v.phase === 'playing')
   useEffect(() => {
     if (live && settings.music) music.start()
     else music.stop()
   }, [live, settings.music])
+  /* Easy while exploring; the last fifteen seconds build from 0 to 1. */
   useEffect(() => {
-    if (v.phase === 'playing') music.setIntensity(1 - clockMs / total)
-    else if (v.phase === 'countdown') music.setIntensity(0)
-  }, [clockMs, total, v.phase])
+    music.setIntensity(v.phase === 'playing' ? (BUILD_MS - clockMs) / BUILD_MS : 0)
+  }, [clockMs, v.phase])
   useEffect(() => () => music.stop(), [])
 
   /* The last ten seconds tick; the countdown counts. */

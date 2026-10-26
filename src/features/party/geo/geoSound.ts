@@ -2,11 +2,11 @@
  * Somewhere's sound: every effect and the music are synthesised here with Web
  * Audio — nothing to download, nothing licensed, and it starts instantly.
  *
- * The music is a dark A-minor pulse that builds with the clock. At low
- * intensity it is a drone and a slow heartbeat; as time runs out the bass
- * starts to drive, hi-hats and an arpeggio join, the tempo climbs from 92 to
- * 150, and the last ten seconds get a rising sweep. When the round ends it
- * stops on a single hit, so the reveal lands in silence.
+ * The music is "Night Drive": an 80s synthwave groove — pulsing bass, a gated
+ * chord pad, a glittering arpeggio and a big echoing snare — that stays easy
+ * while you explore. The last fifteen seconds open it up: the sound brightens, the
+ * hats double, the tempo climbs from 100 to 140, a riser sweeps and a snare
+ * roll runs to zero, where it stops on one deep hit.
  */
 
 type Settings = { music: boolean; effects: boolean }
@@ -46,6 +46,7 @@ let master: GainNode | null = null
 let musicBus: GainNode | null = null
 let fxBus: GainNode | null = null
 let noise: AudioBuffer | null = null
+let hall: ConvolverNode | null = null
 
 function audio() {
   if (typeof window === 'undefined') return null
@@ -61,7 +62,7 @@ function audio() {
     limiter.ratio.value = 8
     master.connect(limiter).connect(ctx.destination)
     musicBus = ctx.createGain()
-    musicBus.gain.value = 0.42
+    musicBus.gain.value = 0.6
     musicBus.connect(master)
     fxBus = ctx.createGain()
     fxBus.gain.value = 0.7
@@ -69,6 +70,22 @@ function audio() {
     noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
     const data = noise.getChannelData(0)
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
+    /* A hall for the music's snare and arpeggio: decaying, low-passed noise as the impulse. */
+    hall = ctx.createConvolver()
+    const length = ctx.sampleRate * 2.8
+    const impulse = ctx.createBuffer(2, length, ctx.sampleRate)
+    for (let channel = 0; channel < 2; channel++) {
+      const d = impulse.getChannelData(channel)
+      let smooth = 0
+      for (let i = 0; i < length; i++) {
+        smooth += (Math.random() * 2 - 1 - smooth) * 0.18
+        d[i] = smooth * Math.pow(1 - i / length, 2.6)
+      }
+    }
+    hall.buffer = impulse
+    const wet = ctx.createGain()
+    wet.gain.value = 0.55
+    hall.connect(wet).connect(musicBus)
   }
   if (ctx.state === 'suspended') void ctx.resume().catch(() => undefined)
   return ctx
@@ -98,7 +115,7 @@ function tone({ freq, type = 'sine', at = 0, dur, gain, slide, bus = 'fx', attac
   osc.stop(t + dur + 0.05)
 }
 
-function hiss({ at = 0, dur, gain, from = 2000, to, type = 'bandpass', bus = 'fx', q = 1 }: { at?: number; dur: number; gain: number; from?: number; to?: number; type?: BiquadFilterType; bus?: 'fx' | 'music'; q?: number }) {
+function hiss({ at = 0, dur, gain, from = 2000, to, type = 'bandpass', bus = 'fx', q = 1, wet = 0 }: { at?: number; dur: number; gain: number; from?: number; to?: number; type?: BiquadFilterType; bus?: 'fx' | 'music'; q?: number; wet?: number }) {
   const c = audio()
   if (!c || !noise) return
   const t = c.currentTime + at
@@ -115,6 +132,11 @@ function hiss({ at = 0, dur, gain, from = 2000, to, type = 'bandpass', bus = 'fx
   amp.gain.exponentialRampToValueAtTime(gain, t + Math.min(0.02, dur / 3))
   amp.gain.exponentialRampToValueAtTime(0.0001, t + dur)
   src.connect(filter).connect(amp).connect(bus === 'fx' ? fxBus! : musicBus!)
+  if (wet > 0 && hall) {
+    const send = c.createGain()
+    send.gain.value = wet
+    amp.connect(send).connect(hall)
+  }
   src.start(t)
   src.stop(t + dur + 0.05)
 }
@@ -190,33 +212,56 @@ export const sfx = {
   }),
 }
 
-/* ── the music ────────────────────────────────────────────────────────── */
+/* ── the music: "Night Drive" ─────────────────────────────────────────── */
 
-/* A minor: Am – F – C – G, one chord a bar. */
+const hz = (root: number, semitones: number) => root * 2 ** (semitones / 12)
+
+/** A synth note through its own low-pass, with some of it sent into the hall. Times are relative to now. */
+function synth({ freq, at, dur, gain, type = 'sawtooth', cutoff = 2000, q = 1, slide, detune = 0, wet = 0 }: { freq: number; at: number; dur: number; gain: number; type?: OscillatorType; cutoff?: number; q?: number; slide?: number; detune?: number; wet?: number }) {
+  const c = ctx
+  if (!c || !musicBus) return
+  const t = c.currentTime + at
+  const osc = c.createOscillator()
+  osc.type = type
+  osc.frequency.setValueAtTime(freq, t)
+  osc.detune.value = detune
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, t + dur)
+  const filter = c.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = cutoff
+  filter.Q.value = q
+  const amp = c.createGain()
+  amp.gain.setValueAtTime(0.0001, t)
+  amp.gain.exponentialRampToValueAtTime(gain, t + 0.005)
+  amp.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+  osc.connect(filter).connect(amp).connect(musicBus)
+  if (wet > 0 && hall) {
+    const send = c.createGain()
+    send.gain.value = wet
+    amp.connect(send).connect(hall)
+  }
+  osc.start(t)
+  osc.stop(t + dur + 0.05)
+}
+
+/* A minor loop: Am – F – C – G. Chords are semitones from A4; roots are the bass notes. */
 const CHORDS = [
-  [220, 261.63, 329.63],
-  [174.61, 220, 261.63],
-  [261.63, 329.63, 392],
-  [196, 246.94, 293.66],
+  [-12, -9, -5],
+  [-16, -12, -9],
+  [-9, -5, -2],
+  [-14, -10, -7],
 ]
-const BASS = [110, 87.31, 130.81, 98]
+const ROOTS = [55, 43.65, 65.41, 49]
 
 class Music {
   private timer: number | null = null
   private nextAt = 0
   private step = 0
   private level = 0
-  private pad: { stop: () => void; set: (level: number) => void; chord: (notes: number[], at: number) => void } | null = null
-  private sweptFinal = false
 
-  /** 0 = the round just began, 1 = the final second. */
+  /** 0 while exploring; rises from 0 to 1 across the last fifteen seconds. */
   setIntensity(level: number) {
     this.level = Math.max(0, Math.min(1, level))
-    this.pad?.set(this.level)
-    if (this.level > 0.93 && !this.sweptFinal && this.running) {
-      this.sweptFinal = true
-      hiss({ dur: 6, gain: 0.07, from: 300, to: 9000, bus: 'music', q: 4 })
-    }
   }
 
   get running() {
@@ -227,10 +272,8 @@ class Music {
     if (this.running || !settings.music) return
     const c = audio()
     if (!c) return
-    this.sweptFinal = false
     this.step = 0
     this.nextAt = c.currentTime + 0.1
-    this.pad = this.startPad(c)
     /* A look-ahead scheduler: notes are booked a little ahead, so a busy page never makes the beat stutter. */
     this.timer = window.setInterval(() => this.schedule(), 25)
   }
@@ -238,84 +281,58 @@ class Music {
   stop() {
     if (this.timer !== null) window.clearInterval(this.timer)
     this.timer = null
-    this.pad?.stop()
-    this.pad = null
-  }
-
-  private startPad(c: AudioContext) {
-    const filter = c.createBiquadFilter()
-    filter.type = 'lowpass'
-    filter.frequency.value = 500
-    filter.Q.value = 3
-    const amp = c.createGain()
-    amp.gain.setValueAtTime(0.0001, c.currentTime)
-    amp.gain.exponentialRampToValueAtTime(0.16, c.currentTime + 1.5)
-    filter.connect(amp).connect(musicBus!)
-    const oscs = [110, 110 * 1.004, 164.81, 220.5].map((f, i) => {
-      const o = c.createOscillator()
-      o.type = i % 2 ? 'sawtooth' : 'triangle'
-      o.frequency.value = f
-      o.connect(filter)
-      o.start()
-      return o
-    })
-    return {
-      set: (level: number) => {
-        const t = c.currentTime
-        filter.frequency.setTargetAtTime(400 + level * 2600, t, 0.4)
-      },
-      stop: () => {
-        const t = c.currentTime
-        amp.gain.cancelScheduledValues(t)
-        amp.gain.setTargetAtTime(0.0001, t, 0.08)
-        for (const o of oscs) o.stop(t + 0.6)
-      },
-      chord: (notes: number[], at: number) => {
-        oscs.forEach((o, i) => o.frequency.setTargetAtTime(notes[i % notes.length]! / (i < 2 ? 2 : 1), at, 0.05))
-      },
-    }
   }
 
   private schedule() {
     const c = ctx
     if (!c || !settings.music) return this.stop()
-    const bpm = 92 + this.level * 58
-    const sixteenth = 60 / bpm / 4
+    const beat = 60 / (100 + this.level * 40)
+    /*
+     * A hidden tab (a locked phone, another app) wakes this timer only about
+     * once a second. Never play the backlog in one burst: skip what was
+     * missed and stay silent until the game is on screen again, in time.
+     */
+    if (document.hidden || this.nextAt < c.currentTime - 0.05) {
+      while (this.nextAt < c.currentTime + 0.02) {
+        this.nextAt += beat / 4
+        this.step += 1
+      }
+      if (document.hidden) return
+    }
     while (this.nextAt < c.currentTime + 0.12) {
-      this.play(this.step, this.nextAt - c.currentTime)
-      this.nextAt += sixteenth
+      this.play(this.step, this.nextAt - c.currentTime, beat)
+      this.nextAt += beat / 4
       this.step += 1
     }
   }
 
-  private play(step: number, at: number) {
-    const level = this.level
-    const bar = Math.floor(step / 16) % 4
+  private play(step: number, at: number, beat: number) {
+    const u = this.level
+    const barN = Math.floor(step / 16) % 4
     const inBar = step % 16
-    const chord = CHORDS[bar]!
-    if (inBar === 0) this.pad?.chord(chord, (ctx?.currentTime ?? 0) + at)
+    const chord = CHORDS[barN]!
 
-    /* Heartbeat kick: on the beat from the start, doubled when it gets tense. */
-    const kick = inBar % 4 === 0 || (level > 0.7 && inBar % 4 === 2)
-    if (kick && (level > 0.05 || inBar === 0)) {
-      tone({ freq: 120, type: 'sine', at, dur: 0.28, gain: 0.32 + level * 0.15, slide: 42, bus: 'music' })
+    /* Kick on every beat. */
+    if (inBar % 4 === 0) {
+      synth({ freq: 110, slide: 36, at, dur: 0.45, gain: 0.6 + u * 0.2, type: 'sine', cutoff: 600 })
+      hiss({ at, dur: 0.03, gain: 0.12, from: 3000, bus: 'music' })
     }
-    /* Driving bass on the eighths. */
-    if (level > 0.2 && inBar % 2 === 0) {
-      tone({ freq: BASS[bar]!, type: 'sawtooth', at, dur: 0.16, gain: 0.05 + level * 0.05, bus: 'music', attack: 0.01 })
+    /* The big echoing snare on 2 and 4. */
+    if (inBar === 4 || inBar === 12) hiss({ at, dur: 0.35, gain: 0.13, from: 1600, q: 0.6, bus: 'music', wet: 0.7 })
+    /* Hats on the off-sixteenths — every sixteenth once the clock is low. */
+    if (step % 2 === 1 || u > 0.2) hiss({ at, dur: 0.03, gain: 0.025 + u * 0.03, from: 8000, type: 'highpass', bus: 'music' })
+    /* Pulsing eighth-note bass and a gated chord pad, both brightening at the end. */
+    if (step % 2 === 0) {
+      synth({ freq: ROOTS[barN]!, at, dur: 0.18, gain: 0.12, cutoff: 500 + u * 1500, q: 4 })
+      chord.forEach((c, k) => synth({ freq: hz(440, c), at, dur: beat * 0.45, gain: 0.022, cutoff: 1400 + u * 3500, detune: (k - 1) * 8, wet: 0.4 }))
     }
-    /* Hats: eighths, then sixteenths near the end. */
-    if (level > 0.45 && (inBar % 2 === 1 || level > 0.8)) {
-      hiss({ at, dur: 0.04, gain: 0.025 + level * 0.025, from: 9000, type: 'highpass', bus: 'music' })
-    }
-    /* A snare-like crack on 2 and 4 once it's tense. */
-    if (level > 0.6 && (inBar === 4 || inBar === 12)) {
-      hiss({ at, dur: 0.14, gain: 0.07, from: 1800, bus: 'music', q: 0.8 })
-    }
-    /* The climbing arpeggio. */
-    if (level > 0.55) {
-      const note = chord[step % 3]! * (inBar >= 8 ? 4 : 2)
-      tone({ freq: note, type: 'triangle', at, dur: 0.1, gain: 0.025 + (level - 0.55) * 0.06, bus: 'music' })
+    /* The glittering arpeggio. */
+    synth({ freq: hz(880, chord[step % 3]! + (step % 6 >= 3 ? 12 : 0)), at, dur: 0.1, gain: 0.018 + u * 0.02, type: 'square', cutoff: 4000, wet: 0.5 })
+    /* The final stretch: a riser each bar, then a snare roll to the end. */
+    if (u > 0.5 && inBar === 0) hiss({ at, dur: 2.2, gain: 0.06, from: 300, to: 8000, q: 3, bus: 'music', wet: 0.4 })
+    if (u > 0.7) {
+      hiss({ at, dur: 0.12, gain: 0.03 + u * 0.06, from: 1800, q: 0.7, bus: 'music', wet: 0.2 })
+      synth({ freq: 190, slide: 140, at, dur: 0.08, gain: (0.03 + u * 0.06) * 0.6, type: 'triangle', cutoff: 2000 })
     }
   }
 }
