@@ -308,7 +308,8 @@ describe('Somewhere provider boundary', () => {
       () => 0,
     )
     assert.equal(route.length, 7)
-    assert.equal(calls, 7)
+    /* The first wave assumes about one usable spot in three, so it may check a few more than it needs — never more than ten. */
+    assert.ok(calls >= 7 && calls <= 10, `${calls} lookups`)
     assert.equal(new Set(route.map((r) => r.pano)).size, 7)
     assert.ok(route.every((r) => validPoint(r) && r.label.startsWith('Near ')))
     calls = 0

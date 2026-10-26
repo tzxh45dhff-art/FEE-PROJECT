@@ -227,54 +227,75 @@ export async function buildGeoRoute(
     }
   const route: GeoLocation[] = []
   // A fresh jitter on later passes finds roads beside rejected contributions.
-  // Never repeat a successful region within a game. Three concurrent lookups,
-  // at most 96 candidates, still within prepare()'s 25-second total budget.
+  // Never repeat a successful region within a game. Only about one spot in four
+  // has usable imagery, so ten lookups run at once — each finished one starts
+  // the next — and nothing new starts once the route is full. At most 96 are
+  // checked, still within prepare()'s 25-second total budget.
   const candidates = Array.from({ length: 4 }, () => ordered).flat()
+  let next = 0
   let checked = 0
-  for (let i = 0; i < candidates.length && checked < 96 && route.length < count;) {
-    const batch: Seed[] = []
-    while (i < candidates.length && checked < 96 && batch.length < Math.min(3, count - route.length)) {
-      const seed = candidates[i++]!
-      if (route.some((x) => x.seed === seed.id)) continue
-      batch.push(seed)
-      checked += 1
+  let failure: unknown = null
+  const check = async (seed: Seed): Promise<GeoLocation | null> => {
+    const jitter = () => (random(10_001) / 10_000 - 0.5) * 0.13
+    const point = { lat: seed.lat + jitter(), lng: seed.lng + jitter() }
+    let result: Metadata
+    try {
+      result = await lookup(point)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      if (/access was denied|has reached its limit/.test(message)) throw error
+      return null // A slow candidate must not throw away the other valid views.
     }
-    const found = await Promise.all(
-      batch.map(async (seed) => {
-        const jitter = () => (random(10_001) / 10_000 - 0.5) * 0.13
-        const point = { lat: seed.lat + jitter(), lng: seed.lng + jitter() }
-        let result: Metadata
-        try {
-          result = await lookup(point)
-        } catch (error) {
-          const message = error instanceof Error ? error.message : ''
-          if (/access was denied|has reached its limit/.test(message)) throw error
-          return null // A slow candidate must not throw away the other valid views.
-        }
-        const loc = result.location
-        if (
-          result.status !== 'OK' ||
-          !result.pano_id ||
-          !loc ||
-          !Number.isFinite(loc.lat) ||
-          !Number.isFinite(loc.lng) ||
-          Math.abs(loc.lat) > 90 ||
-          Math.abs(loc.lng) > 180
-        )
-          return null
-        return {
-          pano: result.pano_id,
-          lat: loc.lat,
-          lng: loc.lng,
-          seed: seed.id,
-          label: `Near ${seed.label}`,
-          heading: random(360),
-        }
-      }),
+    const loc = result.location
+    if (
+      result.status !== 'OK' ||
+      !result.pano_id ||
+      !loc ||
+      !Number.isFinite(loc.lat) ||
+      !Number.isFinite(loc.lng) ||
+      Math.abs(loc.lat) > 90 ||
+      Math.abs(loc.lng) > 180
     )
-    for (const item of found)
-      if (item && !route.some((x) => x.pano === item.pano || x.seed === item.seed)) route.push(item)
+      return null
+    return { pano: result.pano_id, lat: loc.lat, lng: loc.lng, seed: seed.id, label: `Near ${seed.label}`, heading: random(360) }
   }
+  /*
+   * How many lookups to keep in flight: enough to fill the route at the yield
+   * seen so far (about one usable spot in three, until we know better), and
+   * never more than ten. Easy maps make few calls; hard ones go wide.
+   */
+  let inFlight = 0
+  let usable = 0
+  const wanted = () => {
+    const needed = count - route.length
+    const yieldSoFar = checked - inFlight > 0 ? Math.max(0.15, usable / (checked - inFlight)) : 0.35
+    return Math.min(10, Math.ceil(needed / yieldSoFar))
+  }
+  await new Promise<void>((resolve) => {
+    const pump = () => {
+      while (!failure && route.length < count && checked < 96 && next < candidates.length && inFlight < wanted()) {
+        const seed = candidates[next++]!
+        if (route.some((x) => x.seed === seed.id)) continue
+        checked += 1
+        inFlight += 1
+        check(seed)
+          .then((item) => {
+            if (item) usable += 1
+            if (item && route.length < count && !route.some((x) => x.pano === item.pano || x.seed === item.seed)) route.push(item)
+          })
+          .catch((error: unknown) => {
+            failure = error
+          })
+          .finally(() => {
+            inFlight -= 1
+            pump()
+          })
+      }
+      if (inFlight === 0) resolve()
+    }
+    pump()
+  })
+  if (failure) throw failure
   return route.slice(0, count)
 }
 
