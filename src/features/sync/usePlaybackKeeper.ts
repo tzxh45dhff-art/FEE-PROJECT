@@ -37,6 +37,8 @@ export type Keepable = Correctable & {
   setMuted: (muted: boolean) => void
   /** Actually advancing — not loading, not cued, not paused. */
   isPlaying: () => boolean
+  /** Seconds, or 0 while unknown. */
+  getDuration: () => number
 }
 
 /** How often the watchdog looks. */
@@ -45,6 +47,19 @@ const WATCH_MS = 1000
 const STUCK_LOOKS = 2
 /** Restarts without it ever starting before assuming the browser is holding back sound. */
 const RESTARTS_BEFORE_MUTE = 2
+
+/**
+ * Whether the room's moment is the very end of what's on.
+ *
+ * A finished video is stopped, which looks exactly like a dropped play — but
+ * restarting it is wrong twice over: a browser plays an ended video from the
+ * top, and the end is the queue's moment to move on, not the keeper's to
+ * undo. Left alone, the next item arrives and the keeper follows that.
+ */
+const atEnd = (handle: Keepable, target: number) => {
+  const duration = handle.getDuration()
+  return duration > 0 && target >= duration - 0.5
+}
 
 export function usePlaybackKeeper({
   handle,
@@ -132,6 +147,7 @@ export function usePlaybackKeeper({
     if (!clockReady) return
 
     const target = positionOf.current()
+    if (atEnd(handle, target)) return
     if (Math.abs(handle.getPosition() - target) > tolerance) handle.seek(target)
     if (rate !== undefined) handle.setRate(rate)
     void start(handle)
@@ -159,6 +175,10 @@ export function usePlaybackKeeper({
       if (handle.isPlaying() || handle.isBuffering()) {
         stuck = 0
         restarts = 0
+        return
+      }
+      if (atEnd(handle, positionOf.current())) {
+        stuck = 0
         return
       }
       /* Parked until the first touch: keep it on the room's moment, and wait. */
