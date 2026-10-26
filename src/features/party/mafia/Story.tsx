@@ -309,7 +309,7 @@ export function RoleBrief({ role, title, friends, ready, waiting, onReady }: { r
 
 /* ── the first time each part of a round comes up ─────────────────────── */
 
-export function PhaseGuide({ phase, role, accused, onClose }: { phase: Phase; role: Role | null; accused: boolean; onClose: () => void }) {
+export function PhaseGuide({ phase, role, accused, withAIs, onClose }: { phase: Phase; role: Role | null; accused: boolean; withAIs: boolean; onClose: () => void }) {
   const guide = PHASE_GUIDE[phase]
   if (!guide) return null
   return (
@@ -324,7 +324,7 @@ export function PhaseGuide({ phase, role, accused, onClose }: { phase: Phase; ro
         <div className="min-w-0 flex-1">
           <p className="font-type text-[0.7rem] uppercase tracking-[0.24em] text-[var(--noir-brass)]">First time · {guide.title}</p>
           <p className="font-old mt-0.5 text-[1rem] italic leading-snug text-[var(--noir-paper)]">{guide.story}</p>
-          <p className="font-type mt-1 text-[0.86rem] leading-snug text-[var(--noir-paper-dim)]">{guide.plain({ role, accused })}</p>
+          <p className="font-type mt-1 text-[0.86rem] leading-snug text-[var(--noir-paper-dim)]">{guide.plain({ role, accused, withAIs })}</p>
         </div>
         <button
           type="button"

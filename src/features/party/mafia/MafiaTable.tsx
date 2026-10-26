@@ -139,7 +139,12 @@ export function MafiaTable({
 
   /* Sound. Pocket phones at a table stay silent — the town square does the talking. */
   const [soundOn, toggleSound] = useStored('huddle.mafiaSound', true)
-  const narrates = soundOn && layout !== 'pocket'
+  /*
+   * Pocket phones at a table stay silent — except the host's. A table where
+   * everyone chose "together" and nobody set up a town square used to have no
+   * narrator at all; one phone reading the story aloud is what the room needs.
+   */
+  const narrates = soundOn && (layout !== 'pocket' || isHost)
   const { sting } = useNoirSound(phase === 'over' ? 'quiet' : mood === 'night' ? 'night' : 'day', narrates)
   useNarrator(view.narration, { enabled: narrates, volume: 1 })
   const lastPhase = useRef(phase)
@@ -268,6 +273,12 @@ export function MafiaTable({
    */
   const wallHiddenOnPhone = (phase === 'night' && acting) || (phase === 'vote' && acting)
   const wallVotes = phase === 'vote' && acting
+  /*
+   * At a real table the wall is public: a phone lying face-up can be read by
+   * the person beside you, so it shows only what everybody already knows —
+   * no Family labels, not even your own card. Your card stays in the dossier.
+   */
+  const wallPlayers = layout === 'pocket' ? publicOnly(full).players : view.players
   const seatWall = (
     <div
       ref={wall}
@@ -277,7 +288,7 @@ export function MafiaTable({
         view.players.length > 4 ? 'grid-cols-3' : 'grid-cols-2',
       )}
     >
-      {view.players.map((seat) => {
+      {wallPlayers.map((seat) => {
         const m = media(seat.id)
         const selectable = wallVotes && voteTargets.some((c) => c.id === seat.id)
         const badge =
@@ -285,7 +296,7 @@ export function MafiaTable({
             ? 'ready'
             : phase === 'vote' && view.votes[seat.id] !== undefined
               ? 'voted'
-              : phase === 'night' && view.night?.family && familyPick(seat.id).length
+              : phase === 'night' && layout !== 'pocket' && view.night?.family && familyPick(seat.id).length
                 ? `marked · ${familyPick(seat.id).join(', ')}`
                 : trial && seat.id === view.accused
                   ? 'on trial'
@@ -658,7 +669,9 @@ export function MafiaTable({
   /* ── the frame ──────────────────────────────────────────────────────── */
 
   const showCentre = phase === 'prologue' || phase === 'deal' || phase === 'hush' || phase === 'dawn' || phase === 'verdict' || phase === 'over'
-  const showWall = layout === 'seats' && !showCentre
+  /* Together or apart, every screen shows the table — a phone at a real table
+     used to show nothing but a face-down card, and wide ones nothing to vote on. */
+  const showWall = layout !== 'square' && !showCentre
   /* A first game explains each part of the round the first time it comes up; a rematch trusts you. */
   const guide = view.options.story && !!me?.alive && layout !== 'square' && !guided.has(phase) && ['night', 'dawn', 'day', 'vote', 'defence', 'judgement'].includes(phase)
   const aside = movePanel || chat || prediction || talkFeed
@@ -772,7 +785,7 @@ export function MafiaTable({
         <AnimatePresence>
           {guide && (
             <div className="mx-auto mb-3 w-full max-w-6xl">
-              <PhaseGuide key={phase} phase={phase} role={me?.role ?? null} accused={iAmAccused} onClose={() => setGuided((done) => new Set(done).add(phase))} />
+              <PhaseGuide key={phase} phase={phase} role={me?.role ?? null} accused={iAmAccused} withAIs={hasBots} onClose={() => setGuided((done) => new Set(done).add(phase))} />
             </div>
           )}
         </AnimatePresence>
@@ -797,12 +810,6 @@ export function MafiaTable({
             )}
             {showWall && seatWall}
             {layout === 'square' && !showCentre && <TownSquare view={view} />}
-            {layout === 'pocket' && !showCentre && me && !aside && (
-              <div className="flex flex-col items-center gap-3">
-                <RoleCard role={me.role} title={me.title} line={me.line} hold className="w-40 sm:w-48" />
-                <p className="font-type text-[0.86rem] text-[var(--noir-paper-dim)]">Hold your card to look. Keep your phone close.</p>
-              </div>
-            )}
           </div>
           {aside && layout !== 'square' && (
             /* On a phone your move comes first, and by day the conversation does; the rest waits below the story. */

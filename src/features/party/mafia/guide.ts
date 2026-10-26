@@ -39,7 +39,7 @@ export const ROLE_GUIDE: Record<Role, { night: string; win: string; tip: string 
 }
 
 /** The first time each part of a round comes up: a line of story, then what to do. */
-export const PHASE_GUIDE: Partial<Record<Phase, { title: string; story: string; plain: (ctx: { role: Role | null; accused: boolean }) => string }>> = {
+export const PHASE_GUIDE: Partial<Record<Phase, { title: string; story: string; plain: (ctx: { role: Role | null; accused: boolean; withAIs: boolean }) => string }>> = {
   night: {
     title: 'Night falls',
     story: 'The town sleeps. Somewhere in the dark, the Family choose their victim.',
@@ -53,7 +53,10 @@ export const PHASE_GUIDE: Partial<Record<Phase, { title: string; story: string; 
   day: {
     title: 'The day: talk it out',
     story: 'The survivors gather, and everyone has a theory.',
-    plain: () => 'Discuss who might be in the Family. Type in Table talk to question the AIs — say someone’s name and they’ll answer you. When you’ve heard enough, tap “Ready to vote”.',
+    plain: ({ withAIs }) =>
+      withAIs
+        ? 'Discuss who might be in the Family. Type in Table talk to question the AIs — say someone’s name and they’ll answer you. When you’ve heard enough, tap “Ready to vote”.'
+        : 'Talk it over out loud — who seemed nervous, who defended whom? When you’ve heard enough, tap “Ready to vote”. Voting starts once most of you are ready.',
   },
   vote: {
     title: 'Nominations',
@@ -63,9 +66,9 @@ export const PHASE_GUIDE: Partial<Record<Phase, { title: string; story: string; 
   defence: {
     title: 'The trial',
     story: 'The accused gets the floor. One chance to talk their way out.',
-    plain: ({ accused }) =>
+    plain: ({ accused, withAIs }) =>
       accused
-        ? 'You’re on trial! Type your defence in Table talk — convince them you’re innocent. Tap “I rest my case” when you’re done.'
+        ? `You’re on trial! ${withAIs ? 'Type your defence in Table talk' : 'Speak up'} — convince them you’re innocent. Tap “I rest my case” when you’re done.`
         : 'Read what the accused says in their defence. Next, you’ll decide: guilty or innocent.',
   },
   judgement: {
