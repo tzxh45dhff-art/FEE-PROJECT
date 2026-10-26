@@ -90,3 +90,87 @@ export const first = (name: string) => {
   if (!head) return name
   return next && TITLES.has(head.toLowerCase().replace(/\.$/, '')) ? `${head} ${next}` : head
 }
+
+/* ── a fair deal ──────────────────────────────────────────────────────── */
+
+/** What kind of card someone held, for spreading the cards around. */
+const kindOf = (role: Role): 'family' | 'power' | 'citizen' => (teamOf(role) === 'family' ? 'family' : role === 'villager' ? 'citizen' : 'power')
+
+/** One person's card in one game, as the room remembers it: `deal:<game>:<id>:<kind>`. */
+export const dealKey = (game: string, id: string, role: Role) => `deal:${game}:${id}:${kindOf(role)}`
+
+/** How many recent games are remembered when dealing, and how fast an old one fades. */
+const MEMORY = 4
+
+/**
+ * Who has lately held which kind of card, from the room's memory: the last
+ * game counts fully, the one before it half, and so on. Keys arrive oldest
+ * first.
+ */
+export function recentHands(seen: Iterable<string> | undefined) {
+  const games: string[] = []
+  const hands = new Map<string, { game: string; id: string; kind: string }[]>()
+  for (const key of seen ?? []) {
+    const [tag, game, id, kind] = key.split(':')
+    if (tag !== 'deal' || !game || !id || !kind) continue
+    if (!hands.has(game)) {
+      games.push(game)
+      hands.set(game, [])
+    }
+    hands.get(game)!.push({ game, id, kind })
+  }
+  const score = new Map<string, { family: number; power: number }>()
+  games.slice(-MEMORY).reverse().forEach((game, age) => {
+    const weight = 1 / 2 ** age
+    for (const hand of hands.get(game)!) {
+      const s = score.get(hand.id) ?? { family: 0, power: 0 }
+      if (hand.kind === 'family') s.family += weight
+      if (hand.kind === 'power') s.power += weight
+      score.set(hand.id, s)
+    }
+  })
+  return score
+}
+
+/**
+ * Deal the cards so they move around the room. Still a random deal — anyone
+ * can get anything — but someone who just had the Family's card is about a
+ * quarter as likely to get it again, and the same for the Doctor, Inspector
+ * and Jester. People new to the room, and the AI players, deal as normal.
+ */
+export function dealFairly(ids: string[], roles: Role[], seen: Iterable<string> | undefined, random: (max: number) => number): Role[] {
+  const recent = recentHands(seen)
+  const open = new Set(ids.map((_, i) => i))
+  const out: Role[] = new Array(ids.length)
+  /* Rarest cards first, each to someone drawn with a weight that shrinks with how recently they held one like it. */
+  const order = [...roles].sort((a, b) => rank(a) - rank(b))
+  for (const role of order) {
+    const kind = kindOf(role)
+    const seats = [...open]
+    if (kind === 'citizen') {
+      const seat = seats[random(seats.length)]!
+      out[seat] = role
+      open.delete(seat)
+      continue
+    }
+    const weights = seats.map((i) => {
+      const s = recent.get(ids[i]!)
+      const held = kind === 'family' ? (s?.family ?? 0) : (s?.power ?? 0)
+      return Math.round(1000 / (1 + 3 * held))
+    })
+    let roll = random(weights.reduce((sum, w) => sum + w, 0))
+    let pick = seats[seats.length - 1]!
+    for (let k = 0; k < seats.length; k++) {
+      roll -= weights[k]!
+      if (roll < 0) {
+        pick = seats[k]!
+        break
+      }
+    }
+    out[pick] = role
+    open.delete(pick)
+  }
+  return out
+}
+
+const rank = (role: Role) => (teamOf(role) === 'family' ? 0 : role === 'villager' ? 2 : 1)

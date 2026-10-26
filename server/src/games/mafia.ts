@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto'
 
 import { isError, shuffle, type Ctx, type GameDef, type Later, type Player } from './engine.js'
 import { PERSONAS, nightPick, think, type Job, type Sight } from './mafia.bots.js'
-import { MAX_PLAYERS, MIN_PLAYERS, ROLE_INFO, first, roleSet, teamOf, type Role } from './mafia.roles.js'
+import { MAX_PLAYERS, MIN_PLAYERS, ROLE_INFO, dealFairly, dealKey, first, roleSet, teamOf, type Role } from './mafia.roles.js'
 import { narrate, type NarrationFacts, type NarrationKind } from '../services/mafiaNarration.service.js'
 
 /**
@@ -791,7 +791,8 @@ export const mafia: GameDef<Mafia, Options> = {
       ...people.map((p, i) => ({ ...p, cover: covers[i % covers.length]! })),
       ...cast.map((persona, i) => ({ id: `ai-${i + 1}`, name: PERSONAS[persona]!.name, bot: persona, cover: PERSONAS[persona]!.blurb })),
     ]
-    const roles = shuffle(roleSet(players.length, options), ctx)
+    /* Random, but the cards move around the room: who just held one is less likely to again. */
+    const roles = dealFairly(players.map((p) => p.id), roleSet(players.length, options), ctx.seen, ctx.random)
     const state: Mafia = {
       game: `${ctx.now().toString(36)}${ctx.random(1_000_000).toString(36)}`,
       phase: 'deal',
@@ -1328,6 +1329,11 @@ export const mafia: GameDef<Mafia, Options> = {
       schedule(state, ctx, SEEN_GRACE_MS * 2)
     }
     return state
+  },
+
+  /* Who held what, so the room's next deal moves the cards around. People only — the AI chairs change hands every game. */
+  used(state) {
+    return state.players.filter((p) => !isBot(p)).map((p) => dealKey(state.game, p.id, p.role))
   },
 
   over(state) {

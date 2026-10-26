@@ -9,7 +9,7 @@ import { describe, it } from 'node:test'
 import type { Ctx, Player } from '../src/games/engine.js'
 import { familyChoice, mafia, services, sightFor, storyPages, tally, winnerOf, type Mafia, type Options } from '../src/games/mafia.js'
 import { briefing, composeMs, judgeByRules, lineByRules, nightPick, texture, voteByRules } from '../src/games/mafia.bots.js'
-import { dealCounts, maxFamily, roleSet, type Role } from '../src/games/mafia.roles.js'
+import { dealCounts, dealFairly, dealKey, maxFamily, roleSet, type Role } from '../src/games/mafia.roles.js'
 
 let clock = 0
 let timers: { at: number; action: string; payload: Record<string, unknown> }[] = []
@@ -873,5 +873,46 @@ describe('mafia — AI players', () => {
     assert.equal(state.phase, 'night', 'one of three people is not enough')
     state = act(state, 'khushi', 'end')
     assert.equal(state.phase, 'over', 'two of three people is — the AIs are not counted')
+  })
+})
+
+describe('mafia — a fair deal across games', () => {
+  const fair = (n: number) => Math.floor(Math.random() * n)
+
+  it('still random: everyone gets the Family card about equally often over many games', () => {
+    const ids = ['a', 'b', 'c', 'd', 'e']
+    const family = new Map(ids.map((id) => [id, 0]))
+    let seen: string[] = []
+    for (let game = 0; game < 1000; game++) {
+      const roles = dealFairly(ids, roleSet(5, { godfather: false, jester: false }), seen, fair)
+      roles.forEach((role, i) => role === 'mafia' && family.set(ids[i]!, family.get(ids[i]!)! + 1))
+      seen = [...seen, ...ids.map((id, i) => dealKey(`g${game}`, id, roles[i]!))].slice(-600)
+    }
+    for (const [id, count] of family) assert.ok(count > 150 && count < 250, `${id} was Family ${count} times in 1000`)
+  })
+
+  it('the Family card rarely lands on the same person twice in a row', () => {
+    const ids = ['a', 'b', 'c', 'd', 'e']
+    let seen: string[] = []
+    let last: string | null = null
+    let repeats = 0
+    for (let game = 0; game < 1000; game++) {
+      const roles = dealFairly(ids, roleSet(5, { godfather: false, jester: false }), seen, fair)
+      const boss = ids[roles.indexOf('mafia')]!
+      if (boss === last) repeats++
+      last = boss
+      seen = [...seen, ...ids.map((id, i) => dealKey(`g${game}`, id, roles[i]!))].slice(-600)
+    }
+    /* Pure chance would repeat about 200 times in 1000. */
+    assert.ok(repeats < 110, `${repeats} repeats in 1000 games`)
+  })
+
+  it('remembers who held what, people only', () => {
+    clock = 0
+    timers = []
+    const state = mafia.start(people(2), options({ bots: 3 }), ctx())
+    const keys = mafia.used!(state)
+    assert.equal(keys.length, 2)
+    assert.ok(keys.every((k) => k.startsWith(`deal:${state.game}:`) && !k.includes(':ai-')))
   })
 })
