@@ -1,7 +1,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Gamepad2, Loader2, MessagesSquare, Trophy, WifiOff, X } from 'lucide-react'
+import { Gamepad2, Loader2, Trophy } from 'lucide-react'
 
 import { CoverAmbience } from '@/features/music/CoverAmbience'
 import { useGameSession } from '@/features/games/useGameSession'
@@ -18,6 +18,7 @@ import type { MafiaOptions, MafiaView } from '@/features/party/mafia/types'
 import type { useMeshCall } from '@/features/room-panel/useMeshCall'
 import type { Character } from '@/lib/characters'
 import { EndGameButton } from '@/features/party/EndGameButton'
+import { GameDock } from './GameDock'
 import { usePageVisible } from '@/hooks/usePageVisible'
 import { cn } from '@/lib/utils'
 import { lazyChunk } from '@/lib/lazyChunk'
@@ -144,36 +145,12 @@ export function GamesStage({
     >
       {screen === 'geo' ? <div className="pointer-events-none absolute inset-0 bg-[#091b15]" /> : <CoverAmbience palette={null} />}
 
-      <header className="relative z-10 flex shrink-0 items-center justify-between gap-3 px-5 py-4 [@media(max-height:520px)]:py-1.5">
-        <span className="flex min-w-0 items-center gap-2">
-          {screen !== 'picker' && (
-            <button
-              type="button"
-              onClick={() => setScreen('picker')}
-              aria-label="All games"
-              className="grid size-11 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-chalk outline-none backdrop-blur-md transition-colors hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal sm:size-9"
-            >
-              <ArrowLeft aria-hidden className="size-4" />
-            </button>
-          )}
-          {screen === 'penfight' && snapshot && (
-            <span className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 backdrop-blur-md">
-              <span className="size-1.5 animate-signal-pulse rounded-full bg-emerald-400" />
-              <span className="text-[0.72rem] text-chalk">
-                {spectating ? 'Watching' : 'Playing'}
-              </span>
-            </span>
-          )}
-          {!connected && (
-            <span className="flex items-center gap-2 rounded-full border border-signal/30 bg-signal/10 px-3 py-1.5 text-signal-bright">
-              <WifiOff aria-hidden className="size-3.5" />
-              <span className="text-[0.72rem]">Reconnecting…</span>
-            </span>
-          )}
-        </span>
-
-        <span className="flex shrink-0 items-center gap-2">
-          {penRunning ? (
+      {/* No bar across the top: the game has the whole screen, and its controls live in a small dock on the left edge. */}
+      <GameDock
+        connected={connected}
+        status={screen === 'penfight' && snapshot ? (spectating ? 'Watching' : 'Playing') : null}
+        onAllGames={screen !== 'picker' ? () => setScreen('picker') : undefined}
+        endGame={penRunning ? (
             <EndGameButton
               key={`pen-${snapshot.epoch}`}
               label="Pen fight"
@@ -202,37 +179,11 @@ export function GamesStage({
                 : party.act('end')}
             />
           ) : null}
-          {onTogglePanel && (
-            <button
-              type="button"
-              onClick={onTogglePanel}
-              aria-label="Chat and call"
-              aria-pressed={panelOpen}
-              className={cn(
-                'relative flex h-11 items-center gap-2 rounded-full border px-3.5 outline-none backdrop-blur-md sm:h-9 transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
-                panelOpen
-                  ? 'border-signal/50 bg-signal/15 text-chalk'
-                  : 'border-white/10 bg-white/[0.04] text-chalk hover:bg-white/[0.1]',
-              )}
-            >
-              <MessagesSquare aria-hidden className="size-4" />
-              {unread > 0 && !panelOpen && (
-                <span className="min-w-4 rounded-full bg-signal px-1 text-[0.62rem] font-semibold leading-4 text-white">
-                  {unread > 9 ? '9+' : unread}
-                </span>
-              )}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Leave the game"
-            className="grid size-11 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-chalk outline-none backdrop-blur-md sm:size-9 transition-colors hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-          >
-            <X aria-hidden className="size-4" />
-          </button>
-        </span>
-      </header>
+        onLeave={onClose}
+        onChat={onTogglePanel}
+        chatOpen={panelOpen}
+        unread={unread}
+      />
 
       {/* Marked so the page's smooth scrolling hands the wheel to this panel. */}
       <div data-lenis-prevent className={cn('relative z-10 min-h-0 flex-1', screen === 'geo' && party.party?.game === 'geo' ? 'overflow-hidden' : 'overflow-y-auto')}>
