@@ -61,11 +61,20 @@ export function useChat(roomId: string | null) {
       })
     }
 
+    const onDeleted = ({ roomId: id, id: messageId }: { roomId: string; id: string }) => {
+      if (id === roomId) setMessages((current) => current.filter((entry) => entry.id !== messageId))
+    }
+    const onCleared = ({ roomId: id }: { roomId: string }) => {
+      if (id === roomId) setMessages([])
+    }
+
     const request = () => socket.emit('chat:history', { roomId })
 
     socket.on('chat:history', onHistory)
     socket.on('chat:message', onMessage)
     socket.on('chat:typing', onTyping)
+    socket.on('chat:deleted', onDeleted)
+    socket.on('chat:cleared', onCleared)
     socket.on('connect', request)
     request()
 
@@ -73,6 +82,8 @@ export function useChat(roomId: string | null) {
       socket.off('chat:history', onHistory)
       socket.off('chat:message', onMessage)
       socket.off('chat:typing', onTyping)
+      socket.off('chat:deleted', onDeleted)
+      socket.off('chat:cleared', onCleared)
       socket.off('connect', request)
       if (typingTimer.current) clearTimeout(typingTimer.current)
     }
@@ -106,10 +117,34 @@ export function useChat(roomId: string | null) {
     }, TYPING_IDLE_MS)
   }, [roomId])
 
+  /** Take back one message — yours, or any if the room is yours. */
+  const remove = useCallback(
+    (id: string) =>
+      new Promise<string | null>((resolve) => {
+        if (!roomId) return resolve(null)
+        getSocket()
+          .timeout(8_000)
+          .emit('chat:delete', { roomId, id }, (err: Error | null, reply?: { error?: string }) => resolve(err ? 'Couldn’t reach the server — try again' : (reply?.error ?? null)))
+      }),
+    [roomId],
+  )
+
+  /** Clear the whole conversation for everyone (the room's owner only). */
+  const clear = useCallback(
+    () =>
+      new Promise<string | null>((resolve) => {
+        if (!roomId) return resolve(null)
+        getSocket()
+          .timeout(8_000)
+          .emit('chat:clear', { roomId }, (err: Error | null, reply?: { error?: string }) => resolve(err ? 'Couldn’t reach the server — try again' : (reply?.error ?? null)))
+      }),
+    [roomId],
+  )
+
   const setWatching = useCallback((value: boolean) => {
     watching.current = value
     if (value) setUnread(0)
   }, [])
 
-  return { messages, typing, unread, send, noteTyping, setWatching }
+  return { messages, typing, unread, send, noteTyping, setWatching, remove, clear }
 }

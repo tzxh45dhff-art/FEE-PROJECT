@@ -853,6 +853,7 @@ export function DashboardPage() {
             onPopOut={(who) => setPoppedOut((current) => (current === who ? null : who))}
             selfId={user?.id}
             selfName={user?.name ?? 'You'}
+            owner={!!user && activeRoom?.ownerId === user.id}
             onClose={() => setSideOpen(false)}
             width={sideBySide ? panelRem : PANEL_WIDTH_REM}
             onWidthChange={sideBySide ? resizePanel : undefined}

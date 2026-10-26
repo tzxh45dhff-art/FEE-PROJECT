@@ -57,6 +57,33 @@ export function attachChatGateway(io: Server) {
       void petHearsSorry(io, roomId, self, text).catch(() => undefined)
     })
 
+    /* Take back a message: your own, or any of them if the room is yours. */
+    socket.on('chat:delete', async (raw: unknown, maybeAck: unknown) => {
+      const ack = typeof maybeAck === 'function' ? (maybeAck as (reply: { ok?: true; error?: string }) => void) : () => {}
+      const body = (raw ?? {}) as { roomId?: unknown; id?: unknown }
+      const roomId = await may(body.roomId)
+      if (!roomId || typeof body.id !== 'string') return ack({ error: 'Not in this room' })
+      const message = await messageModel.findMessage(body.id, roomId)
+      if (!message) return ack({ error: 'That message is already gone' })
+      if (message.authorId !== self.id && !(await messageModel.isRoomOwner(roomId, self.id))) {
+        return ack({ error: 'You can only delete your own messages' })
+      }
+      await messageModel.deleteMessage(message.id)
+      io.to(roomId).emit('chat:deleted', { roomId, id: message.id })
+      ack({ ok: true })
+    })
+
+    /* Clear the whole chat for everyone. The room's owner only. */
+    socket.on('chat:clear', async (raw: unknown, maybeAck: unknown) => {
+      const ack = typeof maybeAck === 'function' ? (maybeAck as (reply: { ok?: true; error?: string }) => void) : () => {}
+      const roomId = await may((raw as { roomId?: unknown })?.roomId)
+      if (!roomId) return ack({ error: 'Not in this room' })
+      if (!(await messageModel.isRoomOwner(roomId, self.id))) return ack({ error: 'Only the room’s owner can clear the chat' })
+      await messageModel.clearMessages(roomId)
+      io.to(roomId).emit('chat:cleared', { roomId })
+      ack({ ok: true })
+    })
+
     socket.on('chat:typing', async (raw: unknown) => {
       const body = (raw ?? {}) as { roomId?: unknown; typing?: unknown }
       const roomId = await may(body.roomId)

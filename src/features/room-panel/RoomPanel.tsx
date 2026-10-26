@@ -35,6 +35,7 @@ export function RoomPanel({
   onClose,
   width = PANEL_WIDTH_REM,
   onWidthChange,
+  owner = false,
 }: {
   chat: ReturnType<typeof useChat>
   call: ReturnType<typeof useMeshCall>
@@ -47,6 +48,8 @@ export function RoomPanel({
   width?: number
   /** Present where the panel sits beside the room and resizing makes sense. */
   onWidthChange?: (rem: number) => void
+  /** This room is yours: you can delete any message and clear the chat. */
+  owner?: boolean
 }) {
   const { setWatching } = chat
   const [dragging, setDragging] = useState(false)
@@ -163,6 +166,9 @@ export function RoomPanel({
         selfId={selfId}
         onSend={chat.send}
         onType={chat.noteTyping}
+        onDelete={chat.remove}
+        onClear={chat.clear}
+        owner={owner}
       />
     </motion.aside>,
     document.body,
