@@ -71,7 +71,8 @@ export interface GameDef<S, O = unknown> {
   /** What this person sees. Anything not returned here never leaves the server. */
   view: (state: S, viewer: string) => unknown
   /** Somebody walked in mid-game. Return null to keep them watching. */
-  join?: (state: S, player: Player) => S | null
+  /** Somebody arrives mid-game. `ctx` lets a game give them time — a clock to reset, say. */
+  join?: (state: S, player: Player, ctx: Ctx) => S | null
   /** The game is over; what is worth keeping, or null for nothing. */
   over: (state: S) => { summary: Record<string, unknown> } | null
   /** The content this game has shown so far, remembered so the room's next game leads with new things. */

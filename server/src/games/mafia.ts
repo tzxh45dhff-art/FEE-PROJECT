@@ -39,6 +39,10 @@ export type Options = {
   story: boolean
   /** AI players to fill the table. */
   bots: number
+  /** How many of each card the host chose; null for the recommended deal. */
+  family: number | null
+  doctors: number | null
+  detectives: number | null
 }
 
 export type Seat = Player & {
@@ -105,8 +109,10 @@ export type Mafia = {
   seen: string[]
   /** Tonight's choices: a victim, a patient, a file, or a suspect. */
   picks: Record<string, string>
-  lastProtected: string | null
-  selfSaveUsed: boolean
+  /** Each Doctor's patient last night — not the same one two nights running. */
+  patients: Record<string, string>
+  /** Doctors who have used their one self-save. */
+  selfSaved: string[]
   dawn: { victim: string | null; saved: boolean } | null
   files: { round: number; target: string; family: boolean }[]
   ready: string[]
@@ -340,7 +346,7 @@ function hostFor(state: Mafia, by: string, ctx: Ctx) {
 
 export type StoryKey = 'city' | 'cast' | 'family' | 'town' | 'days'
 
-const COUNT = ['No one', 'One', 'Two', 'Three', 'Four']
+const COUNT = ['No one', 'One', 'Two', 'Three', 'Four', 'Five']
 
 /**
  * The opening: the city, the people at the table, the Family among them,
@@ -351,6 +357,8 @@ export function storyPages(state: Pick<Mafia, 'players'>): { key: StoryKey; text
   const n = state.players.length
   const family = state.players.filter((p) => isFamily(p.role)).length
   const has = (role: Role) => state.players.some((p) => p.role === role)
+  const doctors = state.players.filter((p) => p.role === 'doctor').length
+  const detectives = state.players.filter((p) => p.role === 'detective').length
   return [
     {
       key: 'city',
@@ -370,8 +378,9 @@ export function storyPages(state: Pick<Mafia, 'players'>): { key: StoryKey; text
     {
       key: 'town',
       text: [
-        'Everyone else is the town — and the town is not helpless. The Doctor can save one life each night.',
-        has('detective') ? 'The Inspector can secretly check one person each night.' : '',
+        'Everyone else is the town — and the town is not helpless.',
+        doctors === 1 ? 'The Doctor can save one life each night.' : doctors > 1 ? `${COUNT[doctors]} Doctors can each save a life each night.` : 'There is no Doctor tonight — nobody to save you.',
+        detectives === 1 ? 'The Inspector can secretly check one person each night.' : detectives > 1 ? `${COUNT[detectives]} Inspectors share one case file, each checking somebody a night.` : '',
         'The rest have their eyes, their ears, and their vote.',
         has('godfather') ? 'Beware: the Godfather looks innocent to the Inspector.' : '',
         has('jester') ? 'And somewhere at this table sits a Jester, who wins only if the town hangs them.' : '',
@@ -445,14 +454,20 @@ export function familyChoice(state: Mafia, ctx: Pick<Ctx, 'random'>): string | n
 
 function resolveNight(state: Mafia, ctx: Ctx) {
   const target = familyChoice(state, ctx)
-  const doctor = living(state).find((p) => p.role === 'doctor')
-  const protectedId = doctor ? (state.picks[doctor.id] ?? null) : null
-  if (doctor && protectedId === doctor.id) state.selfSaveUsed = true
-  state.lastProtected = protectedId
+  /* Every Doctor keeps their own patient alive. */
+  const patients: Record<string, string> = {}
+  for (const doctor of living(state).filter((p) => p.role === 'doctor')) {
+    const patient = state.picks[doctor.id]
+    if (!patient) continue
+    patients[doctor.id] = patient
+    if (patient === doctor.id && !state.selfSaved.includes(doctor.id)) state.selfSaved.push(doctor.id)
+  }
+  state.patients = patients
 
-  const detective = living(state).find((p) => p.role === 'detective')
-  const filed = detective ? state.picks[detective.id] : undefined
-  if (detective && filed) {
+  /* Every Inspector opens a file; with two, they share the police file. */
+  for (const detective of living(state).filter((p) => p.role === 'detective')) {
+    const filed = state.picks[detective.id]
+    if (!filed) continue
     /* The Godfather's papers are in order. */
     const family = seat(state, filed)!.role === 'mafia'
     state.files.push({ round: state.round, target: filed, family })
@@ -468,14 +483,15 @@ function resolveNight(state: Mafia, ctx: Ctx) {
     if (suspect) state.suspicions.push({ round: state.round, by: player.id, target: suspect })
   }
 
-  const saved = !!target && target === protectedId
+  const saver = target ? Object.keys(patients).find((doctor) => patients[doctor] === target) : undefined
+  const saved = !!saver
   if (target && !saved) {
     const victim = seat(state, target)!
     victim.alive = false
     victim.died = { round: state.round, how: 'killed' }
     state.history.push({ round: state.round, kind: 'kill', victim: target })
   } else if (target && saved) {
-    state.history.push({ round: state.round, kind: 'saved', target, by: doctor!.id })
+    state.history.push({ round: state.round, kind: 'saved', target, by: saver! })
   } else {
     state.history.push({ round: state.round, kind: 'quiet' })
   }
@@ -712,8 +728,22 @@ const COVERS = [
 
 /* ── the game ──────────────────────────────────────────────────────────── */
 
+/**
+ * Until the first morning, a seat can still be taken: an AI's (its card and
+ * all), or — during the story, before anyone has seen a card — a new one.
+ * The first night is included because that is exactly when a phone that
+ * dropped its connection at the deal comes back.
+ */
+function canJoin(state: Mafia) {
+  const early = state.phase === 'prologue' || state.phase === 'deal' || (state.phase === 'night' && state.round === 1)
+  if (!early) return false
+  if (state.players.some(isBot)) return true
+  return state.phase === 'prologue' && state.players.length < MAX_PLAYERS
+}
+
 const SECONDS = { night: [30, 45, 60], day: [120, 180, 300], vote: [30, 45, 60] }
 const pickFrom = (allowed: number[], raw: unknown, fallback: number) => (allowed.includes(raw as number) ? (raw as number) : fallback)
+const countFrom = (raw: unknown) => (Number.isInteger(raw) && (raw as number) >= 0 && (raw as number) <= MAX_PLAYERS ? (raw as number) : null)
 const cleanText = (raw: unknown) => (typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim().slice(0, 240) : '')
 const WINNERS: Winner[] = ['town', 'family', 'jester']
 /** Moves that are part of play — frozen while the host has the game paused. */
@@ -743,6 +773,10 @@ export const mafia: GameDef<Mafia, Options> = {
       jester: body.jester === true,
       together: body.together === true,
       rematch: body.rematch === true,
+      /* The host's own deal; null keeps the recommended count. Held to a winnable game at deal time. */
+      family: countFrom(body.family),
+      doctors: countFrom(body.doctors),
+      detectives: countFrom(body.detectives),
       /* A first game opens with the story; a rematch goes straight to the cards. */
       story: body.story !== false && body.rematch !== true,
       bots: Number.isInteger(body.bots) ? Math.min(MAX_PLAYERS - 1, Math.max(0, body.bots as number)) : 0,
@@ -771,8 +805,8 @@ export const mafia: GameDef<Mafia, Options> = {
       paused: null,
       seen: players.filter((p) => p.bot !== undefined).map((p) => p.id),
       picks: {},
-      lastProtected: null,
-      selfSaveUsed: false,
+      patients: {},
+      selfSaved: [],
       dawn: null,
       files: [],
       ready: [],
@@ -1035,8 +1069,8 @@ export const mafia: GameDef<Mafia, Options> = {
         if (!target || !target.alive) return { error: 'Pick someone still standing' }
         if (isFamily(me.role) && isFamily(target.role)) return { error: 'Not one of our own' }
         if (me.role === 'doctor') {
-          if (target.id === prev.lastProtected) return { error: 'Not the same patient two nights running' }
-          if (target.id === me.id && prev.selfSaveUsed) return { error: 'You have already saved yourself once' }
+          if (target.id === prev.patients[me.id]) return { error: 'Not the same patient two nights running' }
+          if (target.id === me.id && prev.selfSaved.includes(me.id)) return { error: 'You have already saved yourself once' }
         } else if (target.id === me.id) {
           return { error: 'Pick someone else' }
         }
@@ -1195,8 +1229,8 @@ export const mafia: GameDef<Mafia, Options> = {
             line: ROLE_INFO[me.role].line,
             seen: state.seen.includes(viewer),
             pick: state.picks[viewer] ?? null,
-            lastProtected: me.role === 'doctor' ? state.lastProtected : null,
-            selfSaveUsed: me.role === 'doctor' ? state.selfSaveUsed : false,
+            lastProtected: me.role === 'doctor' ? (state.patients[me.id] ?? null) : null,
+            selfSaveUsed: me.role === 'doctor' ? state.selfSaved.includes(me.id) : false,
             files: me.role === 'detective' || ghost || over ? state.files : [],
             judged: state.judgement[viewer] ?? null,
             prediction: state.predictions[viewer] ?? null,
@@ -1215,6 +1249,8 @@ export const mafia: GameDef<Mafia, Options> = {
       dawn: state.phase === 'dawn' || state.phase === 'hush' ? state.dawn : null,
       ready: state.phase === 'day' ? state.ready : [],
       next: ['prologue', 'deal', 'dawn', 'verdict'].includes(state.phase) ? state.next : [],
+      /* For someone watching: whether there is still a seat for them. */
+      joinable: !me && canJoin(state),
       story: state.phase === 'prologue' ? { key: storyPages(state)[state.page]!.key, at: state.page, of: storyPages(state).length } : null,
       votes: publicVotes ? state.votes : {},
       accused: state.accused,
@@ -1250,8 +1286,48 @@ export const mafia: GameDef<Mafia, Options> = {
     }
   },
 
-  join() {
-    return null
+  /*
+   * Somebody who should have been dealt in, arriving before the first night.
+   *
+   * They take an AI's chair — its card and all — so the table stays exactly
+   * as balanced as it was dealt, and nobody's card changes but the AI's. With
+   * no AI to stand up, they can still sit down during the story, before
+   * anyone has seen a card, and the whole table is dealt again. After the
+   * cards are read and the night begins, it is the next game.
+   */
+  join(prev, player, ctx) {
+    if (!canJoin(prev) || prev.players.some((p) => p.id === player.id)) return null
+    const state: Mafia = structuredClone(prev)
+    const chairs = state.players.filter(isBot)
+    const used = new Set(state.players.map((p) => p.cover))
+    const cover = COVERS.find((c) => !used.has(c)) ?? COVERS[0]!
+    if (chairs.length) {
+      const chair = chairs[ctx.random(chairs.length)]!
+      const from = chair.id
+      chair.id = player.id
+      chair.name = player.name
+      chair.cover = cover
+      chair.presence = state.options.together ? 'table' : 'online'
+      delete chair.bot
+      /* The AI never needed to look; the person does. */
+      state.seen = state.seen.filter((id) => id !== from)
+      /* Taking over mid-night: the AI's choice, if it made one, becomes theirs to keep or change. */
+      if (state.picks[from]) {
+        state.picks[player.id] = state.picks[from]!
+        delete state.picks[from]
+      }
+      state.thinking = state.thinking.filter((t) => t.id !== from)
+    } else {
+      state.players.push({ ...player, role: 'villager', alive: true, presence: state.options.together ? 'table' : 'online', cover })
+      const roles = shuffle(roleSet(state.players.length, state.options), ctx)
+      state.players.forEach((p, i) => (p.role = roles[i]!))
+    }
+    /* Time to read the card they were just handed. */
+    if (state.phase === 'deal' && (state.deadline ?? 0) - ctx.now() < SEEN_GRACE_MS * 2) {
+      state.step += 1
+      schedule(state, ctx, SEEN_GRACE_MS * 2)
+    }
+    return state
   },
 
   over(state) {

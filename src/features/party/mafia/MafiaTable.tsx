@@ -88,6 +88,8 @@ export function MafiaTable({
   people,
   onLeave,
   onPlayAgain,
+  onJoin,
+  error,
 }: {
   party: PartyState<MafiaView>
   selfId: string | undefined
@@ -96,10 +98,37 @@ export function MafiaTable({
   people: Person[]
   onLeave: () => void
   onPlayAgain: () => void
+  /** Take a seat in this game, for someone watching it. */
+  onJoin?: () => void
+  /** A move the game refused, said out loud rather than swallowed. */
+  error?: string | null
 }) {
   useNoirFonts()
   const full = party.view
-  const [squareHere, toggleSquare] = useStored('huddle.mafiaSquare', false)
+  /*
+   * The town square is a choice for this game, not this device for ever. It
+   * used to be remembered for good — so anyone who once put a phone in the
+   * middle of a table opened every later game on it as a spectator, with no
+   * cards and no votes. Kept for the session, so a reload doesn't undo it.
+   */
+  const [squareGame, setSquareGame] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem('huddle.mafiaSquareGame')
+    } catch {
+      return null
+    }
+  })
+  const squareHere = squareGame === full.game
+  const toggleSquare = useCallback(() => {
+    const next = squareHere ? null : full.game
+    setSquareGame(next)
+    try {
+      if (next) sessionStorage.setItem('huddle.mafiaSquareGame', next)
+      else sessionStorage.removeItem('huddle.mafiaSquareGame')
+    } catch {
+      /* Not remembered across a reload; still applies now. */
+    }
+  }, [squareHere, full.game])
   const square = !full.me || squareHere
   /* A shared screen never shows a private thing — not even its owner's. */
   const view = useMemo(() => (square ? publicOnly(full) : full), [square, full])
@@ -688,7 +717,7 @@ export function MafiaTable({
         <div className="min-w-0 flex-1">
           <p className="font-type truncate text-[0.74rem] uppercase tracking-[0.24em] text-[var(--noir-brass)] [@media(max-height:520px)]:text-[0.66rem]">
             {phase === 'over' || view.round === 0 ? 'Bombay · 1956' : `${mood === 'night' ? 'Night' : 'Day'} ${view.round}`}
-            {layout === 'square' && ' · town square'}
+            {layout === 'square' && (full.me ? ' · town square' : ' · watching')}
             {me && !me.alive && phase !== 'over' && ' · you are a ghost'}
           </p>
           <h2 className="font-deco truncate text-[1.15rem] leading-tight text-[var(--noir-paper)] min-[400px]:text-[1.3rem] sm:text-[1.9rem] [@media(max-height:520px)]:text-[1.2rem]">
@@ -772,6 +801,22 @@ export function MafiaTable({
         </div>
       </header>
 
+      {/*
+        Watching rather than playing. This used to look exactly like the game
+        with its controls missing — somebody dealt out by a dropped connection
+        had no way to tell, and no way in.
+      */}
+      {!full.me && phase !== 'over' && (
+        <div className="relative z-20 mx-3 mb-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-sm border border-[var(--noir-brass)]/50 bg-black/70 px-4 py-2.5 sm:mx-6">
+          <p className="font-type text-center text-[0.86rem] text-[var(--noir-paper)]">
+            {full.joinable
+              ? 'You’re watching — you weren’t at the table when the cards were dealt. There’s still a seat.'
+              : 'You’re watching this game. You’ll be dealt into the next one.'}
+          </p>
+          {full.joinable && onJoin && <BarButton onClick={onJoin}>Join this game</BarButton>}
+        </div>
+      )}
+
       {(view.paused !== null || (view.endVotes > 0 && phase !== 'over')) && (
         <div className="font-type relative z-10 mx-auto mb-2 rounded-sm bg-black/70 px-4 py-1.5 text-center text-[0.86rem] text-[var(--noir-brass)]">
           {view.paused !== null ? 'The host has paused the game. Nothing can be chosen until it resumes.' : `${view.endVotes} of ${endsNeeded} want to end the game.`}
@@ -827,6 +872,12 @@ export function MafiaTable({
       {phase !== 'over' && phase !== 'dawn' && phase !== 'prologue' && view.narration && (
         <div className="relative z-10 shrink-0 bg-[linear-gradient(0deg,rgba(0,0,0,.85),transparent)] pb-2 pt-4 [@media(max-height:520px)]:pb-1 [@media(max-height:520px)]:pt-1.5">
           <Subtitles id={view.narration.id} text={view.narration.text} />
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" className="font-type relative z-20 mx-auto mb-2 rounded-sm bg-[var(--noir-blood)]/90 px-4 py-1.5 text-center text-[0.86rem] text-[#f7ead0]">
+          {error}
         </div>
       )}
 

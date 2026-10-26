@@ -249,6 +249,8 @@ export function GamesStage({
               onPlayAgain={() => {
                 if (mafiaOptions.current) void party.start('mafia', { ...mafiaOptions.current, rematch: true })
               }}
+              onJoin={() => void party.join()}
+              error={party.error}
             />
           ) : party.party ? (
             <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />

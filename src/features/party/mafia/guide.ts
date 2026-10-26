@@ -1,4 +1,5 @@
-import type { Phase, Role } from './types'
+import { dealCounts } from './helpers'
+import type { MafiaOptions, Phase, Role } from './types'
 
 /**
  * The game explaining itself: what each card does, and what each part of a
@@ -79,8 +80,8 @@ export const PHASE_GUIDE: Partial<Record<Phase, { title: string; story: string; 
   },
 }
 
-/** Which cards are in play for a table of `n` — the same deal the server makes. */
-export function rolesInPlay(n: number, godfather: boolean, jester: boolean) {
-  const family = n <= 6 ? 1 : n <= 8 ? 2 : 3
-  return { family, godfather: godfather && n >= 7, inspector: n >= 5, jester: jester && n >= 6 }
+/** Which cards are in play for this table — the same deal the server makes (see `dealCounts`). */
+export function rolesInPlay(n: number, options: MafiaOptions) {
+  const d = dealCounts(n, options)
+  return { family: d.family, godfather: d.godfather, doctors: d.doctors, inspectors: d.detectives, jester: d.jester > 0, citizens: d.citizens }
 }

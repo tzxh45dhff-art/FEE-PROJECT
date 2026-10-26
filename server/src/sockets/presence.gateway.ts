@@ -52,6 +52,14 @@ export function attachPresenceGateway(httpServer: HttpServer) {
     /* Same-origin in dev through the Vite proxy; a split deployment needs the
        frontend's origin named explicitly, same as the REST API. */
     cors: { origin: env.clientOrigins, credentials: true },
+    /*
+     * How long a connection may go quiet before it is dropped. The default is
+     * twenty seconds — and a phone that locks for a moment, switches apps, or
+     * sits on a weak signal goes quiet that long all the time. Every drop is a
+     * reconnect, and a reconnect at the wrong moment (a Mafia deal, say) used
+     * to leave somebody out of the game they were sitting at.
+     */
+    pingTimeout: 45_000,
   })
 
   /*

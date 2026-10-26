@@ -10,7 +10,7 @@ import { callName } from './helpers'
 import { Portrait } from './Seat'
 import { ROLE_TITLE, isFamily, type MafiaView, type Phase, type Role, type StoryKey } from './types'
 
-const COUNT = ['No one', 'One', 'Two', 'Three', 'Four']
+const COUNT = ['No one', 'One', 'Two', 'Three', 'Four', 'Five']
 
 /* ── the opening story ────────────────────────────────────────────────── */
 
@@ -113,7 +113,7 @@ function Typed({ id, text }: { id: string; text: string }) {
 
 function Picture({ page, view, selfId, character }: { page: StoryKey; view: MafiaView; selfId: string | undefined; character: (id: string) => Character | undefined }) {
   const n = view.players.length
-  const cards = rolesInPlay(n, view.options.godfather, view.options.jester)
+  const cards = rolesInPlay(n, view.options)
   if (page === 'city') {
     return (
       <div className="relative aspect-[16/8] max-h-[38vh] w-full overflow-hidden rounded-sm bg-[linear-gradient(180deg,#0b1424,#05080f)] noir-frame sm:aspect-[16/7]">
@@ -148,9 +148,10 @@ function Picture({ page, view, selfId, character }: { page: StoryKey; view: Mafi
           >
             <Portrait name={p.name} character={character(p.id)} className="size-11 shrink-0 rounded-full ring-1 ring-[var(--noir-brass)]/60 sm:size-12" />
             <span className="min-w-0">
-              <span className="font-type block truncate text-[0.9rem] text-[var(--noir-paper)]">
-                {p.id === selfId ? 'You' : callName(p.name)}
-                {p.bot && <span className="ml-1.5 rounded-sm bg-[var(--noir-brass)] px-1 text-[0.6rem] font-bold text-[#1c140b]">AI</span>}
+              {/* The badge sits beside the name, not in it, so a long name can't cut it off. */}
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="font-type truncate text-[0.9rem] text-[var(--noir-paper)]">{p.id === selfId ? 'You' : callName(p.name)}</span>
+                {p.bot && <span className="shrink-0 rounded-sm bg-[var(--noir-brass)] px-1 text-[0.6rem] font-bold text-[#1c140b]">AI</span>}
               </span>
               <span className="font-type block text-[0.72rem] leading-snug text-[var(--noir-paper-dim)]">{p.cover}</span>
             </span>
@@ -189,11 +190,10 @@ function Picture({ page, view, selfId, character }: { page: StoryKey; view: Mafi
     )
   }
   if (page === 'town') {
-    const citizens = n - cards.family - 1 - (cards.inspector ? 1 : 0) - (cards.jester ? 1 : 0)
     const tiles: { role: Role; count?: number; note: string }[] = [
-      { role: 'doctor', note: 'Saves one person each night' },
-      ...(cards.inspector ? [{ role: 'detective' as Role, note: 'Checks one person each night' }] : []),
-      { role: 'villager', count: citizens, note: 'Eyes, ears — and a vote' },
+      ...(cards.doctors ? [{ role: 'doctor' as Role, count: cards.doctors, note: 'Saves one person each night' }] : []),
+      ...(cards.inspectors ? [{ role: 'detective' as Role, count: cards.inspectors, note: cards.inspectors > 1 ? 'Share one case file' : 'Checks one person each night' }] : []),
+      ...(cards.citizens ? [{ role: 'villager' as Role, count: cards.citizens, note: 'Eyes, ears — and a vote' }] : []),
       ...(cards.godfather ? [{ role: 'godfather' as Role, note: 'Runs the Family; checks out clean' }] : []),
       ...(cards.jester ? [{ role: 'jester' as Role, note: 'Wins only if hanged' }] : []),
     ]
@@ -341,8 +341,15 @@ export function PhaseGuide({ phase, role, accused, withAIs, onClose }: { phase: 
 /* ── how to play, any time ────────────────────────────────────────────── */
 
 export function HowToPlay({ view }: { view: MafiaView }) {
-  const cards = rolesInPlay(view.players.length, view.options.godfather, view.options.jester)
-  const roles: Role[] = ['villager', 'doctor', ...(cards.inspector ? ['detective' as Role] : []), 'mafia', ...(cards.godfather ? ['godfather' as Role] : []), ...(cards.jester ? ['jester' as Role] : [])]
+  const cards = rolesInPlay(view.players.length, view.options)
+  const roles: Role[] = [
+    ...(cards.citizens ? ['villager' as Role] : []),
+    ...(cards.doctors ? ['doctor' as Role] : []),
+    ...(cards.inspectors ? ['detective' as Role] : []),
+    'mafia',
+    ...(cards.godfather ? ['godfather' as Role] : []),
+    ...(cards.jester ? ['jester' as Role] : []),
+  ]
   return (
     <div className="flex flex-col gap-5">
       <p className="font-old text-[1rem] italic leading-relaxed text-[#2b2015]">

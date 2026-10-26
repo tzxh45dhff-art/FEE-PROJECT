@@ -159,7 +159,52 @@ export function lineByRules(job: Job, s: Sight, random: (n: number) => number, a
         ? ['Nobody died last night — the Doctor got there first. The Family will try again.']
         : []
   const lines = [...news, ...LINES[job]].map((line) => line.replace('{x}', name))
-  return pickOne(lines.filter((line) => !said.has(line)), random) ?? pickOne(lines, random)!
+  const line = pickOne(lines.filter((line) => !said.has(line)), random) ?? pickOne(lines, random)!
+  return roughen(line, s, random)
+}
+
+/*
+ * People don't speak in finished sentences. Now and then a line starts on a
+ * hesitation or trails off — and a liar does it a little more often than
+ * somebody with nothing to hide. A little: it is a hint, never a tell you
+ * can bank on, because an honest person gets nervous too.
+ */
+const HESITATE = ['Look — ', 'Hm. ', 'I mean… ', 'Okay, so — ', 'Honestly? ']
+const TRAIL = [' …I think.', ' Or — no, yes. Yes.', '…', ' Anyway.']
+function roughen(line: string, s: Sight, random: (n: number) => number) {
+  const lying = family(s.me.role) || s.me.role === 'jester'
+  const roll = random(100)
+  if (roll < (lying ? 12 : 7)) return `${pickOne(HESITATE, random)}${line.charAt(0).toLowerCase()}${line.slice(1)}`
+  if (roll < (lying ? 20 : 11)) return `${line.replace(/[.!?]$/, '')}${pickOne(TRAIL, random)}`
+  return line
+}
+
+/**
+ * A little human texture for this one line — or none, most of the time.
+ *
+ * You can't see an AI's face, so its words have to carry what a face would:
+ * the hesitation, the over-explaining, the alibi nobody asked for. Liars slip
+ * more often than the honest — but the honest get nervous too, so a shaky
+ * line is a reason to look closer, not proof. Rare by design: a table where
+ * every liar stammers is no game at all.
+ */
+export function texture(job: Job, s: Sight, random: (n: number) => number): string {
+  const lying = family(s.me.role) || s.me.role === 'jester'
+  const roll = random(100)
+  const slips = lying
+    ? [
+        'This time, let something slip the way a nervous liar does: explain yourself a little more than anyone asked, or answer a question nobody put to you.',
+        'This time, defend someone a beat too quickly — the way people do for a friend they are covering for. Do not admit anything.',
+        'This time, sound a touch too sure about something you could only guess at, then walk it back half a sentence later.',
+        'This time, quietly contradict something you said earlier in the conversation — a small detail, not a confession.',
+      ]
+    : [
+        'This time, sound a bit flustered — trip over your words or correct yourself mid-sentence. You are innocent, just rattled.',
+        'This time, get a little defensive about something minor, the way honest people do when they feel watched.',
+      ]
+  if (roll < (lying ? 20 : 9) && job !== 'judge') return `\n${pickOne(slips, random)}`
+  if (roll < 45) return '\nWrite it the way people actually type at a party: a hesitation, a trailing "…", or a correction mid-thought is fine. Keep it short.'
+  return ''
 }
 
 /* ── Luna: the same choices, in character ─────────────────────────────── */
@@ -336,7 +381,7 @@ async function decide(job: Job, s: Sight, random: (n: number) => number): Promis
             content:
               'You play one character at a party game of Mafia, Bombay 1956 noir, as a real player would. Everyone else at the table is a player like you, each with their own secret card — judge them all by the same standard: what they said, how they voted, what happened. Follow the game closely, remember who said and did what, and reason from it. Talk to the others by name, answer questions put to you, and ask your own. You speak like a real person at the table — short, natural, a little colourful, never gory, no emojis, no stage directions. Never assume anyone\'s gender: use their name or "they". Stick to the facts you are given: never invent a death, a vote, or something someone said, and never talk to the dead. You only answer with JSON.',
           },
-          { role: 'user', content: `${briefing(s)}\n\n${ASK[job](s)}` },
+          { role: 'user', content: `${briefing(s)}\n\n${ASK[job](s)}${texture(job, s, random)}` },
         ],
         { temperature: 1, maxTokens: 160 },
       )

@@ -83,7 +83,17 @@ type Session = {
 
 const sessions = new Map<string, Session>()
 /** Who is looking at each room's game, so each gets their own view. */
-const watchers = new Map<string, Map<string, { socket: Socket; userId: string }>>()
+const watchers = new Map<string, Map<string, { socket: Socket; userId: string; name: string }>>()
+/**
+ * Who had the game screen open and lost their connection, and when.
+ *
+ * A dropped connection is not somebody leaving: a phone locks, a signal
+ * dips, and a few seconds later the same person is back. Dealing a game in
+ * those seconds used to leave them out of it. Anyone who dropped within
+ * `RECONNECTING_MS` is treated as still at the table.
+ */
+const dropped = new Map<string, Map<string, { name: string; at: number }>>()
+const RECONNECTING_MS = 60_000
 
 type Ack = (reply: unknown) => void
 const ackFrom = (maybe: unknown): Ack => (typeof maybe === 'function' ? (maybe as Ack) : () => undefined)
@@ -203,7 +213,8 @@ export function attachPartyGateway(io: Server) {
       const roomId = await may((raw as { roomId?: unknown })?.roomId)
       if (!roomId) return
       if (!watchers.has(roomId)) watchers.set(roomId, new Map())
-      watchers.get(roomId)!.set(socket.id, { socket, userId: self.id })
+      watchers.get(roomId)!.set(socket.id, { socket, userId: self.id, name: self.name })
+      dropped.get(roomId)?.delete(self.id)
       watching.add(roomId)
       const session = sessions.get(roomId)
       const existing = canvases.get(roomId)
@@ -245,9 +256,22 @@ export function attachPartyGateway(io: Server) {
         return ack({ error: `${running.game.label} is already going — end it first` })
       }
 
-      /* Everyone standing in the room plays, starter first. */
+      /*
+       * Everyone standing in the room plays, starter first — and everyone
+       * with the game screen open, too. Room presence is rebuilt on every
+       * reconnect and every refresh of the room list, so for a moment
+       * somebody plainly at the table can be missing from it; dealing at that
+       * moment used to leave them watching a game they were meant to be in,
+       * with no controls and no word why.
+       */
       const here = presenceFor(roomId).map((p) => ({ id: p.userId, name: p.name }))
-      const players = [self, ...here.filter((p) => p.id !== self.id)].slice(0, game.maxPlayers)
+      const looking = [...(watchers.get(roomId)?.values() ?? [])].map((w) => ({ id: w.userId, name: w.name }))
+      const returning = [...(dropped.get(roomId)?.entries() ?? [])]
+        .filter(([, d]) => Date.now() - d.at < RECONNECTING_MS)
+        .map(([id, d]) => ({ id, name: d.name }))
+      const everyone = new Map<string, Player>()
+      for (const person of [self, ...here, ...looking, ...returning]) if (!everyone.has(person.id)) everyone.set(person.id, person)
+      const players = [...everyone.values()].slice(0, game.maxPlayers)
       const parsed = game.options(body.options)
       if (isError(parsed)) return ack(parsed)
       const needed = game.minPeople?.(parsed) ?? game.minPlayers
@@ -309,7 +333,7 @@ export function attachPartyGateway(io: Server) {
       const roomId = await may((raw as { roomId?: unknown })?.roomId)
       const session = roomId ? sessions.get(roomId) : undefined
       if (!roomId || !session?.game.join) return ack({ error: 'Nothing to join' })
-      const next = session.game.join(session.state, self)
+      const next = session.game.join(session.state, self, session.ctx)
       if (!next) return ack({ error: 'Cannot join this one' })
       session.state = next
       session.seq += 1
@@ -390,7 +414,14 @@ export function attachPartyGateway(io: Server) {
     })
 
     socket.on('disconnect', () => {
-      for (const roomId of watching) watchers.get(roomId)?.delete(socket.id)
+      for (const roomId of watching) {
+        watchers.get(roomId)?.delete(socket.id)
+        /* Remembered as on their way back, unless they are still watching from another connection. */
+        if (![...(watchers.get(roomId)?.values() ?? [])].some((w) => w.userId === self.id)) {
+          if (!dropped.has(roomId)) dropped.set(roomId, new Map())
+          dropped.get(roomId)!.set(self.id, { name: self.name, at: Date.now() })
+        }
+      }
       watching.clear()
     })
   })

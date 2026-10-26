@@ -8,8 +8,8 @@ import { describe, it } from 'node:test'
 
 import type { Ctx, Player } from '../src/games/engine.js'
 import { familyChoice, mafia, services, sightFor, storyPages, tally, winnerOf, type Mafia, type Options } from '../src/games/mafia.js'
-import { briefing, composeMs, judgeByRules, lineByRules, nightPick, voteByRules } from '../src/games/mafia.bots.js'
-import { roleSet, type Role } from '../src/games/mafia.roles.js'
+import { briefing, composeMs, judgeByRules, lineByRules, nightPick, texture, voteByRules } from '../src/games/mafia.bots.js'
+import { dealCounts, maxFamily, roleSet, type Role } from '../src/games/mafia.roles.js'
 
 let clock = 0
 let timers: { at: number; action: string; payload: Record<string, unknown> }[] = []
@@ -174,6 +174,48 @@ describe('mafia — the opening story', () => {
     state = act(state, 'rohan', 'next')
     assert.ok(state.deadline! - clock <= 1_500)
     assert.equal(tick(state).phase, 'night')
+  })
+})
+
+describe('mafia — a deal of your own', () => {
+  it('the host picks how many of each card — held to a game both sides can still win', () => {
+    assert.equal(maxFamily(4), 1)
+    assert.equal(maxFamily(6), 2)
+    assert.equal(maxFamily(12), 5)
+    const nine = dealCounts(9, { godfather: false, jester: false, family: 4, doctors: 2, detectives: 2 })
+    assert.deepEqual([nine.family, nine.doctors, nine.detectives, nine.citizens], [3, 2, 2, 2], 'four Family at nine would win at the first sunrise: held to three')
+    const crowded = dealCounts(5, { godfather: false, jester: false, family: 1, doctors: 2, detectives: 2 })
+    assert.equal(crowded.family + crowded.doctors + crowded.detectives + crowded.citizens, 5, 'never more cards than chairs')
+    assert.deepEqual(dealCounts(8, { godfather: false, jester: false }), { family: 2, godfather: false, doctors: 1, detectives: 1, jester: 0, citizens: 4 }, 'untouched, the recommended deal')
+    const opts = options({ family: 3, doctors: 0, detectives: 2 })
+    assert.equal(roleSet(10, opts).filter((r) => r === 'mafia' || r === 'godfather').length, 3)
+    assert.equal(roleSet(10, opts).filter((r) => r === 'doctor').length, 0)
+    assert.equal(options({ family: -2 }).family, null, 'nonsense means "recommended"')
+  })
+
+  it('two Doctors each keep somebody alive, and each remember their own last patient', () => {
+    let state = toNight(table(['mafia', 'doctor', 'doctor', 'villager', 'villager', 'villager']))
+    state = act(state, 'aditi', 'pick', { target: 'meera' })
+    state = act(state, 'rohan', 'pick', { target: 'kabir' })
+    state = act(state, 'khushi', 'pick', { target: 'meera' })
+    state = tick(state)
+    assert.equal(state.dawn!.saved, true, 'the second Doctor saved the target')
+    assert.equal(state.history.find((e) => e.kind === 'saved' && e.by === 'khushi') !== undefined, true, 'and the record says which one')
+    state = tick(tick(state)) // morning, day
+    state = tick(tick(tick(tick(state)))) // vote, the count (nobody named), verdict, night
+    assert.equal(state.phase, 'night')
+    assert.throws(() => act(state, 'khushi', 'pick', { target: 'meera' }), /two nights running/)
+    assert.ok(act(state, 'rohan', 'pick', { target: 'meera' }), 'the other Doctor may')
+  })
+
+  it('two Inspectors share the police file', () => {
+    let state = toNight(table(['mafia', 'detective', 'detective', 'villager', 'villager', 'villager']))
+    state = act(state, 'rohan', 'pick', { target: 'aditi' })
+    state = act(state, 'khushi', 'pick', { target: 'meera' })
+    state = tick(state)
+    assert.equal(state.files.length, 2)
+    assert.equal(view(state, 'khushi').me!.files.length, 2, 'each sees both findings')
+    assert.equal(view(state, 'kabir').me!.files.length, 0, 'nobody else does')
   })
 })
 
@@ -760,6 +802,66 @@ describe('mafia — AI players', () => {
     }
     const share = (counts.get('aditi') ?? 0) / 5000
     assert.ok(share < 0.3, `the first seat gets a fair share, not most of it (${share.toFixed(2)})`)
+  })
+
+  it('somebody missed at the deal takes an AI’s chair — card and all — before the first night', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(2), options({ bots: 3 }), ctx())
+    const roles = state.players.map((p) => p.role).sort()
+    const late = { id: 'late', name: 'Latecomer' }
+    assert.equal((view(state, 'late') as unknown as { joinable: boolean }).joinable, true, 'a watcher is told there is a seat')
+    state = mafia.join!(state, late, ctx())!
+    assert.ok(state, 'they are seated')
+    assert.equal(state.players.length, 5, 'the table is the same size')
+    assert.equal(state.players.filter((p) => p.bot !== undefined).length, 2, 'one AI stood up')
+    assert.deepEqual(state.players.map((p) => p.role).sort(), roles, 'the deal is exactly as balanced as it was')
+    const seat = state.players.find((p) => p.id === 'late')!
+    assert.ok(seat.cover && seat.bot === undefined)
+    assert.ok(!state.seen.includes('late'), 'they still have to look at their card')
+    assert.ok(view(state, 'late').me, 'and now they play')
+    assert.equal(mafia.join!(state, late, ctx()), null, 'not twice')
+    state = tick(state)
+    assert.equal(state.phase, 'night')
+    const night = mafia.join!(state, { id: 'later', name: 'Later' }, ctx())
+    assert.ok(night && view(night, 'later').me, 'the first night is still early enough — a dropped phone comes back then')
+    state = tick(tick(night!))
+    assert.equal(state.phase, 'dawn')
+    assert.equal(mafia.join!(state, { id: 'latest', name: 'Latest' }, ctx()), null, 'by morning it is the next game')
+  })
+
+  it('with no AI to stand up, the story is the last moment to sit down — and the table is dealt again', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(4), options({ story: true }), ctx())
+    assert.equal(state.phase, 'prologue')
+    state = mafia.join!(state, { id: 'late', name: 'Latecomer' }, ctx())!
+    assert.equal(state.players.length, 5)
+    assert.equal(state.players.filter((p) => p.role === 'detective').length, 1, 'dealt again for five: an Inspector now')
+    state = mafia.start(people(4), options(), ctx())
+    assert.equal(state.phase, 'deal')
+    assert.equal(mafia.join!(state, { id: 'late', name: 'Latecomer' }, ctx()), null, 'cards already seen, no AI chair: the next game')
+  })
+
+  it('the AIs have tells: a liar slips now and then, an honest player gets rattled less often — a hint, never proof', () => {
+    clock = 0
+    timers = []
+    const state = mafia.start(people(1), options({ bots: 5 }), ctx())
+    state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager', 'villager'] as Role[])[i]!))
+    const random = (n: number) => Math.floor(Math.random() * n)
+    const rate = (id: string) => {
+      let slips = 0
+      for (let i = 0; i < 4000; i++) if (/This time/.test(texture('talk', sightFor(state, id, null), random))) slips++
+      return slips / 4000
+    }
+    const liar = rate('ai-1')
+    const honest = rate('ai-5')
+    assert.ok(liar > honest * 1.5, `the Family slip more (${liar.toFixed(2)} vs ${honest.toFixed(2)})`)
+    assert.ok(honest > 0.04, 'the honest get rattled too, so a shaky line is not proof')
+    assert.ok(liar < 0.3, 'and it stays rare — most lines are clean')
+    let rough = 0
+    for (let i = 0; i < 2000; i++) if (/^(Look|Hm|I mean|Okay|Honestly)|(…|Anyway\.|I think\.|Yes\.)$/.test(lineByRules('talk', sightFor(state, 'ai-1', null), random))) rough++
+    assert.ok(rough > 100 && rough < 700, `without Luna too, a few lines come out human (${rough} of 2000)`)
   })
 
   it('only people count towards asking to end', () => {

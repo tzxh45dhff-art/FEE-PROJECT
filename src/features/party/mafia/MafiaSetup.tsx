@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 
 import type { Character } from '@/lib/characters'
 import { cn } from '@/lib/utils'
-import { callName, dealLine } from './helpers'
+import { MAX_SPECIALISTS, callName, dealCounts, dealLine, maxFamily } from './helpers'
 import { Portrait } from './Seat'
 import type { MafiaOptions } from './types'
 import { useNoirFonts } from './useNoirFonts'
@@ -36,12 +36,20 @@ export function MafiaSetup({
   const [godfather, setGodfather] = useState(true)
   const [jester, setJester] = useState(false)
   const [story, setStory] = useState(true)
+  /* The host's own deal. Null is "recommended for this many" — and stays that way as people come and go. */
+  const [familyWanted, setFamily] = useState<number | null>(null)
+  const [doctorsWanted, setDoctors] = useState<number | null>(null)
+  const [detectivesWanted, setDetectives] = useState<number | null>(null)
   /* AI regulars fill the empty chairs: enough for a game by default, more if you like. */
   const [aiWanted, setAi] = useState(() => Math.max(0, 4 - players.length))
   const ai = Math.max(0, Math.min(aiWanted, 12 - players.length))
   const n = players.length + ai
   const seats: (Person & { ai?: boolean })[] = [...players, ...Array.from({ length: ai }, (_, i) => ({ id: `ai-${i}`, name: 'AI player', you: false, ai: true }))]
   const can = n >= 4 && n <= 12 && !starting
+  const custom = { godfather, jester, family: familyWanted, doctors: doctorsWanted, detectives: detectivesWanted }
+  const deal = dealCounts(Math.max(4, n), custom)
+  const room = Math.max(4, n) - deal.family - deal.jester
+  const customised = familyWanted !== null || doctorsWanted !== null || detectivesWanted !== null
 
   return (
     <div className="noir noir-room relative flex h-full min-h-0 w-full flex-col overflow-y-auto overflow-x-hidden" data-lenis-prevent>
@@ -100,7 +108,7 @@ export function MafiaSetup({
         {/* The contract. */}
         <div className="noir-paper noir-paper-edge relative rounded-sm px-5 pb-6 pt-5 sm:px-7">
           <p className="font-deco text-[1.5rem] text-[#1c140b]">The terms</p>
-          <p className="font-type text-[0.86rem] text-[#5a4a35]">{dealLine(n, godfather, jester)}</p>
+          <p className="font-type text-[0.86rem] text-[#5a4a35]">{dealLine(n, custom)}</p>
 
           <Field label="AI players">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
@@ -118,6 +126,39 @@ export function MafiaSetup({
                   +
                 </Step>
               </div>
+            </div>
+          </Field>
+
+          <Field label="The cards">
+            <div className="divide-y divide-[#2a2015]/15">
+              <Count
+                title="The Family"
+                note={`up to ${maxFamily(Math.max(4, n))} at this table${deal.godfather ? ' · one is the Godfather' : ''}`}
+                value={deal.family}
+                min={1}
+                max={maxFamily(Math.max(4, n))}
+                onChange={setFamily}
+              />
+              <Count title="Doctors" note="each saves one life a night" value={deal.doctors} min={0} max={Math.min(MAX_SPECIALISTS, room)} onChange={setDoctors} />
+              <Count title="Inspectors" note={deal.detectives > 1 ? 'share one case file' : 'each checks one person a night'} value={deal.detectives} min={0} max={Math.min(MAX_SPECIALISTS, room - deal.doctors)} onChange={setDetectives} />
+            </div>
+            <div className="mt-1.5 flex items-center justify-between gap-3">
+              <p className="font-type text-[0.8rem] text-[#5a4a35]">
+                {deal.citizens} {deal.citizens === 1 ? 'Citizen' : 'Citizens'} fill the other chairs{deal.jester ? ', with a Jester' : ''}.
+              </p>
+              {customised && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFamily(null)
+                    setDoctors(null)
+                    setDetectives(null)
+                  }}
+                  className="font-type min-h-9 shrink-0 rounded-sm px-2 text-[0.8rem] text-[#2b2015] underline underline-offset-2 outline-none hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-[#2a2015]"
+                >
+                  Recommended
+                </button>
+              )}
             </div>
           </Field>
 
@@ -173,7 +214,7 @@ export function MafiaSetup({
               disabled={!can}
               whileHover={can ? { rotate: -8, scale: 1.04 } : undefined}
               whileTap={can ? { scale: 0.92 } : undefined}
-              onClick={() => onStart({ nightSeconds: night, daySeconds: day, voteSeconds: vote, reveal, godfather, jester, together: where === 'table', bots: ai, story })}
+              onClick={() => onStart({ nightSeconds: night, daySeconds: day, voteSeconds: vote, reveal, godfather, jester, together: where === 'table', bots: ai, story, family: familyWanted, doctors: doctorsWanted, detectives: detectivesWanted })}
               className="relative grid size-24 place-items-center rounded-full bg-[radial-gradient(circle_at_35%_30%,#c4362d,#7a1410_70%)] text-[#f7d9c8] shadow-[0_10px_24px_-8px_rgba(80,10,5,.9),inset_0_-4px_10px_rgba(0,0,0,.35)] outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-[#2a2015] focus-visible:ring-offset-2 disabled:opacity-40"
             >
               <span className="absolute inset-2 rounded-full border-2 border-dashed border-[#f7d9c8]/40" />
@@ -181,6 +222,29 @@ export function MafiaSetup({
             </motion.button>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/** A card and how many of it: − and +, held to what this table can take. */
+function Count({ title, note, value, min, max, onChange }: { title: string; note: string; value: number; min: number; max: number; onChange: (n: number) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2">
+      <span className="min-w-0">
+        <span className="font-type block text-[0.92rem] text-[#1c140b]">{title}</span>
+        <span className="font-type block text-[0.76rem] text-[#6a5638]">{note}</span>
+      </span>
+      <div className="flex shrink-0 items-center gap-1">
+        <Step label={`One fewer: ${title}`} disabled={value <= min} onClick={() => onChange(value - 1)}>
+          −
+        </Step>
+        <span className="font-deco w-8 text-center text-[1.3rem] text-[#1c140b]" aria-live="polite">
+          {value}
+        </span>
+        <Step label={`One more: ${title}`} disabled={value >= max} onClick={() => onChange(value + 1)}>
+          +
+        </Step>
       </div>
     </div>
   )

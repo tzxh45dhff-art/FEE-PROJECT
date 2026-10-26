@@ -18,6 +18,10 @@ export type MafiaOptions = {
   bots?: number
   /** Open with the story before the cards. */
   story?: boolean
+  /** The host's own deal; null or absent keeps the recommended count. */
+  family?: number | null
+  doctors?: number | null
+  detectives?: number | null
 }
 
 export type SeatView = {
@@ -81,6 +85,8 @@ export type MafiaView = {
   ready: string[]
   /** Who has read the morning paper or the verdict and wants to move on. */
   next: string[]
+  /** For someone watching: whether a seat is still open to them (before the first night). */
+  joinable?: boolean
   /** The opening story: which page is showing. */
   story: { key: StoryKey; at: number; of: number } | null
   votes: Record<string, string | null>
