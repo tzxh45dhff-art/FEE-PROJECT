@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { Compass } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -7,7 +8,7 @@ import { cn } from '@/lib/utils'
  * can see at a glance that something is already going and join it.
  */
 
-export type GameId = 'mafia' | 'truthdare' | 'draw' | 'knowme' | 'trivia' | 'songquiz' | 'penfight'
+export type GameId = 'mafia' | 'truthdare' | 'draw' | 'knowme' | 'trivia' | 'songquiz' | 'penfight' | 'geo'
 
 type Entry = {
   id: GameId
@@ -20,6 +21,7 @@ type Entry = {
 }
 
 const GAMES: Entry[] = [
+  { id: 'geo', title: 'Somewhere', line: 'A street, a sign, a feeling. Find your place in the world.', players: '1–12', art: '', tone: 'from-emerald-900/60 via-stone-700/20 to-transparent', ready: true },
   { id: 'mafia', title: 'Mafia', line: 'Bombay, 1956. Someone here works for the Family. Find them before morning.', players: '1–12', art: '🎩', tone: 'from-red-900/60 via-stone-800/30 to-transparent', ready: true },
   { id: 'truthdare', title: 'Truth or dare', line: 'The game picks the questions. You pick how spicy.', players: '2+', art: '🍾', tone: 'from-red-500/35 via-rose-600/20 to-transparent', ready: true },
   { id: 'draw', title: 'Draw and guess', line: 'One draws, everyone races to guess.', players: '2+', art: '🎨', tone: 'from-amber-400/50 via-orange-500/20 to-transparent', ready: true },
@@ -93,7 +95,7 @@ export function GamePicker({
               className="relative text-[2.4rem] leading-none transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110"
               style={{ fontFamily: '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif' }}
             >
-              {game.art}
+              {game.id === 'geo' ? <Compass className="size-10 text-[#c9d5b7]" strokeWidth={1.2} /> : game.art}
             </span>
             <span className="relative mt-auto pt-6 font-display text-[1.2rem] font-semibold tracking-[-0.015em] text-chalk">
               {game.title}

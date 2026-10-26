@@ -22,8 +22,11 @@ import { usePageVisible } from '@/hooks/usePageVisible'
 import { cn } from '@/lib/utils'
 import { lazyChunk } from '@/lib/lazyChunk'
 import { petCue } from '@/features/pet/petCues'
+import type { GeoOptions, GeoView } from '@/features/party/geo/types'
 
 const PenFightTable = lazyChunk(() => import('@/features/games/penfight/PenFightTable'))
+const GeoSetup = lazyChunk(() => import('@/features/party/geo/GeoGame').then(m => ({ default: m.GeoSetup })))
+const GeoTable = lazyChunk(() => import('@/features/party/geo/GeoGame').then(m => ({ default: m.GeoTable })))
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -67,6 +70,11 @@ export function GamesStage({
   const party = useParty(roomId)
   const [screen, setScreen] = useState<GameId | 'picker'>('picker')
   const [songQuizStarting, setSongQuizStarting] = useState(false)
+  const [geoStarting, setGeoStarting] = useState(false)
+  const startGeo = async (options: GeoOptions) => {
+    setGeoStarting(true)
+    try { await party.start('geo', options) } finally { setGeoStarting(false) }
+  }
 
   /*
    * When somebody starts a party game, everyone in Play is taken to it — the
@@ -134,7 +142,7 @@ export function GamesStage({
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3, ease: EASE }}
     >
-      <CoverAmbience palette={null} />
+      {screen === 'geo' ? <div className="pointer-events-none absolute inset-0 bg-[#091b15]" /> : <CoverAmbience palette={null} />}
 
       <header className="relative z-10 flex shrink-0 items-center justify-between gap-3 px-5 py-4 [@media(max-height:520px)]:py-1.5">
         <span className="flex min-w-0 items-center gap-2">
@@ -185,9 +193,13 @@ export function GamesStage({
                 !!selfId &&
                 !!partyView?.players?.some((player) => player.id === selfId) &&
                 /* Mafia: the host ends it; anyone else asks the table, from the game's own menu. */
-                (party.party!.game !== 'mafia' || (partyView as { host?: string } | null)?.host === selfId)
+                (party.party!.game !== 'mafia' || (partyView as { host?: string } | null)?.host === selfId) &&
+                (party.party!.game !== 'geo' || (partyView as { host?: string } | null)?.host === selfId ||
+                  (!members.some(m => m.id === (partyView as { host?: string }).host) && partyView?.players?.find(p => members.some(m => m.id === p.id))?.id === selfId))
               }
-              onEnd={() => party.act('end')}
+              onEnd={() => party.party?.game === 'geo'
+                ? party.act('end', { token: (party.party.view as GeoView).token, round: (party.party.view as GeoView).round, attempt: (party.party.view as GeoView).attempt }, 5000)
+                : party.act('end')}
             />
           ) : null}
           {onTogglePanel && (
@@ -223,7 +235,7 @@ export function GamesStage({
       </header>
 
       {/* Marked so the page's smooth scrolling hands the wheel to this panel. */}
-      <div data-lenis-prevent className="relative z-10 min-h-0 flex-1 overflow-y-auto">
+      <div data-lenis-prevent className={cn('relative z-10 min-h-0 flex-1', screen === 'geo' && party.party?.game === 'geo' ? 'overflow-hidden' : 'overflow-y-auto')}>
         {screen === 'picker' && (
           <GamePicker
             live={party.party?.game ?? null}
@@ -233,6 +245,25 @@ export function GamesStage({
             onPick={setScreen}
           />
         )}
+
+        {screen === 'geo' && <Suspense fallback={<div className="grid h-full place-items-center text-mist"><Loader2 className="size-6 animate-spin" /></div>}>
+          {party.party?.game === 'geo' ? <GeoTable
+            key={party.party.session}
+            party={party.party as PartyState<GeoView>}
+            selfId={selfId}
+            act={(action, payload) => party.act(action, payload, 5000)}
+            onJoin={() => void party.join()}
+            presentIds={members.map(m => m.id)}
+            onLeave={() => { void party.dismiss(); setScreen('picker') }}
+            starting={geoStarting}
+            onRematch={() => {
+              const view = party.party!.view as GeoView
+              return startGeo({ ...view.options, opponent: view.options.mode === 'duel' ? view.players.find(p => p.id !== selfId)?.id : undefined })
+            }}
+            error={party.error}
+          /> : party.party ? <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} /> :
+            <GeoSetup people={members} selfId={selfId} starting={geoStarting} onStart={options => void startGeo(options)} error={party.error} />}
+        </Suspense>}
 
         {screen === 'mafia' &&
           (party.party?.game === 'mafia' ? (

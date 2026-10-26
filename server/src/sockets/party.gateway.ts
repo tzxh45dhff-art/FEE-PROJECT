@@ -7,6 +7,7 @@ import { markSeen, seenFor } from '../services/seen.service.js'
 import { drawCanvas, drawGame } from '../games/draw.js'
 import { knowMe } from '../games/knowme.js'
 import { mafia } from '../games/mafia.js'
+import { geoGame } from '../games/geo.js'
 import { trivia } from '../games/trivia.js'
 import { songQuiz } from '../games/songquiz.js'
 import { truthDare } from '../games/truthdare.js'
@@ -39,6 +40,7 @@ const GAMES: Record<string, AnyGame> = {
   [trivia.id]: trivia,
   [songQuiz.id]: songQuiz,
   [mafia.id]: mafia,
+  [geoGame.id]: geoGame,
 }
 
 /**
@@ -202,6 +204,11 @@ export function attachPartyGateway(io: Server) {
     const may = roomGuard(socket, self.id)
     /* A person taps a few times a second at most; a flood is a bug or abuse, and must not take the server down. */
     const allowAct = actLimiter(20, 4_000)
+    const allowGeoPing = actLimiter(8, 4_000)
+    socket.on('geo:ping', (raw: unknown) => {
+      const sent = (raw as { sent?: unknown } | null)?.sent
+      if (typeof sent === 'number' && Number.isFinite(sent) && allowGeoPing()) socket.emit('geo:pong', { sent, serverTime: Date.now() })
+    })
     const watching = new Set<string>()
 
     const unwatch = (roomId: string) => {
@@ -274,6 +281,9 @@ export function attachPartyGateway(io: Server) {
       const players = [...everyone.values()].slice(0, game.maxPlayers)
       const parsed = game.options(body.options)
       if (isError(parsed)) return ack(parsed)
+      if (game.id === 'geo' && parsed.mode === 'duel' && parsed.opponent && !players.slice(1).some(p => p.id === parsed.opponent)) {
+        return ack({ error: 'That friend is no longer available. Pick someone else for the duel.' })
+      }
       const needed = game.minPeople?.(parsed) ?? game.minPlayers
       if (players.length < needed) {
         return ack({ error: `${game.label} needs at least ${needed} ${needed === 1 ? 'person' : 'people'} in the room` })

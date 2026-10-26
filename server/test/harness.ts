@@ -10,7 +10,7 @@
  */
 
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,6 +33,9 @@ export type Harness = {
 
 export async function startServer(): Promise<Harness> {
   const dir = mkdtempSync(join(tmpdir(), 'huddle-test-'))
+  // Prisma's schema engine can fail to create a missing SQLite file on newer
+  // macOS/Node combinations. An empty, uniquely named test file is sufficient.
+  writeFileSync(join(dir, 'test.db'), '')
   const port = 4300 + Math.floor(Math.random() * 600)
   const env = {
     ...process.env,
@@ -47,6 +50,7 @@ export async function startServer(): Promise<Harness> {
     AZURE_EMBEDDING_ENDPOINT: '',
     AZURE_EMBEDDING_API_KEY: '',
     GEMINI_API_KEY: '',
+    GOOGLE_MAPS_SERVER_KEY: '',
     NODE_ENV: 'test',
   }
 

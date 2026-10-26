@@ -60,13 +60,13 @@ export function useParty<V = unknown>(roomId: string) {
   }, [roomId])
 
   const call = useCallback(
-    (event: string, payload: Record<string, unknown>) =>
+    (event: string, payload: Record<string, unknown>, timeoutMs = 90_000) =>
       new Promise<Reply>((resolve) => {
         setError(null)
         /* Generous: building a fresh song mix can take a while the first
            time. But a server restart mid-call must not leave a spinner forever. */
         getSocket()
-          .timeout(90_000)
+          .timeout(timeoutMs)
           .emit(event, { roomId, ...payload }, (err: Error | null, reply: Reply) => {
             const result = err ? { error: 'The server didn’t answer — check your connection and try again' } : (reply ?? {})
             if (result.error) setError(result.error)
@@ -78,7 +78,7 @@ export function useParty<V = unknown>(roomId: string) {
 
   const start = useCallback((game: string, options: unknown) => call('party:start', { game, options }), [call])
   const act = useCallback(
-    (action: string, payload: Record<string, unknown> = {}) => call('party:act', { action, payload }),
+    (action: string, payload: Record<string, unknown> = {}, timeoutMs = 90_000) => call('party:act', { action, payload }, timeoutMs),
     [call],
   )
   const dismiss = useCallback(() => call('party:dismiss', {}), [call])

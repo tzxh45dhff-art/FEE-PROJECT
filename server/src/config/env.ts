@@ -53,6 +53,8 @@ export const env = {
   youtubeApiKey: process.env.YOUTUBE_API_KEY ?? '',
   /** Optional song discovery. Without it Guess the Song uses iTunes metadata. */
   lastfmApiKey: process.env.LASTFM_API_KEY ?? '',
+  /** Optional Somewhere metadata lookup; never returned to the browser. */
+  googleMapsServerKey: process.env.GOOGLE_MAPS_SERVER_KEY ?? '',
   /**
    * Optional: ElevenLabs for the Mafia narrator — a far more human voice than
    * Azure's. Without a key the narrator uses Azure speech, then subtitles.
