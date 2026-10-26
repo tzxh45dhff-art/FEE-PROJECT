@@ -64,7 +64,7 @@ export function MusicStage({
     snapshot,
     connected,
     send,
-    handle,
+    playPause,
     queue,
     setQueue,
     position,
@@ -290,13 +290,7 @@ export function MusicStage({
 
                     <button
                       type="button"
-                      onClick={() =>
-                        snapshot &&
-                        send('music:control', {
-                          action: snapshot.playing ? 'pause' : 'play',
-                          position: handle ? handle.getPosition() : undefined,
-                        })
-                      }
+                      onClick={playPause}
                       aria-label={snapshot?.playing ? 'Pause' : 'Play'}
                       className="grid size-10 shrink-0 place-items-center rounded-full bg-chalk text-void outline-none transition-transform duration-300 hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
                     >

@@ -25,9 +25,10 @@ export type MusicContextValue = {
   /** Live position and duration, sampled for the UI four times a second. */
   position: number
   duration: number
-  /** True while the browser has refused to start audio without a gesture. */
-  needsGesture: boolean
-  acknowledgeGesture: () => void
+  /** True while the browser holds sound back: playing in step, muted, until the first touch. */
+  soundHeld: boolean
+  /** Play or pause for the whole room. */
+  playPause: () => void
   error: string | null
   setError: (message: string | null) => void
 

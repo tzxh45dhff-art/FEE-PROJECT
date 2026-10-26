@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { audioContext, wakeAudio } from '@/features/music/audioGraph'
 import type { AudioHandle } from '@/features/music/types'
 import { apiUrl } from '@/lib/config'
 
@@ -37,7 +38,6 @@ export function TrackPlayer({
   const buffering = useRef(false)
   const [ready, setReady] = useState(false)
 
-  const context = useRef<AudioContext | null>(null)
   const node = useRef<MediaElementAudioSourceNode | null>(null)
 
   const startRef = useRef(startAt)
@@ -90,14 +90,10 @@ export function TrackPlayer({
     const ensureGraph = () => {
       if (node.current) return node.current
       try {
-        /*
-         * Built lazily, on the first handle read after playback has been
-         * allowed. Constructing an AudioContext before any user gesture leaves
-         * it suspended on most browsers, and a suspended context reports
-         * silence — which would look exactly like a broken visualiser.
-         */
-        const ctx = context.current ?? new AudioContext()
-        context.current = ctx
+        /* The page's one graph — see `audioGraph`. If nobody has touched the
+           page yet it is still asleep, which `play` below notices and reports,
+           so the keeper can wait for that first touch. */
+        const ctx = audioContext()
         const created = ctx.createMediaElementSource(element)
         /* Straight to the speakers. The analyser taps this node separately. */
         created.connect(ctx.destination)
@@ -111,11 +107,25 @@ export function TrackPlayer({
     }
 
     const handle: AudioHandle = {
-      play: () => {
-        void context.current?.resume().catch(() => undefined)
-        void element.play().catch(() => undefined)
+      /*
+       * "No" when the browser refused to start, and also when the element
+       * started but the graph it plays through is still asleep — that is
+       * silence too, just quieter about it.
+       */
+      play: async () => {
+        try {
+          await element.play()
+        } catch (cause) {
+          if (cause instanceof DOMException && cause.name === 'NotAllowedError') return false
+        }
+        return node.current ? wakeAudio(node.current.context as AudioContext) : true
       },
       pause: () => element.pause(),
+      setMuted: (muted) => {
+        element.muted = muted
+        if (!muted && node.current) void (node.current.context as AudioContext).resume().catch(() => undefined)
+      },
+      isPlaying: () => !element.paused && !element.ended && element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA,
       seek: (seconds) => {
         element.currentTime = Math.max(0, seconds)
       },
@@ -128,7 +138,7 @@ export function TrackPlayer({
       },
       getPosition: () => element.currentTime || 0,
       getDuration: () => (Number.isFinite(element.duration) ? element.duration : 0),
-      isBuffering: () => buffering.current,
+      isBuffering: () => !element.paused && (buffering.current || element.readyState < HTMLMediaElement.HAVE_FUTURE_DATA),
       isPaused: () => element.paused,
       supportsFineRate: true,
       setVolume: (level) => {
@@ -141,12 +151,15 @@ export function TrackPlayer({
     return () => onHandle(null)
   }, [ready, onHandle])
 
-  /* The element itself is torn down by the source effect above; this is only
-     the audio graph, which outlives any single source. */
+  /* The element itself is torn down by the source effect above. The graph is
+     the page's and stays; this player only unplugs its own node from it. */
   useEffect(
     () => () => {
-      void context.current?.close().catch(() => undefined)
-      context.current = null
+      try {
+        node.current?.disconnect()
+      } catch {
+        /* Already unplugged. */
+      }
       node.current = null
     },
     [],
@@ -169,6 +182,9 @@ export function TrackPlayer({
       }}
       onWaiting={() => {
         buffering.current = true
+      }}
+      onPause={() => {
+        buffering.current = false
       }}
       onPlaying={() => {
         buffering.current = false

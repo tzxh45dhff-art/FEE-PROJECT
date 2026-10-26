@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, Heart, MessagesSquare, Mic, Quote } from 'lucide-react'
+import { ChevronDown, Heart, MessagesSquare, Mic, Quote, VolumeX } from 'lucide-react'
 
 import { CoverHeading } from '@/features/music/CoverHeading'
 import { LyricsPanel } from '@/features/music/LyricsPanel'
@@ -51,11 +51,10 @@ export function NowPlaying({
     snapshot,
     queue,
     send,
-    handle,
     position,
     duration,
-    needsGesture,
-    acknowledgeGesture,
+    soundHeld,
+    playPause,
     error,
     volume,
     setVolume,
@@ -292,14 +291,13 @@ export function NowPlaying({
           </p>
         )}
 
-        {needsGesture && (
-          <button
-            type="button"
-            onClick={acknowledgeGesture}
-            className="rounded-full bg-chalk px-5 py-2.5 text-[0.85rem] font-medium text-void outline-none transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-signal"
-          >
-            Tap to join playback
-          </button>
+        {/* Not a button: the song is already playing, in step, muted until
+            the browser sees a touch — and any touch anywhere brings it up. */}
+        {soundHeld && snapshot.playing && (
+          <p className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-[0.8rem] text-mist">
+            <VolumeX aria-hidden className="size-4" />
+            You’re in sync — tap anywhere for sound
+          </p>
         )}
 
         <div className="w-full max-w-2xl">
@@ -312,12 +310,7 @@ export function NowPlaying({
             volume={volume}
             singing={singalong.singing}
             recording={singalong.recording}
-            onPlayPause={() =>
-              send('music:control', {
-                action: snapshot.playing ? 'pause' : 'play',
-                position: handle ? handle.getPosition() : undefined,
-              })
-            }
+            onPlayPause={playPause}
             onSeek={(seconds) => send('music:control', { action: 'seek', position: seconds })}
             onNext={() => send('music:next', { seq: snapshot.seq })}
             onPrevious={() => send('music:previous', { seq: snapshot.seq })}

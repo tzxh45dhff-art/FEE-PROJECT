@@ -125,3 +125,56 @@ export function youtubeError(code: number) {
       return 'YouTube could not play that video.'
   }
 }
+
+/** 1 is PLAYING in the iframe API's state enum. */
+export const YT_PLAYING = 1
+
+/**
+ * `playVideo()`, with an answer.
+ *
+ * The iframe API returns nothing from `playVideo` — it either starts, or the
+ * browser quietly refuses because nobody has touched the page yet. YouTube
+ * does report the refusal, through `onAutoplayBlocked`; this pairs that event
+ * (and the PLAYING state) with the call that caused it, so the caller can
+ * carry on muted instead of sitting on a still frame. No word either way
+ * within a few seconds reads as "probably fine": a slow load is not a refusal,
+ * and the keeper's watchdog catches one that never starts.
+ */
+export function playWaiter() {
+  let waiting: ((ok: boolean) => void)[] = []
+  const settle = (ok: boolean) => {
+    const done = waiting
+    waiting = []
+    for (const resolve of done) resolve(ok)
+  }
+  return {
+    play(instance: YTPlayer): Promise<boolean> {
+      try {
+        if (instance.getPlayerState?.() === YT_PLAYING) return Promise.resolve(true)
+      } catch {
+        /* Not ready to be asked; try the play anyway. */
+      }
+      return new Promise<boolean>((resolve) => {
+        const answer = (ok: boolean) => {
+          clearTimeout(timer)
+          resolve(ok)
+        }
+        const timer = setTimeout(() => {
+          waiting = waiting.filter((entry) => entry !== answer)
+          resolve(true)
+        }, 4000)
+        waiting.push(answer)
+        try {
+          instance.playVideo()
+        } catch {
+          waiting = waiting.filter((entry) => entry !== answer)
+          answer(true)
+        }
+      })
+    },
+    /** The player reached PLAYING. */
+    started: () => settle(true),
+    /** YouTube says the browser blocked it. */
+    blocked: () => settle(false),
+  }
+}

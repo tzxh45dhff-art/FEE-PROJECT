@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { Loader2, MessagesSquare, Play, WifiOff, X } from 'lucide-react'
+import { Loader2, MessagesSquare, Play, VolumeX, WifiOff, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import * as watchApi from '@/features/watch/api'
@@ -14,6 +14,7 @@ import { WatchBrowser } from '@/features/watch/WatchBrowser'
 import { CoverAmbience } from '@/features/music/CoverAmbience'
 import type { AudioTrackInfo, PlayerHandle, QueueItem, SubtitleTrack } from '@/features/watch/types'
 import { useDriftCorrection } from '@/features/sync/useDriftCorrection'
+import { usePlaybackKeeper } from '@/features/sync/usePlaybackKeeper'
 import { useWatchSession } from '@/features/watch/useWatchSession'
 import { WatchFun } from '@/features/fun/WatchFun'
 import { clock } from '@/features/fun/time'
@@ -81,8 +82,6 @@ export function WatchStage({
   const [queueOpen, setQueueOpen] = useState(false)
   const [canSearch, setCanSearch] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  /** Set when the browser refuses to autoplay — the viewer has to ask for it. */
-  const [needsGesture, setNeedsGesture] = useState(false)
   const [position, setPosition] = useState(0)
   const [duration, setDuration] = useState(0)
   /** Id of a just-added item waiting to be put on. See `onQueued` below. */
@@ -250,14 +249,28 @@ export function WatchStage({
     stageRef.current.requestFullscreen().catch(() => undefined)
   }, [handle])
 
+  /*
+   * Where this screen says the film is, for a play or a pause — but only when
+   * it agrees with the room. A screen that has fallen behind (a stall, a slow
+   * line) pausing the room at *its* position used to drag everyone else back
+   * to it, and every one of them paid a rebuffer for it. Out of step, the
+   * server's own reckoning is the better answer.
+   */
+  const reportedPosition = useCallback(() => {
+    const current = handleRef.current
+    if (!embeddable || !current) return undefined
+    const here = current.getPosition()
+    return Math.abs(here - targetPosition()) <= 1.5 ? here : undefined
+  }, [embeddable, targetPosition])
+
   /** Play or pause for the whole room, from the controls or a click on the picture. */
   const playPause = useCallback(() => {
     if (!snapshot) return
     send('watch:control', {
       action: snapshot.playing ? 'pause' : 'play',
-      position: embeddable && handle ? handle.getPosition() : undefined,
+      position: reportedPosition(),
     })
-  }, [snapshot, send, embeddable, handle])
+  }, [snapshot, send, reportedPosition])
 
   /*
    * A click on the picture plays or pauses; a double-click goes fullscreen.
@@ -290,7 +303,6 @@ export function WatchStage({
      not leave an error sitting over the next one. */
   useEffect(() => {
     setError(null)
-    setNeedsGesture(false)
   }, [item?.id])
 
   useEffect(() => {
@@ -302,78 +314,23 @@ export function WatchStage({
   }, [onClose])
 
   /*
-   * Reconcile play/pause with the room.
-   *
-   * Keyed on the room's intent, not on player events — the player is a
-   * follower here. `needsGesture` covers the case browsers force on us: a late
-   * joiner has not interacted with the page yet, so `play()` is refused and the
-   * only honest response is to ask.
+   * Follow the room, and keep following it — see `usePlaybackKeeper`. No
+   * "tap to join": a browser that will not start sound before a touch gets
+   * the film muted and in step, and the sound at the first touch anywhere.
+   * YouTube pays a rebuffer for every seek, so it is only moved when it is
+   * out by more than a second; a file can be placed much closer for free.
    */
-  useEffect(() => {
-    if (!handle || !snapshot || !embeddable) return
-
-    if (!snapshot.playing) {
-      handle.pause()
-      setNeedsGesture(false)
-      return
-    }
-
-    /*
-     * Nothing is placed until the clock has been measured.
-     *
-     * `targetPosition` is only as good as the offset behind it, and before the
-     * first pong that offset is zero — not "no skew" but "not asked yet". A
-     * snapshot arrives in milliseconds and the first pong does not, so this
-     * used to seek to wherever this device's own clock happened to think the
-     * room was, which is a different wrong place on every machine. It settled
-     * eventually, through the drift correction, which is why it looked like a
-     * few seconds of disagreement at the start and fine thereafter.
-     *
-     * Pausing is exempt: stopping needs no clock, and the room having stopped
-     * is not something worth delaying.
-     */
-    if (!clockReady) return
-
-    handle.seek(targetPosition())
-    handle.setRate(snapshot.rate)
-    handle.play()
-
-    const before = handle.getPosition()
-
-    /*
-     * Checked twice, early and late.
-     *
-     * A phone refuses to start a video with sound until the person has touched
-     * something — that is browser policy, not something this app can talk its
-     * way out of. The refusal is silent: YouTube's API returns nothing to
-     * catch, so the only way to know is that the position has not moved and
-     * the player is not merely loading.
-     *
-     * Waiting the full second and a half to find that out is most of why
-     * opening Watch on a phone showed a still frame with a YouTube logo on it
-     * and no explanation — the invitation to tap arrived long after the person
-     * had already started wondering what was broken. The early look catches a
-     * refusal, which is instant; the later one is still needed for a slow
-     * connection, where six hundred milliseconds of no progress means the
-     * network rather than a policy.
-     */
-    const stalled = () => handle.getPosition() <= before + 0.05 && !handle.isBuffering()
-    const early = setTimeout(() => {
-      if (stalled()) setNeedsGesture(true)
-    }, 600)
-    const check = setTimeout(() => {
-      if (stalled()) setNeedsGesture(true)
-    }, 1400)
-
-    return () => {
-      clearTimeout(early)
-      clearTimeout(check)
-    }
-    /* Keyed on `seq`, not on the snapshot object. A viewer joining rebuilds the
-       snapshot without changing playback, and re-running this would re-seek and
-       re-play the video every time somebody walked in. */
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handle, embeddable, clockReady, snapshot?.seq, snapshot?.playing, snapshot?.rate])
+  const keeper = usePlaybackKeeper({
+    handle,
+    playing: snapshot?.playing ?? false,
+    position: snapshot && !snapshot.playing ? snapshot.position : null,
+    rate: snapshot?.rate,
+    seq: snapshot?.seq ?? -1,
+    clockReady,
+    targetPosition,
+    enabled: embeddable,
+    tolerance: item?.source === 'youtube' ? 1 : 0.5,
+  })
 
   useDriftCorrection({
     handle,
@@ -381,7 +338,7 @@ export function WatchStage({
     rate: snapshot?.rate ?? 1,
     seq: snapshot?.seq ?? -1,
     targetPosition,
-    enabled: embeddable && !needsGesture,
+    enabled: embeddable && clockReady,
   })
 
   /* Local read-out for the scrubber. Deliberately not the drift loop's clock —
@@ -501,6 +458,10 @@ export function WatchStage({
     (playing: boolean) => {
       const room = snapshotRef.current
       if (!room || room.playing === playing) return
+      /* The keeper just started, stopped or unmuted this player itself — a
+         browser can pause a video it is unmuting, and that is nobody asking
+         the room to stop. */
+      if (performance.now() - keeper.touchedAt.current < 1500) return
       /* An ended film pauses itself. That is `watch:ended`'s business, and
          reporting it here as a pause would fight the advance to the next
          thing in the queue. */
@@ -512,10 +473,10 @@ export function WatchStage({
 
       send('watch:control', {
         action: playing ? 'play' : 'pause',
-        position: handleRef.current?.getPosition(),
+        position: reportedPosition(),
       })
     },
-    [send],
+    [send, keeper.touchedAt, reportedPosition],
   )
 
   /*
@@ -715,10 +676,7 @@ export function WatchStage({
             )}
           </div>
 
-          {/* Sits under `needsGesture`, which is a different problem with its
-              own overlay — showing both at once would be two explanations for
-              one stopped video. */}
-          {buffering && !needsGesture && (
+          {buffering && (
             <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center">
               <span className="glass-pill-ink flex items-center gap-2.5 rounded-full px-4 py-2.5">
                 <Loader2 aria-hidden className="size-4 animate-spin text-signal-bright" />
@@ -727,29 +685,19 @@ export function WatchStage({
             </div>
           )}
 
-          {needsGesture && (
-            <button
-              type="button"
-              onClick={() => {
-                handle?.seek(targetPosition())
-                handle?.play()
-                setNeedsGesture(false)
-              }}
-              className="absolute inset-0 z-10 grid place-items-center bg-void/70 backdrop-blur-sm"
-            >
-              <span className="flex flex-col items-center gap-3">
-                <span className="grid size-16 place-items-center rounded-full bg-chalk text-void">
-                  <Play aria-hidden className="size-7 translate-x-0.5 fill-current" />
-                </span>
-                <span className="font-display text-[1.05rem] font-semibold text-chalk">
-                  Tap to join playback
-                </span>
-                <span className="max-w-xs text-center text-[0.8rem] leading-relaxed text-mist">
-                  Your browser blocks video that starts on its own. This drops you straight in at
-                  the room's timestamp.
-                </span>
+          {/*
+            Not a button and not in the way: the film is already playing, in
+            step, just muted because the browser asks for a touch before sound.
+            Any touch anywhere — this note, the picture, a control — brings it
+            back (see `unlock`).
+          */}
+          {keeper.soundHeld && snapshot?.playing && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-28 z-10 flex justify-center px-4">
+              <span className="glass-pill-ink flex items-center gap-2 rounded-full px-4 py-2 text-[0.8rem] text-chalk">
+                <VolumeX aria-hidden className="size-4 text-mist" />
+                Playing in sync, muted — tap anywhere for sound
               </span>
-            </button>
+            </div>
           )}
 
           {error && (

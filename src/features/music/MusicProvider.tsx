@@ -9,6 +9,7 @@ import type { AudioHandle, QueuedTrack } from '@/features/music/types'
 import { useMusicSession } from '@/features/music/useMusicSession'
 import { useSingalong } from '@/features/music/useSingalong'
 import { useDriftCorrection, type DriftTuning } from '@/features/sync/useDriftCorrection'
+import { usePlaybackKeeper } from '@/features/sync/usePlaybackKeeper'
 
 /** Personal, and remembered between sessions. */
 const VOLUME_KEY = 'syncroom.musicVolume'
@@ -65,7 +66,6 @@ export function MusicProvider({
 
   const [handle, setHandle] = useState<AudioHandle | null>(null)
   const [analyserSource, setAnalyserSource] = useState<MediaElementAudioSourceNode | null>(null)
-  const [needsGesture, setNeedsGesture] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [position, setPosition] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -104,7 +104,6 @@ export function MusicProvider({
 
   useEffect(() => {
     setError(null)
-    setNeedsGesture(false)
   }, [track?.id])
 
   useEffect(() => {
@@ -112,42 +111,23 @@ export function MusicProvider({
   }, [handle])
 
   /*
-   * Reconcile playback with the room. Keyed on the room's intent rather than
-   * on player events — the player follows here, it does not lead.
+   * Follow the room and keep following it — the same keeper as the film. No
+   * "tap to join": if the browser will not start sound before a touch, the
+   * song plays muted and in step, and comes up at the first touch anywhere.
+   * Paused when the watch stage takes over (`enabled`), so two soundtracks
+   * never play at once.
    */
-  useEffect(() => {
-    if (!handle || !snapshot) return
-
-    if (!snapshot.playing) {
-      handle.pause()
-      setNeedsGesture(false)
-      return
-    }
-
-    /*
-     * Nothing is placed until the clock has been measured — see the matching
-     * note in WatchStage. Before the first pong the offset is zero, which is
-     * "not asked yet" rather than "no skew", and starting a track from it puts
-     * every device at a different point in the song. The lyrics read their
-     * position from this same clock, so a track started on an unmeasured one
-     * highlights the wrong line for as long as it takes to converge.
-     */
-    if (!clockReady) return
-
-    handle.seek(targetPosition())
-    handle.play()
-
-    const before = handle.getPosition()
-    const check = setTimeout(() => {
-      /* Still parked a moment later means the play was refused, not slow. */
-      if (handle.getPosition() <= before + 0.05 && !handle.isBuffering()) setNeedsGesture(true)
-    }, 1400)
-
-    return () => clearTimeout(check)
-    /* Keyed on `seq` — a listener walking in rebuilds the snapshot without
-       changing playback, and re-running this would re-seek under everyone. */
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handle, clockReady, snapshot?.seq, snapshot?.playing])
+  const keeper = usePlaybackKeeper({
+    handle,
+    playing: (snapshot?.playing ?? false) && enabled,
+    /* Only a real pause lines the song up — not the film taking over. */
+    position: snapshot && !snapshot.playing ? snapshot.position : null,
+    seq: snapshot?.seq ?? -1,
+    clockReady,
+    targetPosition,
+    enabled: Boolean(roomId),
+    tolerance: track?.source === 'youtube' ? 1 : 0.35,
+  })
 
   /*
    * Drift correction — the same engine the film uses.
@@ -168,10 +148,10 @@ export function MusicProvider({
    */
   useDriftCorrection({
     handle,
-    playing: snapshot?.playing ?? false,
+    playing: (snapshot?.playing ?? false) && enabled,
     seq: snapshot?.seq ?? -1,
     targetPosition,
-    enabled: clockReady && !needsGesture,
+    enabled: clockReady,
     tuning: MUSIC_DRIFT,
   })
 
@@ -200,16 +180,11 @@ export function MusicProvider({
   }, [volume, handle])
 
   /*
-   * Stop when the room starts watching something.
-   *
-   * Two soundtracks at once is never what anyone wants, and a film is the one
-   * activity that brings its own. Paused rather than cleared, so the queue and
-   * the position survive and the music picks up where it was afterwards.
+   * Stop when the room starts watching something — through the keeper above,
+   * which treats "the stage is up" as the room being paused. Two soundtracks
+   * at once is never what anyone wants. Paused rather than cleared, so the
+   * queue and the position survive and the music picks up afterwards.
    */
-  useEffect(() => {
-    if (enabled) return
-    handle?.pause()
-  }, [enabled, handle])
 
   const playNow = useCallback(
     (next: QueuedTrack) => send('music:load', { trackId: next.id }),
@@ -320,11 +295,19 @@ export function MusicProvider({
     [send, track],
   )
 
-  const acknowledgeGesture = useCallback(() => {
-    handle?.seek(targetPosition())
-    handle?.play()
-    setNeedsGesture(false)
-  }, [handle, targetPosition])
+  /*
+   * Play or pause for the room. This device's position goes with it only
+   * when it agrees with the room — a listener who has fallen behind pausing
+   * at *their* spot used to pull everyone back to it.
+   */
+  const playPause = useCallback(() => {
+    if (!snapshot) return
+    const here = handle?.getPosition()
+    send('music:control', {
+      action: snapshot.playing ? 'pause' : 'play',
+      position: here !== undefined && Math.abs(here - targetPosition()) <= 1.5 ? here : undefined,
+    })
+  }, [snapshot, handle, send, targetPosition])
 
   const value = useMemo<MusicContextValue>(
     () => ({
@@ -338,8 +321,8 @@ export function MusicProvider({
       handle,
       position,
       duration,
-      needsGesture,
-      acknowledgeGesture,
+      soundHeld: keeper.soundHeld,
+      playPause,
       error,
       setError,
       volume,
@@ -361,8 +344,8 @@ export function MusicProvider({
       handle,
       position,
       duration,
-      needsGesture,
-      acknowledgeGesture,
+      keeper.soundHeld,
+      playPause,
       error,
       volume,
       analyserSource,

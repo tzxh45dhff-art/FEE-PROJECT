@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 
 import {
   loadYouTubeApi,
+  playWaiter,
   youtubeError,
+  YT_PLAYING,
   type YTPlayer,
 } from '@/features/watch/players/youtubeApi'
 import type { AudioHandle } from '@/features/music/types'
@@ -52,6 +54,8 @@ export function YouTubeTrackPlayer({
   const player = useRef<YTPlayer | null>(null)
   const buffering = useRef(false)
   const [ready, setReady] = useState(false)
+  /** Answers each `play()`: started, or blocked by the browser. */
+  const waiter = useRef(playWaiter())
 
   const videoRef = useRef(videoId)
   videoRef.current = videoId
@@ -150,12 +154,17 @@ export function YouTubeTrackPlayer({
                 if (disposed) return
                 try {
                   buffering.current = data === YT.PlayerState.BUFFERING
+                  if (data === YT.PlayerState.PLAYING) waiter.current.started()
                   /* Only when this player is the room's — a paused, inactive
                      player reaching its end must not advance the queue. */
                   if (data === YT.PlayerState.ENDED && activeRef.current) endedRef.current()
                 } catch {
                   /* As above. */
                 }
+              },
+              /* Refused sound before a touch — see the watch player. */
+              onAutoplayBlocked: () => {
+                if (!disposed) waiter.current.blocked()
               },
               onError: ({ data }) => {
                 if (disposed) return
@@ -224,8 +233,10 @@ export function YouTubeTrackPlayer({
   useEffect(() => {
     if (!ready || !player.current) return
     if (!active) {
-      /* Not ours to drive any more — stop making noise and stand down. */
+      /* Not ours to drive any more — stop making noise and stand down. Muted
+         first: a pause that lands mid-load can be dropped, a mute cannot. */
       try {
+        player.current.mute()
         player.current.pauseVideo()
       } catch {
         /* Already gone. */
@@ -234,9 +245,18 @@ export function YouTubeTrackPlayer({
     }
 
     const instance = player.current
+    /* Back in charge, so undo the stand-down mute. The keeper mutes it again
+       itself if the browser is still holding sound back. */
+    try {
+      instance.unMute()
+    } catch {
+      /* Already gone. */
+    }
     const handle: AudioHandle = {
-      play: () => instance.playVideo(),
+      play: () => waiter.current.play(instance),
       pause: () => instance.pauseVideo(),
+      setMuted: (muted) => (muted ? instance.mute() : instance.unMute()),
+      isPlaying: () => instance.getPlayerState?.() === YT_PLAYING,
       seek: (seconds) => instance.seekTo(Math.max(0, seconds), true),
       /* Nothing to do. YouTube honours only its own list — 0.25, 0.5, 0.75,
          1, 1.25 and up — so there is no such thing as a 2% nudge here, and

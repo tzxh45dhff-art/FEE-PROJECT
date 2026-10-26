@@ -71,6 +71,16 @@ export function FilePlayer({
   const video = useRef<HTMLVideoElement>(null)
   const buffering = useRef(false)
   const [ready, setReady] = useState(false)
+  /* False once this player is on its way out. A video torn down for the next
+     one still fires a last `pause`, and that is not anybody asking the room
+     to stop. */
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+    }
+  }, [])
 
   /* The hls.js instance backing the current source, or null off of it — the
      handle reads audio tracks through this rather than through closure state,
@@ -282,8 +292,19 @@ export function FilePlayer({
     }
 
     const handle: PlayerHandle = {
-      play: () => void element.play().catch(() => undefined),
+      /* Only a policy refusal counts as "no" — an AbortError just means a
+         newer load or pause overtook this play, which is not the browser
+         holding sound back. */
+      play: () =>
+        element.play().then(
+          () => true,
+          (cause: unknown) => !(cause instanceof DOMException && cause.name === 'NotAllowedError'),
+        ),
       pause: () => element.pause(),
+      setMuted: (muted) => {
+        element.muted = muted
+      },
+      isPlaying: () => !element.paused && !element.ended && element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA,
       seek: (seconds) => {
         element.currentTime = Math.max(0, seconds)
       },
@@ -292,7 +313,10 @@ export function FilePlayer({
       },
       getPosition: () => element.currentTime || 0,
       getDuration: () => (Number.isFinite(element.duration) ? element.duration : 0),
-      isBuffering: () => buffering.current,
+      /* Read from the element as well as the events: a stall that ended in a
+         pause never fires `playing`, and a flag left up would hold off every
+         recovery after it. */
+      isBuffering: () => !element.paused && (buffering.current || element.readyState < HTMLMediaElement.HAVE_FUTURE_DATA),
       isPaused: () => element.paused,
       supportsFineRate: true,
       getAudioTracks,
@@ -337,8 +361,13 @@ export function FilePlayer({
        * and re-broadcasting a pause it already knows about is a no-op, where
        * missing one is the bug above.
        */
-      onPause={() => onIntentRef.current?.(false)}
-      onPlay={() => onIntentRef.current?.(true)}
+      onPause={() => {
+        buffering.current = false
+        if (alive.current) onIntentRef.current?.(false)
+      }}
+      onPlay={() => {
+        if (alive.current) onIntentRef.current?.(true)
+      }}
       onWaiting={() => {
         buffering.current = true
       }}

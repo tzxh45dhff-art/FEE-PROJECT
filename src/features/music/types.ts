@@ -126,8 +126,13 @@ export const trackKey = (track: { source: string; ref: string }) =>
  * which is playing.
  */
 export type AudioHandle = {
-  play: () => void
+  /** Start playing. Resolves false only when the browser refused to make sound. */
+  play: () => Promise<boolean>
   pause: () => void
+  /** Used while the browser holds sound back; the room's volume is separate. */
+  setMuted: (muted: boolean) => void
+  /** Actually advancing — not loading, not cued, not paused. */
+  isPlaying: () => boolean
   seek: (seconds: number) => void
   /**
    * Nudge playback speed to soak up small drift.

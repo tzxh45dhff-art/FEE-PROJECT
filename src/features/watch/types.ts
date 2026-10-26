@@ -99,8 +99,17 @@ export type SearchResult = {
  * at all — which is what leaves room for Vimeo or Twitch to drop in later.
  */
 export type PlayerHandle = {
-  play: () => void
+  /**
+   * Start playing. Resolves false only when the browser refused — it will not
+   * start sound before the person has touched the page — so the caller can
+   * carry on muted instead of stopping.
+   */
+  play: () => Promise<boolean>
   pause: () => void
+  /** Personal and temporary: used while the browser holds sound back. */
+  setMuted: (muted: boolean) => void
+  /** Actually advancing — not loading, not cued after a skip, not paused. */
+  isPlaying: () => boolean
   seek: (seconds: number) => void
   setRate: (rate: number) => void
   /** Seconds into the media, or 0 before it is ready. */

@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 
 import {
   loadYouTubeApi,
+  playWaiter,
   youtubeError,
+  YT_PLAYING,
   type YTPlayer,
 } from '@/features/watch/players/youtubeApi'
 import type { PlayerHandle, SubtitleTrack } from '@/features/watch/types'
@@ -47,6 +49,8 @@ export function YouTubePlayer({
   const player = useRef<YTPlayer | null>(null)
   const buffering = useRef(false)
   const [ready, setReady] = useState(false)
+  /** Answers each `play()`: started, or blocked by the browser. */
+  const waiter = useRef(playWaiter())
 
   const videoRef = useRef(videoId)
   videoRef.current = videoId
@@ -184,6 +188,7 @@ export function YouTubePlayer({
                 if (disposed) return
                 try {
                   buffering.current = data === YT.PlayerState.BUFFERING
+                  if (data === YT.PlayerState.PLAYING) waiter.current.started()
                   /* Caption tracks are only known once a video is actually
                      playing; ask for them once per video. */
                   if (data === YT.PlayerState.PLAYING && captionsFor.current !== loadedVideo.current) {
@@ -224,6 +229,11 @@ export function YouTubePlayer({
                 } catch {
                   /* As above. */
                 }
+              },
+              /* The browser would not let it start with sound. Said out loud
+                 here so the keeper can run it muted, in step, until a tap. */
+              onAutoplayBlocked: () => {
+                if (!disposed) waiter.current.blocked()
               },
               onError: ({ data }) => {
                 if (disposed) return
@@ -316,8 +326,10 @@ export function YouTubePlayer({
       /* Already gone. */
     }
     const handle: PlayerHandle = {
-      play: () => instance.playVideo(),
+      play: () => waiter.current.play(instance),
       pause: () => instance.pauseVideo(),
+      setMuted: (muted) => (muted ? instance.mute() : instance.unMute()),
+      isPlaying: () => instance.getPlayerState?.() === YT_PLAYING,
       seek: (seconds) => instance.seekTo(Math.max(0, seconds), true),
       setRate: (rate) => instance.setPlaybackRate(rate),
       getPosition: () => instance.getCurrentTime() || 0,
