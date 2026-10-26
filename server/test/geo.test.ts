@@ -323,7 +323,7 @@ describe('Somewhere provider boundary', () => {
       () => 0,
     )
     assert.equal(unavailable.length, 0)
-    assert.ok(calls <= 42)
+    assert.ok(calls <= 96)
   })
   it('does not accept duplicate panoramas or invalid provider coordinates', async () => {
     const duplicate = await buildGeoRoute(
@@ -356,6 +356,64 @@ describe('Somewhere provider boundary', () => {
         !e.message.includes('test-only-key') &&
         !e.message.includes('private details'),
     )
+  })
+  it('rejects contributed imagery before it can become an unrenderable round', async () => {
+    let calls = 0
+    const request = (async () => {
+      calls++
+      return new Response(
+        JSON.stringify({
+          status: 'OK',
+          pano_id: 'contributed',
+          location: { lat: 1, lng: 2 },
+          copyright: 'Test contributor',
+        }),
+      )
+    }) as typeof fetch
+    const result = await lookupGeo({ lat: 1, lng: 2 }, 'test-only-key', undefined, request)
+    assert.equal(result.status, 'ZERO_RESULTS')
+    assert.equal(calls, 1)
+  })
+  it('revalidates a Google panorama ID and rejects an expired ID', async () => {
+    let calls = 0
+    const request = (async () => {
+      calls++
+      return new Response(
+        JSON.stringify(
+          calls === 1 ? { status: 'OK', pano_id: 'retired', copyright: '© 2026 Google' } : { status: 'ZERO_RESULTS' },
+        ),
+      )
+    }) as typeof fetch
+    assert.equal((await lookupGeo({ lat: 1, lng: 2 }, 'test-only-key', undefined, request)).status, 'ZERO_RESULTS')
+    assert.equal(calls, 2)
+  })
+  it('scores the confirmed camera position and resamples failed regions without repeating successful ones', async () => {
+    let calls = 0
+    const request = (async () => {
+      calls++
+      return new Response(
+        JSON.stringify({
+          status: 'OK',
+          pano_id: 'verified',
+          location: { lat: calls === 1 ? 1 : 1.1, lng: 2 },
+          copyright: '© 2026 Google',
+        }),
+      )
+    }) as typeof fetch
+    assert.equal((await lookupGeo({ lat: 1, lng: 2 }, 'test-only-key', undefined, request)).location!.lat, 1.1)
+    let count = 0
+    const route = await buildGeoRoute(
+      'india',
+      5,
+      new Set(),
+      async (p) => {
+        count++
+        return count <= 33 ? { status: 'ZERO_RESULTS' } : { status: 'OK', pano_id: `retry-${count}`, location: p }
+      },
+      () => 0,
+    )
+    assert.equal(route.length, 5)
+    assert.equal(new Set(route.map((x) => x.seed)).size, 5)
   })
 })
 

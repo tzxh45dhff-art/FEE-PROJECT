@@ -156,24 +156,35 @@ const seeds = (map: GeoOptions['map']): Seed[] => {
   }))
 }
 
-export type Metadata = { status?: string; pano_id?: string; location?: Point }
+export type Metadata = { status?: string; pano_id?: string; location?: Point; copyright?: string }
 export async function lookupGeo(
   point: Point,
   key: string,
   signal?: AbortSignal,
   request: typeof fetch = fetch,
 ): Promise<Metadata> {
-  const query = new URLSearchParams({ location: `${point.lat},${point.lng}`, radius: '12000', source: 'outdoor', key })
-  const response = await request(`https://maps.googleapis.com/maps/api/streetview/metadata?${query}`, {
-    signal: signal ?? AbortSignal.timeout(4000),
-  })
-  if (!response.ok) throw new Error('Street View lookup is unavailable. Try again shortly.')
-  const result = (await response.json()) as Metadata
-  if (result.status === 'REQUEST_DENIED')
-    throw new Error('Street View access was denied. Check the server key, API restrictions and billing setup.')
-  if (result.status === 'OVER_QUERY_LIMIT' || result.status === 'OVER_DAILY_LIMIT')
-    throw new Error('Street View lookup has reached its limit. The host needs to check Google Maps usage.')
-  return result
+  const budget = signal ?? AbortSignal.timeout(4000)
+  const read = async (parameters: Record<string, string>) => {
+    const query = new URLSearchParams({ ...parameters, key })
+    const response = await request(`https://maps.googleapis.com/maps/api/streetview/metadata?${query}`, {
+      signal: budget,
+    })
+    if (!response.ok) throw new Error('Street View lookup is unavailable. Try again shortly.')
+    const result = (await response.json()) as Metadata
+    if (result.status === 'REQUEST_DENIED')
+      throw new Error('Street View access was denied. Check the server key, API restrictions and billing setup.')
+    if (result.status === 'OVER_QUERY_LIMIT' || result.status === 'OVER_DAILY_LIMIT')
+      throw new Error('Street View lookup has reached its limit. The host needs to check Google Maps usage.')
+    return result
+  }
+  const candidate = await read({ location: `${point.lat},${point.lng}`, radius: '12000', source: 'outdoor' })
+  if (candidate.status !== 'OK' || !candidate.pano_id) return candidate
+  // A location lookup can return a contributed/retired panorama whose tiles are
+  // black in the JS viewer. Accept Google-attributed imagery and resolve the ID
+  // itself before admitting it to a round. Both requests are metadata-only.
+  if (!/\bGoogle\b/.test(candidate.copyright ?? '')) return { status: 'ZERO_RESULTS' }
+  const verified = await read({ pano: candidate.pano_id })
+  return verified.status === 'OK' && /\bGoogle\b/.test(verified.copyright ?? '') ? verified : { status: 'ZERO_RESULTS' }
 }
 
 /** Bounded, country/region-balanced lookup. Metadata stays in this session only. */
@@ -215,9 +226,19 @@ export async function buildGeoRoute(
       if (next) ordered.push(next)
     }
   const route: GeoLocation[] = []
-  // Three concurrent requests, at most 42 attempts; no imagery is prefetched.
-  for (let i = 0; i < Math.min(42, ordered.length) && route.length < count; i += 3) {
-    const batch = ordered.slice(i, i + Math.min(3, count - route.length))
+  // A fresh jitter on later passes finds roads beside rejected contributions.
+  // Never repeat a successful region within a game. Three concurrent lookups,
+  // at most 96 candidates, still within prepare()'s 25-second total budget.
+  const candidates = Array.from({ length: 4 }, () => ordered).flat()
+  let checked = 0
+  for (let i = 0; i < candidates.length && checked < 96 && route.length < count;) {
+    const batch: Seed[] = []
+    while (i < candidates.length && checked < 96 && batch.length < Math.min(3, count - route.length)) {
+      const seed = candidates[i++]!
+      if (route.some((x) => x.seed === seed.id)) continue
+      batch.push(seed)
+      checked += 1
+    }
     const found = await Promise.all(
       batch.map(async (seed) => {
         const jitter = () => (random(10_001) / 10_000 - 0.5) * 0.13
@@ -251,7 +272,8 @@ export async function buildGeoRoute(
         }
       }),
     )
-    for (const item of found) if (item && !route.some((x) => x.pano === item.pano)) route.push(item)
+    for (const item of found)
+      if (item && !route.some((x) => x.pano === item.pano || x.seed === item.seed)) route.push(item)
   }
   return route.slice(0, count)
 }

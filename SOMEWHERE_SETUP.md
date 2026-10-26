@@ -10,9 +10,9 @@ Scoring is Huddle's own: 5,000 points within 25m, otherwise `min(4999, round(500
 
 Moving is the default exploration setting in both the setup screen and server options. During a Moving round, Back to start restores the starting panorama, heading, pitch and zoom on the existing viewer. The phone control has a minimum 44px tap target.
 
-## Google setup — pending
+## Google setup
 
-No cloud resources, billing settings or real credentials were changed. There are no new runtime packages or database migrations.
+The owner supplied the local credentials and a live test passed on 26 October 2026. Deployment environments still need their own configuration. No cloud resources or billing settings were changed by this work. There are no new runtime packages or database migrations.
 
 Create two restricted credentials in the owner's approved Google Cloud project:
 
@@ -56,7 +56,9 @@ The game uses its own rate-limited clock ping, calibrating a monotonic countdown
 - The real socket integration verifies that missing map configuration is reported clearly and does not block an existing game.
 - The full server regression suite uses fresh synthetic databases and disables paid providers. Its harness now creates an empty disposable SQLite file explicitly because Prisma's schema engine failed to create missing files on this machine. Existing databases are not used.
 - Desktop and 375px phone setup were inspected in the real app on scratch ports 4100/5180. Gameplay, map expansion, pin confirmation, loading, errors, reveals and recap can be checked with an isolated SDK fixture in the ignored `server/.cache` directory. Fixture graphics are explicitly labelled and never shipped as game imagery.
-- **Real Google imagery, restrictions, road navigation, coverage quality, on-device GPU performance and observed billing remain unverified until keys are available.** A metadata match confirms availability, not photographic quality; the seed pool needs a real-image review during that final pass. Region labels are approximate search-region labels, not reverse-geocoded addresses.
+- Live Google testing passed on scratch ports 4100/5180 at desktop and 375px phone widths: World imagery and map rendering, road navigation, panning, return to the original panorama/heading, India imagery, saved guesses, scored reveals, deadline auto-submit and the final recap. A complete three-stop India route finished successfully. No API keys were printed or committed.
+- The first live route exposed a contributed panorama that rendered black. Location selection now accepts Google-attributed candidates only, revalidates their panorama IDs through metadata, and resamples nearby coordinates for rejected regions. It is bounded to 96 candidates, three concurrent lookups and a 25-second route budget; imagery is never bulk-prefetched. A cold seven-location India validation probe took about 17 seconds on this connection.
+- Physical phone GPU performance, all possible locations, production referrer restrictions and actual billing totals remain unverified. Region labels are approximate search-region labels, not reverse-geocoded addresses.
 - Current SDK panoramas disclose location data to the browser. Scoring and other players' private guesses are protected by the server; this is a friends game, not a cheat-proof ranked system. Sessions persist through a client reconnect, but an API restart ends in-memory games, like the other party games.
 - Team Duels, daily challenges and themed routes remain follow-up features from the plan.
 
