@@ -21,6 +21,9 @@ import { getSocket } from '@/lib/socket'
 import { cn } from '@/lib/utils'
 import type { PartyState } from '../useParty'
 import { GeoMapCanvas, GeoPanorama } from './GeoCanvas'
+import { CountUp, DistancePill, RoundIntro, SoundToggles } from './GeoMoments'
+import { useGeoSound } from './useGeoSound'
+import { sfx } from './geoSound'
 import { hasBrowserMapsKey } from './mapsSdk'
 import { useGeoClock } from './useGeoClock'
 import { COLORS, formatDistance, MOVEMENT, type GeoAct, type GeoOptions, type GeoView, type Point } from './types'
@@ -349,6 +352,7 @@ export function GeoTable({
   const [pinSaved, setPinSaved] = useState(true)
   const [sceneReady, setSceneReady] = useState(false)
   const clock = useGeoClock(party)
+  useGeoSound(v, clock, v.players.some((p) => p.id === (selfId ?? '')))
   const revision = useRef(v.revision)
   const pendingPin = useRef<{ point: Point; revision: number } | null>(null)
   const mine = selfId ?? ''
@@ -420,6 +424,7 @@ export function GeoTable({
   }, [sendDraft])
   const onPin = (p: Point) => {
     if (!eligible || locked || v.phase !== 'playing') return
+    sfx.pin()
     setPoint(p)
     setPinSaved(false)
     setMessage(null)
@@ -451,6 +456,7 @@ export function GeoTable({
     let result = await act('guess', payload)
     if (result.error && /didn’t answer/.test(result.error)) result = await act('guess', payload)
     if (result.error) setMessage(result.error)
+    else sfx.lock()
     setBusy(false)
   }
   const result = v.history[historyIndex >= 0 ? historyIndex : v.history.length - 1]
@@ -517,6 +523,7 @@ export function GeoTable({
           </span>
           <strong>{v.phase === 'over' ? v.history.length : v.deadline ? timer : '—'}</strong>
         </div>
+        <SoundToggles />
         {!reveal && (
           <div className="geo-compass" title="View heading">
             <Navigation size={18} style={{ transform: `rotate(${-heading}deg)` }} />
@@ -540,19 +547,23 @@ export function GeoTable({
           ))}
         </div>
       )}
-      {(v.phase === 'loading' || v.phase === 'countdown' || v.phase === 'blocked') && (
+      {v.phase === 'countdown' && (
+        <RoundIntro
+          round={v.round + 1}
+          of={v.options.rounds}
+          seconds={seconds}
+          label={v.options.mode === 'duel' ? 'Duel' : v.options.map === 'india' ? 'Incredible India' : 'The world'}
+        />
+      )}
+      {(v.phase === 'loading' || v.phase === 'blocked') && (
         <div className="geo-loading-card" role="status">
-          {v.phase === 'countdown' ? (
-            <strong className="geo-countdown">{Math.max(1, seconds)}</strong>
-          ) : v.phase === 'blocked' ? (
+          {v.phase === 'blocked' ? (
             <Compass size={30} />
           ) : (
             <Loader2 className="animate-spin" size={25} />
           )}
           <h2>
-            {v.phase === 'countdown'
-              ? 'Take a good look.'
-              : v.phase === 'blocked'
+            {v.phase === 'blocked'
                 ? 'Let’s find our bearings.'
                 : 'A new road is waiting.'}
           </h2>
@@ -610,6 +621,9 @@ export function GeoTable({
           )}
         </div>
         <div className="geo-map-surface">
+          {v.phase === 'reveal' && result && player && (
+            <DistancePill km={result.guesses[focus ?? mine]?.distance} round={result.round} />
+          )}
           <GeoMapCanvas
             attempt={v.attempt}
             point={point}
@@ -710,7 +724,9 @@ export function GeoTable({
                     <strong>
                       {v.phase === 'over'
                         ? (v.options.mode === 'duel' ? v.health[p.id] : v.scores[p.id]).toLocaleString()
-                        : `+${guessResult?.points.toLocaleString() ?? 0}`}
+                        : (
+                          <CountUp value={guessResult?.points ?? 0} round={result?.round ?? v.round} mine={p.id === mine} km={guessResult?.distance} />
+                        )}
                     </strong>
                     <small>
                       {v.phase === 'over'

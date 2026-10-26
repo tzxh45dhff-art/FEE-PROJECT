@@ -25,13 +25,14 @@ type Marker = MapsObject & {
   setPosition(p: Point): void
   getPosition(): LatLng | undefined
 }
-type Polyline = { setMap(map: GeoMap | null): void }
+type Polyline = { setMap(map: GeoMap | null): void; setPath(path: Point[]): void }
 export type MapsSdk = {
   Map: new (element: HTMLElement, options: Record<string, unknown>) => GeoMap
   StreetViewPanorama: new (element: HTMLElement, options: Record<string, unknown>) => Panorama
   Marker: new (options: Record<string, unknown>) => Marker
   Polyline: new (options: Record<string, unknown>) => Polyline
   SymbolPath: { CIRCLE: number }
+  Animation?: { DROP: number; BOUNCE: number }
   event: { trigger(object: MapsObject, event: string): void; clearInstanceListeners(object: MapsObject): void }
 }
 type MapsWindow = Window & { google?: { maps?: MapsSdk }; __huddleGeoReady?: () => void; gm_authFailure?: () => void }

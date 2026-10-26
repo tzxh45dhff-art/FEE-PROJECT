@@ -1295,6 +1295,169 @@
     margin-top: 0;
   }
 }
+/* ── sound switches ─────────────────────────────────────────────────── */
+.geo-sound {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid #ffffff20;
+  background: #10251fe8;
+  pointer-events: auto;
+}
+.geo-sound button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 7px;
+  color: var(--geo-ink);
+  transition: background 0.2s, color 0.2s, opacity 0.2s;
+}
+.geo-sound button:hover {
+  background: #ffffff14;
+}
+.geo-sound button:focus-visible {
+  outline: 2px solid var(--geo-accent);
+  outline-offset: 1px;
+}
+.geo-sound button.off {
+  color: var(--geo-muted);
+  opacity: 0.55;
+  position: relative;
+}
+.geo-sound button.off::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 2px;
+  background: currentColor;
+  transform: rotate(-45deg);
+  border-radius: 2px;
+}
+
+/* ── the last ten seconds ───────────────────────────────────────────── */
+.geo-timer.urgent strong {
+  animation: geo-pulse 1s ease-in-out infinite;
+}
+@keyframes geo-pulse {
+  0%, 100% { transform: scale(1); }
+  12% { transform: scale(1.14); }
+}
+
+/* ── the round intro ────────────────────────────────────────────────── */
+.geo-intro {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse at center, #0a1a15a8 0%, #0a1a1566 55%, transparent 100%);
+  pointer-events: none;
+}
+.geo-intro-card {
+  text-align: center;
+  padding: 26px 40px 24px;
+  border-radius: 18px;
+  background: #10251ff2;
+  border: 1px solid #b5c5a638;
+  box-shadow: 0 24px 80px #0007;
+  min-width: min(320px, calc(100vw - 40px));
+}
+.geo-intro-kicker {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--geo-muted);
+}
+.geo-intro-card h2 {
+  margin-top: 6px;
+  font-family: Archivo, sans-serif;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.geo-intro-card h2 b {
+  color: var(--geo-accent);
+}
+.geo-intro-card h2 span {
+  color: var(--geo-muted);
+  font-weight: 600;
+}
+.geo-intro-count {
+  position: relative;
+  height: 120px;
+  display: grid;
+  place-items: center;
+}
+.geo-intro-count strong {
+  position: absolute;
+  font-family: Archivo, sans-serif;
+  font-size: 104px;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--geo-ink);
+  text-shadow: 0 8px 40px #ef795c66;
+}
+.geo-intro-card p {
+  color: var(--geo-muted);
+  font-size: 13px;
+}
+
+/* ── the reveal ─────────────────────────────────────────────────────── */
+.geo-distance-pill {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 3;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #10251ff2;
+  border: 1px solid #ef795c66;
+  font-family: Archivo, sans-serif;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--geo-ink);
+  white-space: nowrap;
+  box-shadow: 0 10px 30px #0006;
+  pointer-events: none;
+}
+.geo-distance-pill span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--geo-muted);
+}
+@media (max-width: 650px) {
+  .geo-intro-card {
+    padding: 20px 24px 18px;
+  }
+  .geo-intro-card h2 {
+    font-size: 24px;
+  }
+  .geo-intro-count {
+    height: 96px;
+  }
+  .geo-intro-count strong {
+    font-size: 84px;
+  }
+  .geo-sound button {
+    width: 34px;
+    height: 34px;
+  }
+  /* Room for the sound switches: the brand keeps only its compass, the round stays on one line. */
+  .geo-hud {
+    gap: 8px;
+  }
+  .geo-hud-brand > span {
+    display: none;
+  }
+  .geo-round strong {
+    white-space: nowrap;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .geo-setup *,
   .geo-table * {

@@ -153,6 +153,27 @@ export function GeoPanorama({
   )
 }
 
+/** How long the reveal lines take to reach the answer. */
+export const REVEAL_LINE_MS = 1_100
+
+/** A point part-way along the great circle from `a` to `b`. */
+function along(a: Point, b: Point, t: number): Point {
+  const rad = Math.PI / 180
+  const toVec = (p: Point) => [Math.cos(p.lat * rad) * Math.cos(p.lng * rad), Math.cos(p.lat * rad) * Math.sin(p.lng * rad), Math.sin(p.lat * rad)]
+  const va = toVec(a)
+  const vb = toVec(b)
+  const dot = Math.min(1, Math.max(-1, va[0]! * vb[0]! + va[1]! * vb[1]! + va[2]! * vb[2]!))
+  const angle = Math.acos(dot)
+  if (angle < 1e-9) return b
+  const s = Math.sin(angle)
+  const wa = Math.sin((1 - t) * angle) / s
+  const wb = Math.sin(t * angle) / s
+  const x = wa * va[0]! + wb * vb[0]!
+  const y = wa * va[1]! + wb * vb[1]!
+  const z = wa * va[2]! + wb * vb[2]!
+  return { lat: Math.atan2(z, Math.hypot(x, y)) / rad, lng: Math.atan2(y, x) / rad }
+}
+
 export function GeoMapCanvas({
   point,
   onPin,
@@ -178,6 +199,11 @@ export function GeoMapCanvas({
   callbacks.current = { onPin, disabled, result }
   const [loaded, setLoaded] = useState(false)
   const [boot, setBoot] = useState(0)
+  /*
+   * When this round's reveal began. Party updates redraw the map many times a
+   * round; the reveal resumes from here rather than restarting or skipping.
+   */
+  const reveal = useRef<{ round: number; start: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     if (attempt > 0 && !map.current) setBoot((n) => n + 1)
@@ -238,18 +264,20 @@ export function GeoMapCanvas({
   useEffect(() => {
     if (!loaded || !map.current) return
     let cancelled = false
+    let raf = 0
     let cleanup = () => {}
     void loadMaps().then((sdk) => {
       if (cancelled || !map.current) return
       const canvas = map.current
       const markers: InstanceType<typeof sdk.Marker>[] = []
       const lines: InstanceType<typeof sdk.Polyline>[] = []
-      const marker = (p: Point, color: string, title: string, label?: string, draggable = false) => {
+      const marker = (p: Point, color: string, title: string, label?: string, draggable = false, drop = false) => {
         const m = new sdk.Marker({
           map: canvas,
           position: p,
           title,
           draggable,
+          animation: drop ? sdk.Animation?.DROP : undefined,
           label: label ? { text: label, color: '#102925', fontWeight: '700', fontSize: '11px' } : undefined,
           icon: {
             path: sdk.SymbolPath.CIRCLE,
@@ -268,25 +296,51 @@ export function GeoMapCanvas({
         markers.push(m)
       }
       if (result) {
-        marker(result.location, '#142f29', 'Actual location', '•')
-        for (const [i, player] of players.entries()) {
+        /*
+         * A new reveal plays out: each guess draws a line toward the real
+         * place, and the real place drops in when the lines arrive. Picking a
+         * player or reopening a past round just shows the finished picture.
+         */
+        const began = reveal.current?.round === result.round ? reveal.current.start : -Infinity
+        const animate = performance.now() - began < REVEAL_LINE_MS
+        const guesses = players.flatMap((player, i) => {
           const guess = result.guesses[player.id]?.point
-          if (!guess || (focus && focus !== player.id)) continue
+          return guess && (!focus || focus === player.id) ? [{ player, i, guess }] : []
+        })
+        const drawn = guesses.map(({ player, i, guess }) => {
           const color = COLORS[i % COLORS.length]!
           marker(guess, color, player.name, String(i + 1))
-          lines.push(
-            new sdk.Polyline({
-              map: canvas,
-              path: [guess, result.location],
-              geodesic: true,
-              strokeColor: color,
-              strokeOpacity: 0.85,
-              strokeWeight: 2,
-            }),
-          )
+          const line = new sdk.Polyline({
+            map: canvas,
+            path: animate ? [guess, guess] : [guess, result.location],
+            geodesic: true,
+            strokeColor: color,
+            strokeOpacity: 0.9,
+            strokeWeight: 2.5,
+          })
+          lines.push(line)
+          return { line, guess }
+        })
+        const land = () => {
+          if (cancelled) return
+          marker(result.location, '#142f29', 'Actual location', '•', false, animate)
+          if (animate) canvas.fitBounds(boundsForPoints([result.location, ...guesses.map((g) => g.guess)]), 45)
+        }
+        if (!animate || !drawn.length) land()
+        else {
+          const frame = (now: number) => {
+            if (cancelled) return
+            const t = Math.min(1, Math.max(0, (now - began) / REVEAL_LINE_MS))
+            const eased = 1 - (1 - t) ** 3
+            for (const { line, guess } of drawn) line.setPath([guess, along(guess, result.location, eased)])
+            if (t < 1) raf = requestAnimationFrame(frame)
+            else land()
+          }
+          raf = requestAnimationFrame(frame)
         }
       } else if (point) marker(point, '#ef795c', 'Your guess', undefined, !disabled)
       cleanup = () => {
+        cancelAnimationFrame(raf)
         for (const m of markers) {
           sdk.event.clearInstanceListeners(m)
           m.setMap(null)
@@ -302,13 +356,19 @@ export function GeoMapCanvas({
   useEffect(() => {
     if (!loaded || !map.current) return
     if (result) {
-      const points = [
-        result.location,
-        ...Object.entries(result.guesses)
-          .filter(([id]) => !focus || id === focus)
-          .flatMap(([, g]) => (g.point ? [g.point] : [])),
-      ]
-      map.current.fitBounds(boundsForPoints(points), 45)
+      const guesses = Object.entries(result.guesses)
+        .filter(([id]) => !focus || id === focus)
+        .flatMap(([, g]) => (g.point ? [g.point] : []))
+      /* A fresh reveal starts where the guesses are, then flies out to the answer as the lines arrive. */
+      if (reveal.current?.round !== result.round) {
+        const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+        reveal.current = { round: result.round, start: still ? -Infinity : performance.now() }
+        if (!still && guesses.length === 1) return map.current.setOptions({ center: guesses[0], zoom: 5 })
+        if (!still && guesses.length > 1) return map.current.fitBounds(boundsForPoints(guesses), 60)
+      }
+      /* Mid-reveal, the landing does the framing. */
+      if (performance.now() - reveal.current.start < REVEAL_LINE_MS) return
+      map.current.fitBounds(boundsForPoints([result.location, ...guesses]), 45)
     } else {
       map.current.setOptions({
         center: region === 'india' ? { lat: 22.8, lng: 79 } : { lat: 20, lng: 0 },
