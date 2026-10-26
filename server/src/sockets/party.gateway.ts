@@ -54,15 +54,15 @@ const CANVASES: Record<string, { canDraw: (state: never, userId: string) => bool
   [drawGame.id]: drawCanvas as unknown as { canDraw: (state: never, userId: string) => boolean; key: (state: never) => string },
 }
 
-type Stroke = { id: string; color: string; size: number; tool: 'pen' | 'eraser'; points: [number, number][] }
-const canvases = new Map<string, { key: string; strokes: Stroke[]; points: number }>()
+type Stroke = { id: string; color: string; size: number; tool: 'pen' | 'eraser' | 'fill' | 'clear'; points: [number, number][] }
+const canvases = new Map<string, { key: string; strokes: Stroke[]; redo: Stroke[]; points: number }>()
 const MAX_POINTS = 40_000
 const COLOR = /^#[0-9a-f]{6}$/i
 
 function canvasFor(roomId: string, key: string) {
   const current = canvases.get(roomId)
   if (current && current.key === key) return current
-  const fresh = { key, strokes: [] as Stroke[], points: 0 }
+  const fresh = { key, strokes: [] as Stroke[], redo: [] as Stroke[], points: 0 }
   canvases.set(roomId, fresh)
   return fresh
 }
@@ -104,10 +104,10 @@ function publish(io: Server, roomId: string) {
   const session = sessions.get(roomId)
   const board = session ? CANVASES[session.game.id] : undefined
   if (board) {
-    const key = board.key(session!.state as never)
+    const key = `${session!.id}:${board.key(session!.state as never)}`
     if (canvases.get(roomId)?.key !== key) {
       canvasFor(roomId, key)
-      for (const { socket } of watchers.get(roomId)?.values() ?? []) socket.emit('party:canvas', { roomId, strokes: [] })
+      for (const { socket } of watchers.get(roomId)?.values() ?? []) socket.emit('party:canvas', { roomId, key, strokes: [] })
     }
   }
   for (const { socket, userId } of watchers.get(roomId)?.values() ?? []) {
@@ -205,6 +205,7 @@ export function attachPartyGateway(io: Server) {
     /* A person taps a few times a second at most; a flood is a bug or abuse, and must not take the server down. */
     const allowAct = actLimiter(20, 4_000)
     const allowGeoPing = actLimiter(8, 4_000)
+    const allowFill = actLimiter(4, 1_000)
     socket.on('geo:ping', (raw: unknown) => {
       const sent = (raw as { sent?: unknown } | null)?.sent
       if (typeof sent === 'number' && Number.isFinite(sent) && allowGeoPing()) socket.emit('geo:pong', { sent, serverTime: Date.now() })
@@ -226,7 +227,7 @@ export function attachPartyGateway(io: Server) {
       const session = sessions.get(roomId)
       const existing = canvases.get(roomId)
       if (session && CANVASES[session.game.id] && existing) {
-        socket.emit('party:canvas', { roomId, strokes: existing.strokes })
+        socket.emit('party:canvas', { roomId, key: existing.key, strokes: existing.strokes, canRedo: existing.redo.length > 0 })
       }
       socket.emit(
         'party:state',
@@ -370,23 +371,38 @@ export function attachPartyGateway(io: Server) {
       const board = session ? CANVASES[session.game.id] : undefined
       if (!session || !board || !watching.has(roomId)) return null
       if (!board.canDraw(session.state as never, self.id)) return null
-      return canvasFor(roomId, board.key(session.state as never))
+      return canvasFor(roomId, `${session.id}:${board.key(session.state as never)}`)
     }
     const others = (roomId: string) =>
       [...(watchers.get(roomId)?.values() ?? [])].filter((w) => w.socket.id !== socket.id).map((w) => w.socket)
+
+    /* The board mounts after party:open and may have missed its snapshot.
+       Requesting just the canvas also avoids reopening the whole table. */
+    socket.on('party:canvas:request', async (raw: unknown) => {
+      const body = (raw ?? {}) as Record<string, unknown>
+      const roomId = await may(body.roomId)
+      const session = roomId ? sessions.get(roomId) : undefined
+      const canvas = session ? CANVASES[session.game.id] : undefined
+      if (!roomId || !session || !canvas || !watching.has(roomId)) return
+      const key = `${session.id}:${canvas.key(session.state as never)}`
+      if (body.key !== key) return
+      const board = canvasFor(roomId, key)
+      socket.emit('party:canvas', { roomId, key, strokes: board.strokes, canRedo: board.redo.length > 0 })
+    })
 
     socket.on('party:stroke', (raw: unknown) => {
       const body = (raw ?? {}) as Record<string, unknown>
       const roomId = typeof body.roomId === 'string' ? body.roomId : ''
       const board = drawer(roomId)
-      if (!board) return
+      if (!board || body.key !== board.key) return
       const id = typeof body.id === 'string' && body.id.length <= 40 ? body.id : null
       const color = typeof body.color === 'string' && COLOR.test(body.color) ? body.color : null
       const size = typeof body.size === 'number' && body.size >= 1 && body.size <= 40 ? body.size : null
-      const tool = body.tool === 'eraser' ? 'eraser' : 'pen'
+      const tool = body.tool === 'eraser' ? 'eraser' : body.tool === 'fill' ? 'fill' : 'pen'
+      if (tool === 'fill' && !allowFill()) return
       const points = Array.isArray(body.points)
         ? (body.points as unknown[])
-            .slice(0, 200)
+            .slice(0, tool === 'fill' ? 1 : 200)
             .filter(
               (p): p is [number, number] =>
                 Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === 'number' && n >= -0.05 && n <= 1.05),
@@ -399,28 +415,41 @@ export function attachPartyGateway(io: Server) {
       if (!stroke) {
         stroke = { id, color, size, tool, points: [] }
         board.strokes.push(stroke)
-      }
+        board.redo = []
+      } else if (stroke.tool === 'fill' || stroke.color !== color || stroke.size !== size || stroke.tool !== tool) return
       stroke.points.push(...points)
       board.points += points.length
-      for (const s of others(roomId)) s.emit('party:stroke', { roomId, id, color, size, tool, points })
+      for (const s of others(roomId)) s.emit('party:stroke', { roomId, key: board.key, id, color, size, tool, points })
     })
 
     socket.on('party:undo', (raw: unknown) => {
       const roomId = typeof (raw as { roomId?: unknown })?.roomId === 'string' ? (raw as { roomId: string }).roomId : ''
       const board = drawer(roomId)
-      if (!board) return
+      if (!board || (raw as { key?: unknown })?.key !== board.key) return
       const gone = board.strokes.pop()
-      if (gone) board.points -= gone.points.length
-      for (const { socket: s } of watchers.get(roomId)?.values() ?? []) s.emit('party:canvas', { roomId, strokes: board.strokes })
+      if (gone) { board.points -= gone.points.length; board.redo.push(gone) }
+      for (const { socket: s } of watchers.get(roomId)?.values() ?? []) s.emit('party:canvas', { roomId, key: board.key, strokes: board.strokes, canRedo: board.redo.length > 0 })
+    })
+
+    socket.on('party:redo', (raw: unknown) => {
+      const roomId = typeof (raw as { roomId?: unknown })?.roomId === 'string' ? (raw as { roomId: string }).roomId : ''
+      const board = drawer(roomId)
+      if (!board || (raw as { key?: unknown })?.key !== board.key) return
+      const restored = board.redo.pop()
+      if (restored) { board.strokes.push(restored); board.points += restored.points.length }
+      for (const { socket: s } of watchers.get(roomId)?.values() ?? []) s.emit('party:canvas', { roomId, key: board.key, strokes: board.strokes, canRedo: board.redo.length > 0 })
     })
 
     socket.on('party:clear', (raw: unknown) => {
       const roomId = typeof (raw as { roomId?: unknown })?.roomId === 'string' ? (raw as { roomId: string }).roomId : ''
       const board = drawer(roomId)
-      if (!board) return
-      board.strokes = []
-      board.points = 0
-      for (const { socket: s } of watchers.get(roomId)?.values() ?? []) s.emit('party:canvas', { roomId, strokes: [] })
+      if (!board || (raw as { key?: unknown })?.key !== board.key) return
+      if (!board.strokes.length || board.strokes.at(-1)?.tool === 'clear' || board.points >= MAX_POINTS) return
+      // A clear is an undoable operation; it never destroys the page history.
+      board.strokes.push({ id: randomUUID(), color: '#fbfaf7', size: 1, tool: 'clear', points: [[0, 0]] })
+      board.points += 1
+      board.redo = []
+      for (const { socket: s } of watchers.get(roomId)?.values() ?? []) s.emit('party:canvas', { roomId, key: board.key, strokes: board.strokes, canRedo: false })
     })
 
     socket.on('disconnect', () => {

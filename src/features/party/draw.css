@@ -1,0 +1,1063 @@
+.draw-setup-shell {
+  display: grid;
+  align-items: center;
+  min-height: 100%;
+  background: radial-gradient(ellipse at 50% 0%, #31271b55, transparent 65%), #111214;
+}
+.draw-setup {
+  padding-left: 28px;
+  padding-right: 28px;
+}
+.draw-setup-shell button {
+  touch-action: manipulation;
+}
+.draw-surface {
+  --draw-accent: #ffd166;
+  --draw-line: rgba(255, 255, 255, 0.1);
+  container-type: inline-size;
+  height: 100%;
+  max-height: var(--draw-visible-height, 100dvh);
+  min-height: 0;
+  overflow: clip;
+  color: #f4f0e8;
+  background: radial-gradient(ellipse at 40% 0%, #31271b55, transparent 65%), #111214;
+}
+.draw-surface *,
+.draw-surface *::before,
+.draw-surface *::after {
+  box-sizing: border-box;
+}
+.draw-surface button,
+.draw-surface input {
+  font: inherit;
+}
+.draw-surface button {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.draw-surface button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.draw-surface button:focus-visible,
+.draw-surface input:focus-visible {
+  outline: 2px solid var(--draw-accent);
+  outline-offset: 3px;
+}
+.draw-table {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 24px;
+  width: 100%;
+  max-width: 1520px;
+  height: 100%;
+  margin: auto;
+  padding: 24px 24px 24px 72px;
+}
+.draw-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  gap: 16px;
+}
+.draw-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.draw-heading {
+  flex: 1;
+  min-width: 0;
+}
+.draw-eyebrow {
+  margin: 0;
+  color: var(--draw-accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.draw-eyebrow span {
+  color: #a09d97;
+  letter-spacing: 0.04em;
+}
+.draw-turn-name {
+  margin: 5px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #afaea9;
+}
+.draw-word {
+  margin: 4px 0 0;
+  font-family: ui-monospace, monospace;
+  font-size: clamp(18px, 2cqw, 28px);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.15em;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.draw-word--choosing {
+  font-family: Archivo, sans-serif;
+  letter-spacing: -0.025em;
+}
+.draw-skip {
+  flex: 0 0 auto;
+  min-height: 44px;
+  border: 1px solid var(--draw-line);
+  border-radius: 12px;
+  padding: 0 12px;
+  color: #c3c0ba;
+  font-size: 12px !important;
+}
+.draw-skip:hover {
+  background: #ffffff0a;
+}
+.draw-clock {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  color: var(--draw-accent);
+}
+.draw-clock svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  fill: none;
+  stroke-width: 2.5;
+}
+.draw-clock-track {
+  stroke: #ffffff12;
+}
+.draw-clock-progress {
+  stroke: currentColor;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.25s linear;
+}
+.draw-clock strong {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.draw-clock--urgent {
+  color: #ff8787;
+}
+.draw-board {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+/* The slot owns the available height. Its page always stays 4:3, including
+   when a keyboard, split screen or landscape rotation makes the slot short. */
+.draw-paper-slot {
+  container-type: size;
+  display: grid;
+  place-items: center;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.draw-paper {
+  position: relative;
+  width: min(100cqw, calc(100cqh * 4 / 3));
+  aspect-ratio: 4 / 3;
+  max-width: 100%;
+  overflow: clip;
+  border-radius: 16px;
+  background: #fbfaf7;
+  box-shadow: 0 14px 40px #0003;
+}
+.draw-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: default;
+}
+.draw-canvas--active {
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.draw-sync {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #fbfaf7ee;
+  font-size: 13px;
+  color: #62594e;
+}
+.draw-tools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  column-gap: 16px;
+  row-gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--draw-line);
+  background: #ffffff04;
+  border-radius: 16px;
+}
+.draw-colors {
+  display: flex;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+}
+.draw-tools button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #eeeae4;
+}
+.draw-colors button span {
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #ffffff30;
+}
+.draw-colors button[aria-pressed='true'] span {
+  box-shadow:
+    0 0 0 3px #111214,
+    0 0 0 5px #ffd166;
+}
+.draw-tool-actions,
+.draw-sizes,
+.draw-edits {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.draw-tool-actions {
+  justify-content: space-between;
+  gap: 14px;
+}
+.draw-edits {
+  border-left: 1px solid var(--draw-line);
+  padding-left: 10px;
+}
+.draw-sizes span {
+  border-radius: 50%;
+  background: currentColor;
+}
+.draw-tools button:hover {
+  background: #ffffff09;
+}
+.draw-tool-actions button[aria-pressed='true'] {
+  color: var(--draw-accent);
+  background: #ffd16615;
+}
+.draw-tools svg {
+  width: 18px;
+  height: 18px;
+}
+.draw-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: 20px;
+  background: #191a1cf5;
+  text-align: center;
+}
+.draw-overlay > div {
+  width: 100%;
+  max-width: 470px;
+  min-width: 0;
+  margin: auto;
+}
+.draw-overlay-icon {
+  width: 24px;
+  height: 24px;
+  margin: 0 auto 12px;
+  color: var(--draw-accent);
+}
+.draw-overlay h2 {
+  margin: 0;
+  font:
+    600 clamp(18px, 2.4cqw, 32px)/1.15 Archivo,
+    sans-serif;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+.draw-overlay p {
+  margin: 10px 0 0;
+  color: #aaa8a2;
+  font-size: 13px;
+}
+.draw-overlay small {
+  display: block;
+  margin-top: 12px;
+  font-size: 12px;
+  color: #aaa8a2;
+}
+.draw-overlay .draw-answer {
+  margin-top: 6px;
+  color: var(--draw-accent);
+  font-size: clamp(24px, 4cqw, 44px);
+  text-transform: capitalize;
+}
+.draw-word-choices {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 22px;
+}
+.draw-word-choices button {
+  min-height: 44px;
+  max-width: 100%;
+  padding: 10px 18px;
+  border: 1px solid #ffd16640;
+  background: #ffd16612;
+  color: #ffe3a1;
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+  text-transform: capitalize;
+  font-size: 15px;
+  font-weight: 600;
+}
+.draw-word-choices button:hover {
+  background: var(--draw-accent);
+  color: #211b0d;
+}
+.draw-sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--draw-line);
+  border-radius: 18px;
+  background: #ffffff03;
+}
+.draw-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  gap: 8px;
+  min-height: 48px;
+  padding: 4px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #c6c2b9;
+}
+.draw-player-count {
+  margin-left: 6px;
+  color: #8c8b86;
+  font-variant-numeric: tabular-nums;
+}
+.draw-sidebar-header button {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  color: #dedad1;
+  background: transparent;
+  font-size: 12px;
+}
+.draw-sidebar-header svg {
+  width: 14px;
+  height: 14px;
+}
+.draw-score-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.draw-score-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+.draw-rank {
+  flex: 0 0 16px;
+  color: #8f8c85;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.draw-player-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.draw-score-list svg {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+}
+.draw-score-list strong {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.draw-score--self {
+  background: #ffffff06;
+}
+.draw-score--correct {
+  color: #9de1ba;
+}
+.draw-feed {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  border-top: 1px solid var(--draw-line);
+}
+.draw-feed-list {
+  list-style: none;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 12px;
+  scrollbar-width: thin;
+}
+.draw-entry {
+  margin: 3px 0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.draw-entry strong {
+  color: #aeaaa1;
+}
+.draw-entry--system {
+  color: #92918b;
+  font-size: 12px;
+}
+.draw-entry--correct {
+  color: #9de1ba;
+  background: #73d69b10;
+}
+.draw-entry--close {
+  color: #ffdb87;
+  background: #ffd16610;
+}
+.draw-feed-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 100%;
+  color: #a09d95;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.draw-feed-empty svg {
+  width: 24px;
+  height: 24px;
+  opacity: 0.5;
+}
+.draw-feed-status {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 14px 0;
+  color: #aba79d;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.draw-feed-status svg {
+  width: 13px;
+  height: 13px;
+  color: #9de1ba;
+}
+.draw-composer {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 10px;
+}
+.draw-composer input {
+  width: 0;
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  border: 1px solid var(--draw-line);
+  border-radius: 12px;
+  background: #ffffff06;
+  padding: 0 12px;
+  color: #f4f0e8;
+  font-size: 16px;
+}
+.draw-composer input::placeholder {
+  color: #95918a;
+  font-size: 13px;
+}
+.draw-composer input:disabled {
+  opacity: 0.6;
+}
+.draw-composer button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 46px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: var(--draw-accent);
+  color: #211b0d;
+}
+.draw-composer svg {
+  width: 20px;
+  height: 20px;
+}
+.draw-error {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 12px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #ff9e9e;
+  overflow-wrap: anywhere;
+}
+.draw-finish {
+  height: 100%;
+  overflow-y: auto;
+  padding: 40px 24px 40px 64px;
+}
+.draw-finish-card {
+  width: 100%;
+  max-width: 440px;
+  margin: auto;
+  text-align: center;
+}
+.draw-trophy {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 20px;
+  color: var(--draw-accent);
+}
+.draw-finish h2 {
+  margin: 10px 0 0;
+  font:
+    600 clamp(26px, 4cqw, 42px)/1.1 Archivo,
+    sans-serif;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+.draw-muted {
+  color: #aaa8a2;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.draw-finish .draw-score-list {
+  margin: 24px 0;
+  max-height: none;
+  text-align: left;
+}
+.draw-finish .draw-score-list li {
+  min-height: 52px;
+  border-bottom: 1px solid var(--draw-line);
+}
+.draw-primary {
+  min-height: 48px;
+  padding: 10px 24px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--draw-accent);
+  color: #211b0d;
+  font-size: 14px;
+  font-weight: 600;
+}
+@container (max-width: 900px) {
+  .draw-table {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(175px, 32%);
+    gap: 12px;
+    padding: 16px 16px max(12px, env(safe-area-inset-bottom));
+  }
+  .draw-main {
+    gap: 10px;
+  }
+  .draw-header {
+    padding-left: 8px;
+    gap: 8px;
+  }
+  .draw-sidebar {
+    border-radius: 14px;
+  }
+  .draw-sidebar-header {
+    min-height: 44px;
+    padding: 0 10px 0 14px;
+  }
+  .draw-sidebar-header button {
+    display: flex;
+    min-height: 44px;
+  }
+  .draw-scores {
+    display: none;
+    position: absolute;
+    z-index: 10;
+    inset: auto 0 calc(100% - 44px);
+    padding-top: 6px;
+    border: 1px solid #ffffff20;
+    border-radius: 14px 14px 0 0;
+    background: #202123;
+    box-shadow: 0 12px 30px #0006;
+  }
+  .draw-scores--open {
+    display: block;
+  }
+  .draw-scores .draw-score-list {
+    max-height: min(240px, 38dvh);
+  }
+  .draw-feed-list {
+    padding: 5px 8px;
+  }
+  .draw-entry {
+    margin: 1px 0;
+    padding: 3px 6px;
+  }
+  .draw-feed-empty {
+    gap: 4px;
+    font-size: 11px;
+  }
+  .draw-feed-empty svg {
+    display: none;
+  }
+  .draw-feed-status {
+    padding-top: 4px;
+  }
+  .draw-composer {
+    padding: 8px;
+  }
+  .draw-word {
+    font-size: clamp(16px, 4.2cqw, 25px);
+  }
+  .draw-tools {
+    gap: 0 12px;
+    padding: 2px;
+    border-radius: 12px;
+  }
+  .draw-finish {
+    padding: 32px 24px;
+  }
+}
+@container (max-width: 500px) {
+  .draw-table {
+    padding: max(10px, env(safe-area-inset-top)) 12px max(8px, env(safe-area-inset-bottom));
+    gap: 8px;
+    grid-template-rows: minmax(0, 1fr) minmax(164px, 30%);
+  }
+  .draw-tools {
+    display: block;
+    padding: 2px;
+  }
+  .draw-tool-actions {
+    justify-content: center;
+    gap: 8px;
+  }
+  .draw-edits {
+    padding-left: 8px;
+  }
+  .draw-colors {
+    justify-content: flex-start;
+  }
+  .draw-turn-name {
+    font-size: 11px;
+  }
+  .draw-eyebrow {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+  }
+  .draw-skip {
+    padding: 0 8px;
+    font-size: 11px !important;
+  }
+  .draw-clock {
+    flex-basis: 44px;
+    width: 44px;
+    height: 44px;
+  }
+  .draw-overlay {
+    padding: 14px;
+  }
+  .draw-overlay-icon {
+    display: none;
+  }
+  .draw-overlay h2 {
+    font-size: 19px;
+  }
+  .draw-overlay p {
+    font-size: 12px;
+    margin-top: 6px;
+  }
+  .draw-word-choices {
+    margin-top: 12px;
+    gap: 6px;
+  }
+  .draw-word-choices button {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+  .draw-paper {
+    border-radius: 12px;
+  }
+}
+/* Short landscape screens use the same side-by-side desk as a laptop. The
+   canvas shrinks vertically, never stretches, and tools scroll within reach. */
+@media (max-height: 540px) and (min-width: 600px) {
+  .draw-table {
+    grid-template-columns: minmax(0, 1fr) minmax(230px, 32%);
+    grid-template-rows: minmax(0, 1fr);
+    padding: 8px 12px 8px 56px;
+    gap: 14px;
+  }
+  .draw-header {
+    padding-left: 0;
+  }
+  .draw-turn-name {
+    display: none;
+  }
+  .draw-main {
+    gap: 6px;
+  }
+  .draw-board {
+    gap: 4px;
+  }
+  .draw-word {
+    font-size: 18px;
+  }
+  .draw-eyebrow {
+    font-size: 9px;
+  }
+  .draw-tools {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+  .draw-colors {
+    flex-shrink: 0;
+  }
+  .draw-tool-actions {
+    flex-shrink: 0;
+  }
+  .draw-overlay {
+    padding: 10px;
+  }
+  .draw-overlay-icon {
+    display: none;
+  }
+  .draw-overlay h2 {
+    font-size: 20px;
+  }
+  .draw-word-choices {
+    margin-top: 10px;
+    gap: 6px;
+  }
+  .draw-word-choices button {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+}
+@media (max-height: 500px) and (max-width: 599px) {
+  .draw-table {
+    padding-top: 6px;
+    gap: 4px;
+    grid-template-rows: minmax(0, 1fr) 140px;
+  }
+  .draw-turn-name,
+  .draw-feed-status,
+  .draw-sidebar-header {
+    display: none;
+  }
+  .draw-word {
+    margin: 2px 0 0;
+    font-size: 16px;
+    letter-spacing: 0.08em;
+  }
+  .draw-main,
+  .draw-board {
+    gap: 4px;
+  }
+  .draw-tools {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+  .draw-colors,
+  .draw-tool-actions {
+    flex-shrink: 0;
+  }
+  .draw-tools .draw-colors {
+    overflow: visible;
+  }
+  .draw-tools {
+    scrollbar-width: thin;
+  }
+  .draw-overlay {
+    padding: 8px;
+  }
+  .draw-overlay h2 {
+    font-size: 16px;
+  }
+  .draw-overlay p {
+    display: none;
+  }
+  .draw-word-choices {
+    margin-top: 8px;
+    gap: 4px;
+  }
+  .draw-word-choices button {
+    min-height: 44px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .draw-clock-progress {
+    transition: none;
+  }
+}
+
+/* An artist has no guess to type. Keep the space for the live drawing. */
+.draw-composer--artist {
+  display: none;
+}
+.draw-composer--artist + .draw-error {
+  padding-top: 10px;
+}
+.draw-feed:has(.draw-composer--artist) .draw-feed-status {
+  padding-bottom: 12px;
+}
+@container (max-width: 500px) {
+  .draw-table--artist {
+    grid-template-rows: minmax(0, 1fr) minmax(120px, 22%);
+  }
+  .draw-word {
+    letter-spacing: 0.07em;
+  }
+}
+@media (max-height: 540px) and (min-width: 600px) {
+  .draw-scores {
+    inset: 44px 0 auto;
+    border-radius: 0 0 14px 14px;
+  }
+  .draw-scores .draw-score-list {
+    max-height: min(220px, calc(100dvh - 170px));
+  }
+}
+/* visualViewport can become short without changing media-query height on
+   mobile Safari, so apply the compact keyboard layout explicitly as well. */
+@container (max-width: 599px) {
+  .draw-surface[data-short='true'] .draw-table {
+    padding-top: 6px;
+    gap: 4px;
+    grid-template-rows: minmax(0, 1fr) 140px;
+  }
+  .draw-surface[data-short='true'] .draw-table--artist {
+    grid-template-rows: minmax(0, 1fr) 100px;
+  }
+  .draw-surface[data-short='true'] .draw-turn-name,
+  .draw-surface[data-short='true'] .draw-feed-status,
+  .draw-surface[data-short='true'] .draw-sidebar-header {
+    display: none;
+  }
+  .draw-surface[data-short='true'] .draw-word {
+    margin: 2px 0 0;
+    font-size: 16px;
+    letter-spacing: 0.07em;
+  }
+  .draw-surface[data-short='true'] .draw-main,
+  .draw-surface[data-short='true'] .draw-board {
+    gap: 4px;
+  }
+  .draw-surface[data-short='true'] .draw-tools {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    scrollbar-width: thin;
+  }
+  .draw-surface[data-short='true'] .draw-colors,
+  .draw-surface[data-short='true'] .draw-tool-actions {
+    flex-shrink: 0;
+  }
+  .draw-surface[data-short='true'] .draw-tools .draw-colors {
+    overflow: visible;
+  }
+}
+.draw-brush-size {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 44px;
+  padding: 0 4px;
+  border: 1px solid #ffffff16;
+  border-radius: 9px;
+  font-size: 16px;
+  color: #eeeae4;
+  background: #222326;
+}
+.draw-brush-size:focus-visible {
+  outline: 2px solid var(--draw-accent);
+}
+@container (max-width: 500px) {
+  .draw-tool-actions {
+    width: 100%;
+    gap: 4px;
+    justify-content: space-between;
+  }
+  .draw-edits {
+    border: 0;
+    padding: 0;
+    gap: 0;
+  }
+}
+.draw-setup-options {
+  width: 100%;
+  max-width: 380px;
+  margin-top: 24px;
+  border: 1px solid #ffffff15;
+  border-radius: 14px;
+  background: #ffffff03;
+  padding: 0 16px;
+  text-align: left;
+  color: #c4c0b6;
+  font-size: 13px;
+}
+.draw-setup-options summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  cursor: pointer;
+  list-style: none;
+}
+.draw-setup-options summary::-webkit-details-marker {
+  display: none;
+}
+.draw-setup-options summary svg {
+  width: 15px;
+  height: 15px;
+}
+.draw-setup-options[open] {
+  padding-bottom: 16px;
+}
+.draw-setup-options[open] summary svg {
+  transform: rotate(180deg);
+}
+.draw-setup-options label {
+  display: block;
+  margin: 20px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.draw-setup-options textarea {
+  display: block;
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid #ffffff20;
+  border-radius: 10px;
+  background: #ffffff07;
+  font-size: 16px;
+  line-height: 1.4;
+  color: #f4f0e8;
+}
+.draw-setup-options textarea:focus-visible {
+  outline: 2px solid #ffd166;
+  outline-offset: 2px;
+}
+.draw-setup-options p {
+  margin: 8px 0;
+  color: #aaa69d;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.draw-setup-options > span {
+  font-size: 11px;
+  color: #ffd166;
+}
+.draw-letter-count {
+  color: #c4b58e;
+}
+.draw-reveal-scores {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.draw-reveal-scores > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #ffd16620;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.draw-reveal-scores > span > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.draw-reveal-scores strong {
+  flex-shrink: 0;
+  color: #ffd166;
+}
+
+/* The room menu lives on the left edge. Its resting tab must never steal
+   a pointer from the drawing, including on tablet layouts. */
+@container (max-width: 900px) {
+  .draw-table {
+    padding-left: 56px;
+  }
+}
+@media (max-width: 639px) {
+  .draw-table {
+    padding-left: 24px;
+  }
+}

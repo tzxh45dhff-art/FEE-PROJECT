@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { ArrowUp, Check, ChevronDown, Pencil, Trophy, Users } from 'lucide-react'
+
+import { getSocket } from '@/lib/socket'
+import './draw.css'
 
 import { DrawBoard } from '@/features/party/DrawBoard'
 import { remaining, type PartyState } from '@/features/party/useParty'
@@ -25,7 +29,13 @@ export type DrawView = {
   deadline: number | null
   drawSeconds: number
   guessed: string[]
-  feed: { id: number; by: Person | null; text: string; kind: 'guess' | 'correct' | 'close' | 'system' }[]
+  turnScores?: Record<string, number>
+  feed: {
+    id: number
+    by: Person | null
+    text: string
+    kind: 'guess' | 'correct' | 'close' | 'system'
+  }[]
 }
 
 export function DrawSetup({
@@ -35,34 +45,70 @@ export function DrawSetup({
 }: {
   people: number
   error: string | null
-  onStart: (options: { rounds: number; drawSeconds: number }) => void
+  onStart: (options: { rounds: number; drawSeconds: number; hints: number; customWords: string[] }) => Promise<{ error?: string }>
 }) {
+  const [starting, setStarting] = useState(false)
   const [rounds, setRounds] = useState(2)
   const [seconds, setSeconds] = useState(80)
+  const [hints, setHints] = useState(2)
+  const [custom, setCustom] = useState('')
+  const customWords = custom
+    .split(/[,\n]/)
+    .map((w) => w.trim())
+    .filter(Boolean)
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col items-center px-5 pb-10 pt-4 text-center">
-      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-signal-bright">Draw and guess</p>
-      <h2 className="mt-2 font-display text-[clamp(1.8rem,4vw,2.6rem)] font-semibold tracking-[-0.03em] text-chalk">
-        Can’t draw? Perfect.
-      </h2>
-      <p className="mt-2 max-w-md text-[0.9rem] leading-relaxed text-mist">
-        Everyone takes turns drawing a word. The faster you guess, the more you score — and the drawer scores for every person who gets it.
-      </p>
-      <Choice label="Turns each" values={[1, 2, 3]} value={rounds} onChange={setRounds} />
-      <Choice label="Seconds to draw" values={[60, 80, 100]} value={seconds} onChange={setSeconds} />
-      {error && (
-        <p role="alert" className="mt-4 text-[0.8rem] text-signal-bright">
-          {error}
+    <div className="draw-setup-shell">
+      <div className="draw-setup mx-auto flex w-full max-w-xl flex-col items-center px-5 pb-10 pt-8 text-center">
+        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-[#ffd166]">Draw and guess</p>
+        <h2 className="mt-2 font-display text-[clamp(1.8rem,4vw,2.6rem)] font-semibold tracking-[-0.03em] text-chalk">
+          Can’t draw? Perfect.
+        </h2>
+        <p className="mt-2 max-w-md text-[0.9rem] leading-relaxed text-mist">
+          Everyone takes turns drawing a word. The faster you guess, the more you score — and the drawer scores for every person who gets
+          it.
         </p>
-      )}
-      <button
-        type="button"
-        disabled={people < 2}
-        onClick={() => onStart({ rounds, drawSeconds: seconds })}
-        className="mt-7 rounded-full bg-chalk px-8 py-3 text-[0.9rem] font-semibold text-void outline-none transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-40 disabled:hover:scale-100"
-      >
-        {people < 2 ? 'Needs one more person in the room' : `Start with ${people} players`}
-      </button>
+        <Choice label="Turns each" values={[1, 2, 3]} value={rounds} onChange={setRounds} />
+        <Choice label="Seconds to draw" values={[60, 80, 100]} value={seconds} onChange={setSeconds} />
+        <details className="draw-setup-options">
+          <summary>
+            Make it yours <ChevronDown aria-hidden />
+          </summary>
+          <Choice label="Letter hints" values={[0, 1, 2]} value={hints} onChange={setHints} />
+          <label htmlFor="draw-custom-words">Your own words</label>
+          <textarea
+            id="draw-custom-words"
+            value={custom}
+            maxLength={2600}
+            onChange={(event) => setCustom(event.target.value)}
+            spellCheck={false}
+            placeholder="e.g. samosa, spaceship, sleepy cat"
+            aria-describedby="draw-custom-help"
+          />
+          <p id="draw-custom-help">3–80 words, separated by commas or new lines. Leave blank for Huddle’s word bank.</p>
+          {customWords.length > 0 && <span>{customWords.length} words added</span>}
+        </details>
+        {error && (
+          <p role="alert" className="mt-4 text-[0.8rem] text-signal-bright">
+            {error}
+          </p>
+        )}
+        <button
+          type="button"
+          disabled={people < 2 || starting}
+          onClick={async () => {
+            if (starting) return
+            setStarting(true)
+            try {
+              await onStart({ rounds, drawSeconds: seconds, hints, customWords })
+            } finally {
+              setStarting(false)
+            }
+          }}
+          className="mt-7 rounded-full bg-chalk px-8 py-3 text-[0.9rem] font-semibold text-void outline-none transition-transform hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-40 disabled:hover:scale-100"
+        >
+          {starting ? 'Starting…' : people < 2 ? 'Needs one more person in the room' : `Start with ${Math.min(people, 10)} players`}
+        </button>
+      </div>
     </div>
   )
 }
@@ -78,9 +124,23 @@ function Choice({ label, values, value, onChange }: { label: string; values: num
             type="button"
             role="radio"
             aria-checked={value === v}
+            tabIndex={value === v ? 0 : -1}
+            onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
+              event.preventDefault()
+              const index = values.indexOf(v)
+              const next =
+                event.key === 'Home'
+                  ? 0
+                  : event.key === 'End'
+                    ? values.length - 1
+                    : (index + (event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1) + values.length) % values.length
+              onChange(values[next]!)
+              event.currentTarget.parentElement?.querySelectorAll('button')[next]?.focus()
+            }}
             onClick={() => onChange(v)}
             className={cn(
-              'min-w-14 rounded-full px-4 py-1.5 text-[0.85rem] font-semibold tabular-nums outline-none transition-colors focus-visible:outline-2 focus-visible:outline-signal',
+              'min-h-11 min-w-14 rounded-full px-4 py-1.5 text-[0.85rem] font-semibold tabular-nums outline-none transition-colors focus-visible:outline-2 focus-visible:outline-signal',
               value === v ? 'bg-chalk text-void' : 'text-mist hover:text-chalk',
             )}
           >
@@ -103,6 +163,8 @@ function useCountdown(party: PartyState<DrawView>) {
   return left
 }
 
+type DrawAction = (action: string, payload?: Record<string, unknown>) => Promise<{ error?: string }>
+
 export function DrawTable({
   roomId,
   party,
@@ -115,218 +177,393 @@ export function DrawTable({
   party: PartyState<DrawView>
   selfId: string | undefined
   error: string | null
-  act: (action: string, payload?: Record<string, unknown>) => void
+  act: DrawAction
   onLeaveTable: () => void
 }) {
   const view = party.view
+  const turnAct: DrawAction = (action, payload) => act(action, { ...payload, turn: view.turn })
   const drawer = view.players[view.drawer]
   const drawing = drawer?.id === selfId
+  const playing = view.players.some((p) => p.id === selfId)
   const left = useCountdown(party)
-  const total = (view.phase === 'choose' ? 15 : view.drawSeconds) * 1000
-  const name = (p: Person | null | undefined) => (p?.id === selfId ? 'You' : (p?.name ?? ''))
+  const total = (view.phase === 'choose' ? 15 : view.phase === 'reveal' ? 5 : view.drawSeconds) * 1000
+  const name = (p: Person | null | undefined) => (p?.id === selfId ? 'You' : (p?.name ?? 'Someone'))
+  const [scoresOpen, setScoresOpen] = useState(false)
+  const [picking, setPicking] = useState(false)
+  const [skipping, setSkipping] = useState(false)
+  const [connected, setConnected] = useState(() => getSocket().connected)
+  const surface = useRef<HTMLDivElement>(null)
+  const reducedMotion = useReducedMotion()
+  const ranked = [...view.players].sort((a, b) => (view.scores[b.id] ?? 0) - (view.scores[a.id] ?? 0))
+  useEffect(() => {
+    const socket = getSocket()
+    const update = () => setConnected(socket.connected)
+    socket.on('connect', update)
+    socket.on('disconnect', update)
+    return () => {
+      socket.off('connect', update)
+      socket.off('disconnect', update)
+    }
+  }, [])
+  useEffect(() => {
+    // iOS keeps 100dvh behind the keyboard. Fit the game to the visible area
+    // instead, retaining the board and the composer together.
+    const viewport = window.visualViewport
+    const fit = () => {
+      const height = viewport?.height ?? window.innerHeight
+      surface.current?.style.setProperty('--draw-visible-height', `${height}px`)
+      if (surface.current) surface.current.dataset.short = String(height < 540)
+      if (height < 540) setScoresOpen(false)
+    }
+    fit()
+    viewport?.addEventListener('resize', fit)
+    window.addEventListener('resize', fit)
+    return () => {
+      viewport?.removeEventListener('resize', fit)
+      window.removeEventListener('resize', fit)
+    }
+  }, [])
+  useEffect(() => {
+    if (!scoresOpen) return
+    const away = (event: PointerEvent) => {
+      if (!(event.target as Element | null)?.closest('.draw-scores, .draw-sidebar-header button')) setScoresOpen(false)
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setScoresOpen(false)
+    }
+    window.addEventListener('pointerdown', away)
+    window.addEventListener('keydown', escape)
+    return () => {
+      window.removeEventListener('pointerdown', away)
+      window.removeEventListener('keydown', escape)
+    }
+  }, [scoresOpen])
+  useEffect(() => {
+    setPicking(false)
+    setSkipping(false)
+  }, [view.turn, view.phase])
 
-  if (view.phase === 'over') {
-    const ranked = [...view.players].sort((a, b) => (view.scores[b.id] ?? 0) - (view.scores[a.id] ?? 0))
-    return (
-      <div className="mx-auto flex w-full max-w-md flex-col items-center px-5 pt-8 text-center">
-        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-signal-bright">Final scores</p>
-        <h2 className="mt-2 font-display text-[2.2rem] font-semibold tracking-[-0.03em] text-chalk">
-          {ranked[0] ? `${name(ranked[0])} ${ranked[0].id === selfId ? 'win' : 'wins'}! 🎨` : 'Game over'}
-        </h2>
-        <ol className="mt-6 w-full space-y-2">
-          {ranked.map((p, i) => (
-            <li key={p.id} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-              <span className="text-[0.92rem] text-chalk">
-                <span className="mr-3 tabular-nums text-dusk">{i + 1}</span>
-                {name(p)}
-              </span>
-              <span className="font-display text-[1.1rem] font-semibold tabular-nums text-chalk">{view.scores[p.id] ?? 0}</span>
-            </li>
-          ))}
-        </ol>
-        <button
-          type="button"
-          onClick={onLeaveTable}
-          className="mt-6 rounded-full bg-chalk px-7 py-3 text-[0.88rem] font-semibold text-void outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-        >
-          Back to games
-        </button>
-      </div>
-    )
-  }
+  const scoreList = (
+    <ol className="draw-score-list" data-lenis-prevent aria-label="Scores">
+      {ranked.map((p, i) => (
+        <li key={p.id} className={cn(p.id === selfId && 'draw-score--self', view.guessed.includes(p.id) && 'draw-score--correct')}>
+          <span className="draw-rank">{i + 1}</span>
+          <span className="draw-player-name" title={p.name}>
+            {name(p)}
+          </span>
+          {p.id === drawer?.id && view.phase !== 'over' && <Pencil aria-label="Drawing" />}
+          {view.guessed.includes(p.id) && <Check aria-label="Guessed it" />}
+          <strong>{view.scores[p.id] ?? 0}</strong>
+        </li>
+      ))}
+    </ol>
+  )
 
   return (
-    <div className="mx-auto grid h-full w-full max-w-6xl grid-cols-1 gap-4 px-4 pb-6 lg:grid-cols-[1fr_19rem] lg:px-6">
-      <div className="flex min-h-0 flex-col gap-3">
-        <div className="flex items-center gap-4">
-          <div className="min-w-0 flex-1">
-            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-mist">
-              Turn {Math.min(view.turn + 1, view.turns)} of {view.turns} · {drawing ? 'You are drawing' : `${drawer?.name} is drawing`}
-            </p>
-            <p
-              className="mt-1 truncate font-mono text-[clamp(1.3rem,3vw,1.9rem)] font-semibold tracking-[0.18em] text-chalk"
-              aria-label={view.word ? `The word is ${view.word}` : view.mask ? `${view.mask.replace(/ /g, '').length} letters` : 'Choosing a word'}
-            >
-              {view.phase === 'choose' ? (drawing ? 'Pick a word' : 'Choosing a word…') : (view.word ?? view.mask)}
-            </p>
-          </div>
-          <Clock left={left} total={total} />
-        </div>
-
-        <div className="relative">
-          <DrawBoard roomId={roomId} canDraw={drawing && view.phase === 'draw'} />
-
-          <AnimatePresence>
-            {view.phase === 'choose' && drawing && (
-              <Overlay key="choose">
-                <p className="text-[0.95rem] text-mist">Pick what to draw</p>
-                <div className="mt-4 flex flex-wrap justify-center gap-2.5">
-                  {view.choices.map((word, i) => (
-                    <button
-                      key={word}
-                      type="button"
-                      autoFocus={i === 0}
-                      onClick={() => act('pick', { index: i })}
-                      className="rounded-full bg-chalk px-5 py-2.5 font-display text-[1.05rem] font-semibold capitalize text-void outline-none transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-                    >
-                      {word}
-                    </button>
-                  ))}
-                </div>
-              </Overlay>
-            )}
-            {view.phase === 'reveal' && (
-              <Overlay key="reveal">
-                <p className="text-[0.95rem] text-mist">The word was</p>
-                <p className="mt-1 font-display text-[2.4rem] font-semibold capitalize tracking-[-0.02em] text-chalk">{view.word}</p>
-                <p className="mt-2 text-[0.85rem] text-mist">
-                  {view.guessed.length === 0 ? 'Nobody got it 😬' : `${view.guessed.length} got it`}
-                </p>
-              </Overlay>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
-
-      <aside className="flex min-h-0 flex-col gap-3">
-        <div className="rounded-[1.2rem] border border-white/10 bg-white/[0.03] p-4">
-          <ul className="flex flex-col gap-2">
-            {[...view.players]
-              .sort((a, b) => (view.scores[b.id] ?? 0) - (view.scores[a.id] ?? 0))
-              .map((p) => (
-                <li key={p.id} className="flex items-center justify-between text-[0.85rem]">
-                  <span className={cn('flex items-center gap-2 truncate', view.guessed.includes(p.id) ? 'text-emerald-300' : 'text-chalk')}>
-                    {p.id === drawer?.id && <span aria-label="drawing">✏️</span>}
-                    {view.guessed.includes(p.id) && <span aria-label="guessed it">✓</span>}
-                    {name(p)}
-                  </span>
-                  <span className="font-semibold tabular-nums text-chalk">{view.scores[p.id] ?? 0}</span>
-                </li>
-              ))}
-          </ul>
-        </div>
-        <Feed view={view} selfId={selfId} drawing={drawing} act={act} error={error} />
-        <div className="flex gap-2">
-          {drawing && (view.phase === 'draw' || view.phase === 'choose') && (
-            <button type="button" onClick={() => act('skip')} className="flex-1 rounded-full border border-white/12 px-3 py-2 text-[0.75rem] text-mist hover:bg-white/5 hover:text-chalk">
-              Skip my turn
+    <div ref={surface} className="draw-surface">
+      {view.phase === 'over' ? (
+        <div className="draw-finish" data-lenis-prevent>
+          <div className="draw-finish-card">
+            <Trophy className="draw-trophy" aria-hidden />
+            <p className="draw-eyebrow">That’s a wrap</p>
+            <h2>
+              {ranked.length && ranked.every((p) => (view.scores[p.id] ?? 0) === (view.scores[ranked[0]!.id] ?? 0))
+                ? 'A shared finish.'
+                : ranked.filter((p) => view.scores[p.id] === view.scores[ranked[0]!.id]).length > 1
+                  ? 'Tied at the top.'
+                  : `${name(ranked[0])} ${ranked[0]?.id === selfId ? 'win' : 'wins'}!`}
+            </h2>
+            <p className="draw-muted">The masterpieces were questionable. The company wasn’t.</p>
+            {scoreList}
+            <button type="button" className="draw-primary" onClick={onLeaveTable}>
+              Back to games
             </button>
-          )}
-          <button type="button" onClick={() => act('end')} className="flex-1 rounded-full border border-white/12 px-3 py-2 text-[0.75rem] text-mist hover:bg-white/5 hover:text-chalk">
-            End the game
-          </button>
+          </div>
         </div>
-      </aside>
+      ) : (
+        <div className={cn('draw-table', drawing && 'draw-table--artist')}>
+          <main className="draw-main">
+            <header className="draw-header">
+              <div className="draw-heading">
+                <p className="draw-eyebrow">
+                  Draw & guess{' '}
+                  <span>
+                    · {Math.min(view.turn + 1, view.turns)} / {view.turns}
+                  </span>
+                </p>
+                <p className="draw-turn-name">
+                  {drawing ? 'Your turn to draw' : `${drawer?.name ?? 'Someone'} is drawing`}
+                  {view.phase === 'draw' && !drawing && view.mask && (
+                    <span className="draw-letter-count">
+                      {' '}
+                      ·{' '}
+                      {view.mask
+                        .split(' ')
+                        .map((w) => w.length)
+                        .join(' + ')}{' '}
+                      letters
+                    </span>
+                  )}
+                </p>
+                <p
+                  className={cn('draw-word', view.phase === 'choose' && 'draw-word--choosing')}
+                  aria-label={view.word ? `The word is ${view.word}` : view.mask ? `Word hint: ${view.mask}` : 'Choosing a word'}
+                >
+                  {view.phase === 'choose' ? (drawing ? 'Pick your word' : 'A word is on its way…') : (view.word ?? view.mask)}
+                </p>
+              </div>
+              {drawing && (view.phase === 'choose' || view.phase === 'draw') && (
+                <button
+                  type="button"
+                  className="draw-skip"
+                  disabled={!connected || skipping}
+                  onClick={async () => {
+                    setSkipping(true)
+                    try {
+                      await turnAct('skip')
+                    } finally {
+                      setSkipping(false)
+                    }
+                  }}
+                >
+                  {skipping ? 'Skipping…' : 'Skip turn'}
+                </button>
+              )}
+              <Clock left={left} total={total} />
+            </header>
+            <DrawBoard roomId={roomId} canvasKey={`${party.session}:${view.turn}`} canDraw={drawing && view.phase === 'draw' && connected}>
+              <AnimatePresence>
+                {view.phase === 'choose' && (
+                  <Overlay key="choose" reducedMotion={!!reducedMotion}>
+                    {drawing ? (
+                      <>
+                        <Pencil aria-hidden className="draw-overlay-icon" />
+                        <h2>What’s your masterpiece?</h2>
+                        <p>Pick one. Keep the word to yourself.</p>
+                        <div className="draw-word-choices">
+                          {view.choices.map((word, i) => (
+                            <button
+                              key={word}
+                              type="button"
+                              disabled={picking || !connected}
+                              onClick={async () => {
+                                if (picking) return
+                                setPicking(true)
+                                try {
+                                  await turnAct('pick', { index: i })
+                                } finally {
+                                  setPicking(false)
+                                }
+                              }}
+                            >
+                              {word}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Pencil aria-hidden className="draw-overlay-icon" />
+                        <h2>{drawer?.name ?? 'The artist'} is choosing</h2>
+                        <p>Get ready to guess.</p>
+                      </>
+                    )}
+                  </Overlay>
+                )}
+                {view.phase === 'reveal' && (
+                  <Overlay key="reveal" reducedMotion={!!reducedMotion}>
+                    <p>The word was</p>
+                    <h2 className="draw-answer">{view.word}</h2>
+                    <p>
+                      {view.guessed.length === 0
+                        ? 'A tough one. On to the next.'
+                        : `${view.guessed.length} ${view.guessed.length === 1 ? 'person' : 'people'} guessed it.`}
+                    </p>
+                    <div className="draw-reveal-scores">
+                      {ranked
+                        .filter((p) => (view.turnScores?.[p.id] ?? 0) > 0)
+                        .slice(0, 3)
+                        .map((p) => (
+                          <span key={p.id}>
+                            <span>{name(p)}</span>
+                            <strong>+{view.turnScores?.[p.id]}</strong>
+                          </span>
+                        ))}
+                    </div>
+                    <small>Next turn in {Math.ceil(left / 1000)}s</small>
+                  </Overlay>
+                )}
+              </AnimatePresence>
+            </DrawBoard>
+          </main>
+          <aside className="draw-sidebar">
+            <header className="draw-sidebar-header">
+              <span>
+                At the table <span className="draw-player-count">{view.players.length}</span>
+              </span>
+              <button
+                type="button"
+                aria-label={scoresOpen ? 'Hide scores' : 'Show scores'}
+                aria-expanded={scoresOpen}
+                aria-controls="draw-scores"
+                onClick={() => setScoresOpen((o) => !o)}
+              >
+                <Users aria-hidden />
+                <span>Scores</span>
+                <ChevronDown aria-hidden />
+              </button>
+            </header>
+            <div id="draw-scores" className={cn('draw-scores', scoresOpen && 'draw-scores--open')}>
+              {scoreList}
+            </div>
+            <Feed
+              key={`${party.session}:${view.turn}`}
+              view={view}
+              selfId={selfId}
+              drawing={drawing}
+              playing={playing}
+              connected={connected}
+              act={turnAct}
+              error={error}
+            />
+          </aside>
+        </div>
+      )}
     </div>
   )
 }
-
-function Overlay({ children }: { children: React.ReactNode }) {
+function Overlay({ children, reducedMotion }: { children: React.ReactNode; reducedMotion: boolean }) {
   return (
     <motion.div
-      initial={{ opacity: 0 }}
+      initial={{ opacity: reducedMotion ? 1 : 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="absolute inset-0 grid place-items-center rounded-[1.1rem] bg-void/75 p-6 text-center backdrop-blur-sm"
+      transition={{ duration: reducedMotion ? 0 : 0.16 }}
+      className="draw-overlay"
+      data-lenis-prevent
     >
       <div>{children}</div>
     </motion.div>
   )
 }
-
 function Clock({ left, total }: { left: number; total: number }) {
   const seconds = Math.ceil(left / 1000)
-  const fraction = total > 0 ? Math.min(1, left / total) : 0
-  const urgent = seconds <= 10 && left > 0
+  const fraction = total > 0 ? Math.min(1, Math.max(0, left / total)) : 0
   return (
-    <div className="relative grid size-14 shrink-0 place-items-center" aria-label={`${seconds} seconds left`} role="timer">
-      <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90">
-        <circle cx="18" cy="18" r="16" fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="3" />
-        <circle
-          cx="18"
-          cy="18"
-          r="16"
-          fill="none"
-          stroke={urgent ? '#ff5a5a' : '#fafafa'}
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeDasharray={100.5}
-          strokeDashoffset={100.5 * (1 - fraction)}
-          style={{ transition: 'stroke-dashoffset .25s linear' }}
-        />
+    <div className={cn('draw-clock', seconds <= 10 && 'draw-clock--urgent')} aria-label={`${seconds} seconds left`} role="timer">
+      <svg viewBox="0 0 36 36" aria-hidden>
+        <circle cx="18" cy="18" r="16" className="draw-clock-track" />
+        <circle cx="18" cy="18" r="16" className="draw-clock-progress" strokeDasharray={100.5} strokeDashoffset={100.5 * (1 - fraction)} />
       </svg>
-      <span className={cn('font-display text-[1.05rem] font-semibold tabular-nums', urgent ? 'text-signal-bright' : 'text-chalk')}>{seconds}</span>
+      <strong>{seconds}</strong>
     </div>
   )
 }
-
 function Feed({
   view,
   selfId,
   drawing,
+  playing,
+  connected,
   act,
   error,
 }: {
   view: DrawView
   selfId: string | undefined
   drawing: boolean
-  act: (action: string, payload?: Record<string, unknown>) => void
+  playing: boolean
+  connected: boolean
+  act: DrawAction
   error: string | null
 }) {
   const [guess, setGuess] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const list = useRef<HTMLUListElement>(null)
+  const follow = useRef(true)
+  const mounted = useRef(true)
   useEffect(() => {
-    list.current?.scrollTo({ top: list.current.scrollHeight, behavior: 'smooth' })
-  }, [view.feed.length])
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  const lastFeedId = view.feed.at(-1)?.id
+  useEffect(() => {
+    const el = list.current
+    if (el && follow.current) el.scrollTop = el.scrollHeight
+  }, [lastFeedId])
   const done = selfId ? view.guessed.includes(selfId) : false
-  const canGuess = view.phase === 'draw' && !drawing && !done
-
+  const canGuess = view.phase === 'draw' && !drawing && !done && playing
+  const status = !connected
+    ? 'Reconnecting…'
+    : !playing
+      ? 'Watching · join the next game'
+      : drawing
+        ? 'Your friends are guessing'
+        : done
+          ? 'You got it. Keep it secret!'
+          : view.phase === 'choose'
+            ? 'The artist is choosing a word'
+            : view.phase === 'reveal'
+              ? 'Next drawing coming up'
+              : 'Guess the sketch. Be quick.'
   return (
-    <div className="flex min-h-[14rem] flex-1 flex-col rounded-[1.2rem] border border-white/10 bg-white/[0.03]">
-      <ul ref={list} className="flex-1 space-y-1 overflow-y-auto p-3 text-[0.84rem]" aria-live="polite" aria-label="Guesses">
+    <div className="draw-feed">
+      <ul
+        ref={list}
+        data-lenis-prevent
+        className="draw-feed-list"
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-label="Guesses"
+        onScroll={() => {
+          const el = list.current!
+          follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+        }}
+      >
+        {!view.feed.length && (
+          <li className="draw-feed-empty">
+            <Pencil aria-hidden />
+            <span>
+              The first sketch is a blank page.
+              <br />
+              The best guess could be yours.
+            </span>
+          </li>
+        )}
         {view.feed.map((f) => (
-          <li
-            key={f.id}
-            className={cn(
-              'rounded-lg px-2 py-1',
-              f.kind === 'correct' && 'bg-emerald-400/15 font-semibold text-emerald-200',
-              f.kind === 'close' && 'bg-amber-400/15 text-amber-200',
-              f.kind === 'system' && 'text-dusk italic',
-              f.kind === 'guess' && 'text-chalk',
-            )}
-          >
-            {f.kind === 'guess' && <span className="mr-1.5 font-semibold text-mist">{f.by?.id === selfId ? 'You' : f.by?.name}</span>}
+          <li key={f.id} className={`draw-entry draw-entry--${f.kind}`}>
+            {f.kind === 'guess' && <strong>{f.by?.id === selfId ? 'You' : f.by?.name} </strong>}
             {f.text}
           </li>
         ))}
       </ul>
+      <p className="draw-feed-status" role="status">
+        {done && <Check aria-hidden />}
+        {status}
+      </p>
       <form
-        className="flex gap-2 border-t border-white/10 p-2"
-        onSubmit={(e) => {
+        className={cn('draw-composer', drawing && 'draw-composer--artist')}
+        onSubmit={async (e) => {
           e.preventDefault()
-          if (!guess.trim()) return
-          act('guess', { text: guess })
-          setGuess('')
+          const text = guess.trim()
+          if (!text || !canGuess || !connected || sending || (e.nativeEvent as SubmitEvent & { isComposing?: boolean }).isComposing) return
+          setSending(true)
+          setSendError(null)
+          try {
+            const reply = await act('guess', { text })
+            if (!mounted.current) return
+            if (reply.error) setSendError(reply.error)
+            else {
+              setGuess((current) => (current.trim() === text ? '' : current))
+              follow.current = true
+            }
+          } catch {
+            if (mounted.current) setSendError('Couldn’t send. Your guess is still here.')
+          } finally {
+            if (mounted.current) setSending(false)
+          }
         }}
       >
         <label htmlFor="draw-guess" className="sr-only">
@@ -335,17 +572,44 @@ function Feed({
         <input
           id="draw-guess"
           value={guess}
-          onChange={(e) => setGuess(e.target.value)}
-          disabled={!canGuess}
+          onChange={(e) => {
+            setGuess(e.target.value)
+            setSendError(null)
+          }}
+          disabled={!canGuess || !connected}
           maxLength={60}
           autoComplete="off"
-          placeholder={drawing ? 'You’re drawing' : done ? 'You got it!' : view.phase === 'draw' ? 'Type your guess…' : 'Wait for the drawing'}
-          className="min-w-0 flex-1 rounded-full bg-white/[0.07] px-4 py-2 text-[0.88rem] text-chalk placeholder:text-dusk focus:outline-none focus:ring-2 focus:ring-signal/60 disabled:opacity-60"
+          autoCorrect="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          enterKeyHint="send"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault()
+          }}
+          placeholder={
+            drawing
+              ? 'You’re the artist'
+              : done
+                ? 'Guessed it!'
+                : !playing
+                  ? 'Watching this game'
+                  : view.phase === 'draw'
+                    ? 'Type your guess…'
+                    : 'Wait for the sketch…'
+          }
         />
+        <button
+          type="submit"
+          onPointerDown={(event) => event.preventDefault()}
+          aria-label={sending ? 'Sending guess' : 'Send guess'}
+          disabled={!canGuess || !connected || !guess.trim() || sending}
+        >
+          <ArrowUp aria-hidden />
+        </button>
       </form>
-      {error && (
-        <p role="alert" className="px-3 pb-2 text-[0.75rem] text-signal-bright">
-          {error}
+      {(sendError || error) && (
+        <p role="alert" className="draw-error">
+          {sendError || error}
         </p>
       )}
     </div>

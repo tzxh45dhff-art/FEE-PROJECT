@@ -1,250 +1,367 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Eraser, Trash2, Undo2 } from 'lucide-react'
+import { Eraser, PaintBucket, Redo2, Trash2, Undo2 } from 'lucide-react'
+import { INK_HEIGHT, INK_WIDTH, PAPER_COLOR as PAPER, paintInk, type DrawStroke as Stroke } from './drawInk'
 
 import { getSocket } from '@/lib/socket'
 import { cn } from '@/lib/utils'
 
-/**
- * The shared canvas.
- *
- * Coordinates are fractions of the board (0–1), never pixels, so a drawing made
- * on a laptop lands in the same place on a phone. The drawer's points are sent
- * in small batches about twenty times a second — often enough to look live,
- * rarely enough not to flood a mobile connection — and everyone else redraws
- * them as they arrive.
- */
-
-type Stroke = { id: string; color: string; size: number; tool: 'pen' | 'eraser'; points: [number, number][] }
-
-const COLORS = ['#18181b', '#ffffff', '#e63946', '#f4a261', '#ffd166', '#2a9d8f', '#4361ee', '#9b5de5', '#8d5524', '#f15bb5']
+type ActiveStroke = {
+  stroke: Stroke
+  pending: [number, number][]
+  pointerId: number
+}
+const COLORS = [
+  ['#18181b', 'Black'],
+  ['#ffffff', 'White'],
+  ['#e63946', 'Red'],
+  ['#f4a261', 'Orange'],
+  ['#ffd166', 'Yellow'],
+  ['#2a9d8f', 'Green'],
+  ['#4361ee', 'Blue'],
+  ['#9b5de5', 'Violet'],
+  ['#8d5524', 'Brown'],
+  ['#f15bb5', 'Pink'],
+] as const
 const SIZES = [4, 9, 18]
-const ASPECT = 4 / 3
 const SEND_MS = 50
 
-export function DrawBoard({ roomId, canDraw }: { roomId: string; canDraw: boolean }) {
+/** A single 4:3 page, shared in normalised coordinates on every screen. */
+export function DrawBoard({
+  roomId,
+  canvasKey,
+  canDraw,
+  children,
+}: {
+  roomId: string
+  canvasKey: string
+  canDraw: boolean
+  children?: React.ReactNode
+}) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const strokes = useRef<Stroke[]>([])
-  const [color, setColor] = useState(COLORS[0]!)
+  const current = useRef<ActiveStroke | null>(null)
+  const lastFill = useRef(-Infinity)
+  const [ready, setReady] = useState(false)
+  const [inkCount, setInkCount] = useState(0)
+  const [canRedo, setCanRedo] = useState(false)
+  const [hasInk, setHasInk] = useState(false)
+  const [color, setColor] = useState<string>(COLORS[0][0])
   const [size, setSize] = useState(SIZES[1]!)
-  const [tool, setTool] = useState<'pen' | 'eraser'>('pen')
+  const [tool, setTool] = useState<'pen' | 'eraser' | 'fill'>('pen')
 
-  /** Redraw everything — on resize, on undo, on a fresh canvas. */
   const repaint = useCallback(() => {
     const el = canvas.current
     const ctx = el?.getContext('2d')
     if (!el || !ctx) return
-    ctx.fillStyle = '#fbfaf7'
+    ctx.fillStyle = PAPER
     ctx.fillRect(0, 0, el.width, el.height)
-    for (const s of strokes.current) paint(ctx, el, s, 0)
+    for (const s of strokes.current) paintInk(ctx, s)
   }, [])
 
-  /* Keep the backing store at device resolution so lines stay crisp. */
-  useEffect(() => {
-    const el = canvas.current
-    if (!el) return
-    const fit = () => {
-      const rect = el.getBoundingClientRect()
-      const dpr = Math.min(2, window.devicePixelRatio || 1)
-      el.width = Math.round(rect.width * dpr)
-      el.height = Math.round(rect.height * dpr)
-      repaint()
-    }
-    const observer = new ResizeObserver(fit)
-    observer.observe(el)
-    fit()
-    return () => observer.disconnect()
-  }, [repaint])
-
-  /* Ink from the drawer, and whole-canvas replacements (undo, new turn). */
   useEffect(() => {
     const socket = getSocket()
-    const onStroke = (raw: Stroke & { roomId: string }) => {
-      if (raw.roomId !== roomId) return
+    const sync = () => {
+      current.current = null
+      setReady(false)
+      if (socket.connected) socket.emit('party:canvas:request', { roomId, key: canvasKey })
+    }
+    const onStroke = (raw: Stroke & { roomId: string; key: string }) => {
+      if (raw.roomId !== roomId || raw.key !== canvasKey) return
       let stroke = strokes.current.find((s) => s.id === raw.id)
       const from = stroke ? stroke.points.length : 0
       if (!stroke) {
-        stroke = { id: raw.id, color: raw.color, size: raw.size, tool: raw.tool, points: [] }
+        stroke = {
+          id: raw.id,
+          color: raw.color,
+          size: raw.size,
+          tool: raw.tool,
+          points: [],
+        }
         strokes.current.push(stroke)
       }
       stroke.points.push(...raw.points)
       const el = canvas.current
       const ctx = el?.getContext('2d')
-      if (el && ctx) paint(ctx, el, stroke, Math.max(0, from - 1))
+      if (el && ctx) {
+        if (stroke.tool === 'fill') repaint()
+        else paintInk(ctx, stroke, Math.max(0, from - 1))
+      }
+      setInkCount(strokes.current.length)
+      setHasInk(strokes.current.at(-1)?.tool !== 'clear')
+      setCanRedo(false)
     }
-    const onCanvas = (raw: { roomId: string; strokes: Stroke[] }) => {
-      if (raw.roomId !== roomId) return
-      strokes.current = raw.strokes.map((s) => ({ ...s, points: [...s.points] }))
+    const onCanvas = (raw: { roomId: string; key: string; strokes: Stroke[]; canRedo?: boolean }) => {
+      if (raw.roomId !== roomId || raw.key !== canvasKey) return
+      current.current = null
+      strokes.current = raw.strokes.map((s) => ({
+        ...s,
+        points: [...s.points],
+      }))
+      setInkCount(strokes.current.length)
+      setHasInk(strokes.current.length > 0 && strokes.current.at(-1)?.tool !== 'clear')
+      setCanRedo(!!raw.canRedo)
+      setReady(true)
       repaint()
     }
+    strokes.current = []
+    setInkCount(0)
+    setHasInk(false)
+    setCanRedo(false)
+    repaint()
     socket.on('party:stroke', onStroke)
     socket.on('party:canvas', onCanvas)
+    socket.on('connect', sync)
+    socket.on('disconnect', sync)
+    // Subscribe before requesting: the initial party:open can arrive before
+    // this board mounts, especially when returning from the game picker.
+    sync()
     return () => {
+      current.current = null
       socket.off('party:stroke', onStroke)
       socket.off('party:canvas', onCanvas)
+      socket.off('connect', sync)
+      socket.off('disconnect', sync)
     }
-  }, [roomId, repaint])
+  }, [roomId, canvasKey, repaint])
 
-  /* Drawing. Points collect locally and go out in batches. */
-  const current = useRef<{ stroke: Stroke; pending: [number, number][]; last: number } | null>(null)
   const flush = useCallback(() => {
     const c = current.current
-    if (!c || c.pending.length === 0) return
+    const socket = getSocket()
+    if (!c || !c.pending.length || !socket.connected) return
+    // Never buffer ink through a disconnect: the server snapshot is authority.
     const s = c.stroke
-    getSocket().emit('party:stroke', { roomId, id: s.id, color: s.color, size: s.size, tool: s.tool, points: c.pending })
-    c.pending = []
-    c.last = performance.now()
-  }, [roomId])
+    while (c.pending.length) {
+      socket.emit('party:stroke', {
+        roomId,
+        key: canvasKey,
+        id: s.id,
+        color: s.color,
+        size: s.size,
+        tool: s.tool,
+        points: c.pending.splice(0, 200),
+      })
+    }
+  }, [roomId, canvasKey])
 
-  const pointAt = (event: React.PointerEvent): [number, number] => {
+  useEffect(() => {
+    if (!canDraw || !ready) {
+      current.current = null
+      return
+    }
+    const timer = window.setInterval(flush, SEND_MS)
+    const finish = () => {
+      flush()
+      current.current = null
+    }
+    window.addEventListener('blur', finish)
+    document.addEventListener('visibilitychange', finish)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('blur', finish)
+      document.removeEventListener('visibilitychange', finish)
+      current.current = null
+    }
+  }, [canDraw, ready, flush])
+
+  const pointAt = (event: { clientX: number; clientY: number }): [number, number] => {
     const rect = canvas.current!.getBoundingClientRect()
-    return [
-      Math.round(((event.clientX - rect.left) / rect.width) * 1000) / 1000,
-      Math.round(((event.clientY - rect.top) / rect.height) * 1000) / 1000,
-    ]
+    const clamp = (n: number) => Math.round(Math.max(0, Math.min(1, n)) * 1000) / 1000
+    return [clamp((event.clientX - rect.left) / rect.width), clamp((event.clientY - rect.top) / rect.height)]
   }
-
-  const down = (event: React.PointerEvent) => {
-    if (!canDraw) return
-    event.currentTarget.setPointerCapture(event.pointerId)
+  const down = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!canDraw || !ready || !event.isPrimary || event.button !== 0 || current.current) return
+    if (tool === 'fill' && performance.now() - lastFill.current < 250) return
+    event.preventDefault()
+    if (tool !== 'fill') event.currentTarget.setPointerCapture(event.pointerId)
     const p = pointAt(event)
     const stroke: Stroke = {
-      id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-      color: tool === 'eraser' ? '#fbfaf7' : color,
+      id: globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`,
+      color: tool === 'eraser' ? PAPER : color,
       size: tool === 'eraser' ? size * 2.2 : size,
       tool,
       points: [p],
     }
+    if (tool === 'fill') {
+      repaint()
+      const ctx = event.currentTarget.getContext('2d')
+      if (!ctx || paintInk(ctx, stroke) === false) return
+      lastFill.current = performance.now()
+    }
     strokes.current.push(stroke)
-    current.current = { stroke, pending: [p], last: performance.now() }
-    const el = canvas.current!
-    paint(el.getContext('2d')!, el, stroke, 0)
+    setInkCount(strokes.current.length)
+    setHasInk(true)
+    setCanRedo(false)
+    current.current = { stroke, pending: [p], pointerId: event.pointerId }
+    const ctx = event.currentTarget.getContext('2d')
+    if (ctx && tool !== 'fill') paintInk(ctx, stroke)
+    flush()
+    if (tool === 'fill') current.current = null
   }
-
-  const move = (event: React.PointerEvent) => {
+  const move = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const c = current.current
-    if (!c) return
-    const p = pointAt(event)
-    const prev = c.stroke.points.at(-1)!
-    /* Skip points too close to bother sending. */
-    if (Math.hypot(p[0] - prev[0], p[1] - prev[1]) < 0.003) return
-    c.stroke.points.push(p)
-    c.pending.push(p)
-    const el = canvas.current!
-    paint(el.getContext('2d')!, el, c.stroke, c.stroke.points.length - 2)
-    if (performance.now() - c.last > SEND_MS) flush()
+    if (!canDraw || !ready || !c || c.pointerId !== event.pointerId) return
+    const samples = event.nativeEvent.getCoalescedEvents?.() ?? []
+    for (const sample of samples.length ? samples : [event]) {
+      const p = pointAt(sample)
+      const prev = c.stroke.points.at(-1)!
+      if (Math.hypot(p[0] - prev[0], p[1] - prev[1]) < 0.001) continue
+      c.stroke.points.push(p)
+      c.pending.push(p)
+      const ctx = event.currentTarget.getContext('2d')
+      if (ctx) paintInk(ctx, c.stroke, c.stroke.points.length - 2)
+    }
   }
-
-  const up = () => {
+  const up = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (current.current?.pointerId !== event.pointerId) return
+    if (event.type === 'pointerup') move(event)
     flush()
     current.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+  const edit = (action: 'undo' | 'redo' | 'clear') => {
+    if (!ready || !getSocket().connected) return
+    flush()
+    current.current = null
+    getSocket().emit(`party:${action}`, { roomId, key: canvasKey })
   }
 
-  return (
-    <div className="flex w-full flex-col gap-2">
-      <div className="relative w-full overflow-hidden rounded-[1.1rem] shadow-[0_30px_70px_-30px_rgba(0,0,0,.9)] ring-1 ring-white/10" style={{ aspectRatio: ASPECT }}>
-        <canvas
-          ref={canvas}
-          aria-label={canDraw ? 'Drawing board — draw your word' : 'The drawing so far'}
-          role="img"
-          className={cn('absolute inset-0 size-full touch-none', canDraw ? 'cursor-crosshair' : 'cursor-default')}
-          onPointerDown={down}
-          onPointerMove={move}
-          onPointerUp={up}
-          onPointerCancel={up}
-          onPointerLeave={up}
-        />
-      </div>
+  const editRef = useRef(edit)
+  editRef.current = edit
+  useEffect(() => {
+    if (!canDraw || !ready) return
+    const shortcut = (event: KeyboardEvent) => {
+      if ((event.target as Element | null)?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (event.ctrlKey || event.metaKey) {
+        if (event.key.toLowerCase() === 'z' || event.key.toLowerCase() === 'y') {
+          event.preventDefault()
+          editRef.current(event.shiftKey || event.key.toLowerCase() === 'y' ? 'redo' : 'undo')
+        }
+        return
+      }
+      if (event.altKey) return
+      if (event.key.toLowerCase() === 'b') setTool('pen')
+      if (event.key.toLowerCase() === 'e') setTool('eraser')
+      if (event.key.toLowerCase() === 'f') setTool('fill')
+    }
+    window.addEventListener('keydown', shortcut)
+    return () => window.removeEventListener('keydown', shortcut)
+  }, [canDraw, ready])
 
+  return (
+    <div className="draw-board">
+      <div className="draw-paper-slot">
+        <div className="draw-paper">
+          <canvas
+            ref={canvas}
+            width={INK_WIDTH}
+            height={INK_HEIGHT}
+            role="img"
+            aria-label={canDraw ? 'Drawing board — draw your word' : 'The drawing so far'}
+            className={cn('draw-canvas', canDraw && ready && 'draw-canvas--active')}
+            onPointerDown={down}
+            onPointerMove={move}
+            onPointerUp={up}
+            onPointerCancel={up}
+            onLostPointerCapture={up}
+          />
+          {children}
+          {!ready && (
+            <div className="draw-sync" role="status">
+              Syncing drawing…
+            </div>
+          )}
+        </div>
+      </div>
       {canDraw && (
-        <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Drawing tools">
-          <div className="flex flex-wrap gap-1.5">
-            {COLORS.map((c) => (
+        <div className="draw-tools" data-lenis-prevent aria-label="Drawing tools" role="group">
+          <div className="draw-colors" data-lenis-prevent role="group" aria-label="Ink colour">
+            {COLORS.map(([c, label]) => (
               <button
                 key={c}
                 type="button"
+                aria-label={`${label} ink`}
+                title={label}
+                disabled={!ready}
+                aria-pressed={tool !== 'eraser' && color === c}
                 onClick={() => {
                   setColor(c)
-                  setTool('pen')
+                  setTool((t) => (t === 'eraser' ? 'pen' : t))
                 }}
-                aria-label={`Colour ${c}`}
-                aria-pressed={tool === 'pen' && color === c}
-                className={cn(
-                  'size-7 rounded-full ring-2 outline-none transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal',
-                  tool === 'pen' && color === c ? 'scale-110 ring-chalk' : 'ring-white/15',
-                )}
-                style={{ background: c }}
-              />
+              >
+                <span style={{ background: c }} />
+              </button>
             ))}
           </div>
-          <span className="mx-1 h-6 w-px bg-white/15" aria-hidden />
-          {SIZES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setSize(s)}
-              aria-label={`Brush size ${s}`}
-              aria-pressed={size === s}
-              className={cn(
-                'grid size-8 place-items-center rounded-full outline-none transition-colors focus-visible:outline-2 focus-visible:outline-signal',
-                size === s ? 'bg-white/20' : 'hover:bg-white/10',
-              )}
+          <div className="draw-tool-actions">
+            <select
+              className="draw-brush-size"
+              aria-label="Brush size"
+              value={size}
+              disabled={!ready}
+              onChange={(event) => setSize(Number(event.target.value))}
             >
-              <span className="rounded-full bg-chalk" style={{ width: Math.max(4, s * 0.8), height: Math.max(4, s * 0.8) }} />
-            </button>
-          ))}
-          <span className="mx-1 h-6 w-px bg-white/15" aria-hidden />
-          <ToolButton label="Eraser" pressed={tool === 'eraser'} onClick={() => setTool((t) => (t === 'eraser' ? 'pen' : 'eraser'))}>
-            <Eraser className="size-4" aria-hidden />
-          </ToolButton>
-          <ToolButton label="Undo" onClick={() => getSocket().emit('party:undo', { roomId })}>
-            <Undo2 className="size-4" aria-hidden />
-          </ToolButton>
-          <ToolButton label="Clear the board" onClick={() => getSocket().emit('party:clear', { roomId })}>
-            <Trash2 className="size-4" aria-hidden />
-          </ToolButton>
+              {SIZES.map((s, i) => (
+                <option key={s} value={s}>
+                  {['Fine', 'Med', 'Bold'][i]}
+                </option>
+              ))}
+            </select>
+            <div className="draw-edits">
+              <ToolButton
+                label="Fill colour"
+                disabled={!ready}
+                pressed={tool === 'fill'}
+                onClick={() => setTool((t) => (t === 'fill' ? 'pen' : 'fill'))}
+              >
+                <PaintBucket aria-hidden />
+              </ToolButton>
+              <ToolButton
+                label="Eraser"
+                disabled={!ready}
+                pressed={tool === 'eraser'}
+                onClick={() => setTool((t) => (t === 'eraser' ? 'pen' : 'eraser'))}
+              >
+                <Eraser aria-hidden />
+              </ToolButton>
+              <ToolButton label="Undo last stroke" disabled={!ready || !inkCount} onClick={() => edit('undo')}>
+                <Undo2 aria-hidden />
+              </ToolButton>
+              <ToolButton label="Redo last stroke" disabled={!ready || !canRedo} onClick={() => edit('redo')}>
+                <Redo2 aria-hidden />
+              </ToolButton>
+              <ToolButton label="Clear the board" disabled={!ready || !hasInk} onClick={() => edit('clear')}>
+                <Trash2 aria-hidden />
+              </ToolButton>
+            </div>
+          </div>
         </div>
       )}
     </div>
   )
 }
-
-function ToolButton({ label, pressed, onClick, children }: { label: string; pressed?: boolean; onClick: () => void; children: React.ReactNode }) {
+function ToolButton({
+  label,
+  pressed,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  pressed?: boolean
+  disabled?: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
-      title={label}
+      title={`${label}${label === 'Fill colour' ? ' · F' : label === 'Eraser' ? ' · E' : label === 'Undo last stroke' ? ' · Ctrl/⌘ Z' : label === 'Redo last stroke' ? ' · Ctrl/⌘ Shift Z' : ''}`}
       aria-pressed={pressed}
-      className={cn(
-        'grid size-8 place-items-center rounded-full text-chalk outline-none transition-colors focus-visible:outline-2 focus-visible:outline-signal',
-        pressed ? 'bg-white/20' : 'hover:bg-white/10',
-      )}
+      disabled={disabled}
     >
       {children}
     </button>
   )
-}
-
-/** Paint a stroke from point `from` onward — the whole thing, or just the newest bit. */
-function paint(ctx: CanvasRenderingContext2D, el: HTMLCanvasElement, s: Stroke, from: number) {
-  const w = el.width
-  const h = el.height
-  const scale = w / 800
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.strokeStyle = s.color
-  ctx.fillStyle = s.color
-  ctx.lineWidth = s.size * scale
-  const pts = s.points
-  if (pts.length === 1 || (from === 0 && pts.length === 1)) {
-    ctx.beginPath()
-    ctx.arc(pts[0]![0] * w, pts[0]![1] * h, (s.size * scale) / 2, 0, Math.PI * 2)
-    ctx.fill()
-    return
-  }
-  ctx.beginPath()
-  ctx.moveTo(pts[from]![0] * w, pts[from]![1] * h)
-  for (let i = from + 1; i < pts.length; i++) ctx.lineTo(pts[i]![0] * w, pts[i]![1] * h)
-  ctx.stroke()
 }

@@ -186,7 +186,7 @@ export function GamesStage({
       />
 
       {/* Marked so the page's smooth scrolling hands the wheel to this panel. */}
-      <div data-lenis-prevent className={cn('relative z-10 min-h-0 flex-1', screen === 'geo' && party.party?.game === 'geo' ? 'overflow-hidden' : 'overflow-y-auto')}>
+      <div data-lenis-prevent className={cn('relative z-10 min-h-0 flex-1', (screen === 'geo' && party.party?.game === 'geo') || (screen === 'draw' && party.party?.game === 'draw') ? 'overflow-hidden' : 'overflow-y-auto')}>
         {screen === 'picker' && (
           <GamePicker
             live={party.party?.game ?? null}
@@ -282,7 +282,7 @@ export function GamesStage({
               party={party.party as PartyState<DrawView>}
               selfId={selfId}
               error={party.error}
-              act={(action, payload) => void party.act(action, payload)}
+              act={(action, payload) => party.act(action, payload, 5000)}
               onLeaveTable={() => {
                 void party.dismiss()
                 setScreen('picker')
@@ -291,7 +291,7 @@ export function GamesStage({
           ) : party.party ? (
             <Busy label={party.party.label} onOpen={() => setScreen(party.party!.game as GameId)} />
           ) : (
-            <DrawSetup people={members.length} error={party.error} onStart={(options) => void party.start('draw', options)} />
+            <DrawSetup people={members.length} error={party.error} onStart={(options) => party.start('draw', options)} />
           ))}
 
         {screen === 'knowme' &&

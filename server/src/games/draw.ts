@@ -40,9 +40,12 @@ export type Draw = {
   feed: FeedEntry[]
   used: string[]
   feedId: number
+  wordBank: string[]
+  hints: number
+  turnStartScores: Record<string, number>
 }
 
-type Options = { rounds: number; drawSeconds: number }
+type Options = { rounds: number; drawSeconds: number; hints?: number; customWords?: string[] }
 
 const CHOOSE_MS = 15_000
 const REVEAL_MS = 5_000
@@ -85,8 +88,10 @@ function say(state: Draw, entry: Omit<FeedEntry, 'id'>) {
 }
 
 function choose(state: Draw, ctx: Ctx) {
-  const fresh = WORDS.filter((w) => !state.used.includes(w))
-  state.choices = byFreshness(fresh.length >= 3 ? fresh : WORDS, (word) => word, ctx).slice(0, 3)
+  const bank = state.wordBank
+  const fresh = bank.filter((w) => !state.used.includes(w))
+  state.turnStartScores = { ...state.scores }
+  state.choices = byFreshness(fresh.length >= 3 ? fresh : bank, (word) => word, ctx).slice(0, 3)
   state.word = null
   state.revealed = []
   state.guessed = []
@@ -103,8 +108,7 @@ function begin(state: Draw, word: string, ctx: Ctx) {
   const ms = state.drawSeconds * 1000
   state.deadline = ctx.now() + ms
   ctx.clearSchedule()
-  ctx.schedule(Math.round(ms * 0.45), 'hint', { turn: state.turn })
-  ctx.schedule(Math.round(ms * 0.7), 'hint', { turn: state.turn })
+  for (const at of state.hints === 1 ? [0.6] : state.hints === 2 ? [0.45, 0.7] : []) ctx.schedule(Math.round(ms * at), 'hint', { turn: state.turn })
   ctx.schedule(ms, 'timeup', { turn: state.turn })
   say(state, { by: null, kind: 'system', text: `${state.players[state.drawer]!.name} is drawing` })
 }
@@ -126,13 +130,19 @@ export const drawGame: GameDef<Draw, Options> = {
   maxPlayers: 10,
 
   options(raw) {
-    const body = (raw ?? {}) as { rounds?: unknown; drawSeconds?: unknown }
+    const body = (raw ?? {}) as { rounds?: unknown; drawSeconds?: unknown; hints?: unknown; customWords?: unknown }
     const rounds = [1, 2, 3].includes(body.rounds as number) ? (body.rounds as number) : 2
     const drawSeconds = [60, 80, 100].includes(body.drawSeconds as number) ? (body.drawSeconds as number) : 80
-    return { rounds, drawSeconds }
+    const hints = [0, 1, 2].includes(body.hints as number) ? body.hints as number : 2
+    if (body.customWords !== undefined && (!Array.isArray(body.customWords) || body.customWords.length > 80)) return { error: 'Custom words: use 3–80 words' }
+    const rawWords = (body.customWords ?? []) as unknown[]
+    if (rawWords.some(w => typeof w !== 'string' || !/^[a-zA-Z][a-zA-Z '-]{1,31}$/.test(w.trim()))) return { error: 'Custom words: use 2–32 English letters, spaces, hyphens or apostrophes' }
+    const customWords = [...new Set((rawWords as string[]).map(w => w.trim().toLowerCase().replace(/\s+/g, ' ')))]
+    if (customWords.length > 0 && customWords.length < 3) return { error: 'Custom words: add at least 3 different words' }
+    return { rounds, drawSeconds, hints, customWords }
   },
 
-  start(players, { rounds, drawSeconds }, ctx) {
+  start(players, { rounds, drawSeconds, hints = 2, customWords = [] }, ctx) {
     const state: Draw = {
       players,
       scores: Object.fromEntries(players.map((p) => [p.id, 0])),
@@ -149,6 +159,9 @@ export const drawGame: GameDef<Draw, Options> = {
       feed: [],
       used: [],
       feedId: 0,
+      wordBank: customWords.length >= 3 ? [...customWords] : WORDS,
+      hints,
+      turnStartScores: {},
     }
     choose(state, ctx)
     return state
@@ -158,6 +171,8 @@ export const drawGame: GameDef<Draw, Options> = {
     const state: Draw = structuredClone(prev)
     const me = state.players.findIndex((p) => p.id === by?.id)
     const drawing = me >= 0 && me === state.drawer
+
+    if (by && payload.turn !== undefined && payload.turn !== state.turn) return { error: 'That turn has ended' }
 
     if (action === 'end') {
       if (me < 0) return { error: 'Only players can end the game' }
@@ -211,12 +226,13 @@ export const drawGame: GameDef<Draw, Options> = {
       case 'guess': {
         if (state.phase !== 'draw' || !state.word) return { error: 'Nothing to guess yet' }
         if (me < 0) return { error: 'Join the game to guess' }
+        if (state.deadline !== null && ctx.now() >= state.deadline) return { error: 'That turn has ended' }
         if (drawing) return { error: 'No guessing your own drawing' }
         if (state.guessed.includes(by.id)) return { error: 'You already got it' }
         const guess = text(payload.text, 60)
         if (!guess) return prev
 
-        if (normalise(guess) === normalise(state.word)) {
+        if (normalise(guess).replace(/ /g, '') === normalise(state.word).replace(/ /g, '')) {
           const total = state.drawSeconds * 1000
           const left = Math.max(0, (state.deadline ?? ctx.now()) - ctx.now())
           const first = state.guessed.length === 0
@@ -254,11 +270,12 @@ export const drawGame: GameDef<Draw, Options> = {
   view(state, viewer) {
     const drawerId = state.players[state.drawer]?.id
     const sees = viewer === drawerId || state.phase === 'reveal' || state.phase === 'over'
-    const { used: _used, choices, word, ...rest } = state
+    const { used: _used, wordBank: _wordBank, turnStartScores, choices, word, ...rest } = state
     return {
       ...rest,
       choices: viewer === drawerId ? choices : [],
       word: sees ? word : null,
+      turnScores: Object.fromEntries(state.players.map(p => [p.id, (state.scores[p.id] ?? 0) - (turnStartScores[p.id] ?? 0)])),
       /* Underscores for letters, spaces kept, revealed hints filled in. */
       mask: word ? [...word].map((c, i) => (c === ' ' ? ' ' : sees || state.revealed.includes(i) ? c : '_')).join('') : null,
       feed: state.feed.filter((f) => !f.only || f.only === viewer),
@@ -266,8 +283,9 @@ export const drawGame: GameDef<Draw, Options> = {
   },
 
   join(state, player) {
-    if (state.players.some((p) => p.id === player.id) || state.players.length >= 10) return null
-    return { ...state, players: [...state.players, player], scores: { ...state.scores, [player.id]: 0 } }
+    // Drawing order is fixed at start; late arrivals watch until the next game.
+    if (state.players.some((p) => p.id === player.id)) return state
+    return null
   },
 
   used: (state) => state.used,
