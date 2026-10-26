@@ -6,12 +6,14 @@ import { COLORS, type GeoOptions, type GeoRound, type Point } from './types'
 export function GeoPanorama({
   scene,
   movement,
+  playing,
   attempt,
   onReady,
   onHeading,
 }: {
   scene: { pano: string; heading: number; pitch: number; zoom: number }
   movement: GeoOptions['movement']
+  playing: boolean
   attempt: number
   onReady: () => void
   onHeading: (heading: number) => void
@@ -131,16 +133,20 @@ export function GeoPanorama({
           <p>{error}</p>
         </div>
       )}
-      {loaded && movement === 'moving' && (
+      {loaded && playing && movement === 'moving' && (
         <button
+          type="button"
           className="geo-return"
           onClick={() => {
-            pano.current?.setPano(scene.pano)
-            pano.current?.setPov({ heading: scene.heading, pitch: scene.pitch })
-            pano.current?.setZoom(scene.zoom)
+            const viewer = pano.current
+            if (!viewer) return
+            // Keep the SDK instance (and its loaded imagery) alive when returning.
+            if (viewer.getPano() !== scene.pano) viewer.setPano(scene.pano)
+            viewer.setPov({ heading: scene.heading, pitch: scene.pitch })
+            viewer.setZoom(scene.zoom)
           }}
         >
-          <RotateCcw size={15} /> Back to start
+          <RotateCcw size={15} aria-hidden /> Back to start
         </button>
       )}
     </>

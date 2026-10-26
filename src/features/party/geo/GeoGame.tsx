@@ -71,7 +71,7 @@ export function GeoSetup({
 }) {
   const [options, setOptions] = useState<GeoOptions>({
     map: 'world',
-    movement: 'no-move',
+    movement: 'moving',
     mode: 'classic',
     rounds: 5,
     seconds: 90,
@@ -472,6 +472,7 @@ export function GeoTable({
       <GeoPanorama
         scene={v.scene}
         movement={v.options.movement}
+        playing={v.phase === 'playing'}
         attempt={v.attempt}
         onReady={onReady}
         onHeading={setHeading}

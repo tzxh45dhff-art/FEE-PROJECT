@@ -407,7 +407,8 @@
   position: relative;
   height: 100%;
   min-height: 0;
-  overflow: hidden;
+  /* Offscreen phone sheets must not let focus scroll the panorama and HUD away. */
+  overflow: clip;
   background: #0f211c;
 }
 .geo-panorama {
@@ -587,11 +588,14 @@
   display: flex;
   align-items: center;
   gap: 7px;
+  min-height: 44px;
   padding: 10px 13px;
   border-radius: 7px;
   background: #10251ff0;
   border: 1px solid #ffffff30;
-  font-size: 11px;
+  font-size: 12px;
+  white-space: nowrap;
+  touch-action: manipulation;
 }
 .geo-loading-card {
   position: absolute;
@@ -1162,7 +1166,7 @@
   .geo-return {
     left: 16px;
     bottom: 135px;
-    font-size: 10px;
+    font-size: 11px;
     padding: 9px 11px;
   }
   .geo-map-panel {

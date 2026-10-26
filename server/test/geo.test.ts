@@ -130,6 +130,12 @@ describe('Somewhere geography rules', () => {
       assert.ok('error' in geoGame.options(options))
     const parsed = geoGame.options({ locations, token: 'injected' })
     assert.ok(!('error' in parsed))
+    assert.equal(parsed.movement, 'moving')
+    for (const movement of ['no-move', 'fixed'] as const) {
+      const explicit = geoGame.options({ movement })
+      assert.ok(!('error' in explicit))
+      assert.equal(explicit.movement, movement)
+    }
     assert.ok(!('locations' in parsed))
     assert.ok(!('token' in parsed))
   })

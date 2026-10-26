@@ -8,6 +8,8 @@ Both modes offer movement, pan/zoom without movement, or a fixed view. Pins are 
 
 Scoring is Huddle's own: 5,000 points within 25m, otherwise `min(4999, round(5000 × exp(-distanceKm / scale)))`; scale is 2,000km for World and 400km for India. There is no speed bonus. No pin scores zero. Duels compare round scores and multiply the difference by 1× in rounds 1–3, 2× in round 4, then 3×, 4×, and so on. Health cannot fall below zero. At ten rounds, health then cumulative points settle the result; equal values are a draw.
 
+Moving is the default exploration setting in both the setup screen and server options. During a Moving round, Back to start restores the starting panorama, heading, pitch and zoom on the existing viewer. The phone control has a minimum 44px tap target.
+
 ## Google setup — pending
 
 No cloud resources, billing settings or real credentials were changed. There are no new runtime packages or database migrations.

@@ -175,7 +175,7 @@ export const geoGame: GameDef<GeoState, GeoOptions> = {
       return { error: 'Choose a friend for the duel' }
     return {
       map: p.map === 'india' ? 'india' : 'world',
-      movement: (p.movement as GeoOptions['movement']) ?? 'no-move',
+      movement: (p.movement as GeoOptions['movement']) ?? 'moving',
       mode,
       rounds: mode === 'duel' ? 10 : ((p.rounds as number) ?? 5),
       seconds: (p.seconds as number) ?? 90,
