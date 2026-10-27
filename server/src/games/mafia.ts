@@ -244,6 +244,26 @@ function people(state: Mafia, ctx: Ctx) {
   return state.players.filter((p) => !isBot(p) && (!here || here.includes(p.id)))
 }
 
+/** The living who still count for "everyone has acted": anyone who has left the room is not waited for; an AI never leaves. */
+function expected(state: Mafia, ctx: Ctx) {
+  const here = ctx.present?.()
+  return living(state).filter((p) => isBot(p) || !here || here.includes(p.id))
+}
+
+/**
+ * Everyone has had their say: close the phase. If only AIs are left to
+ * decide, they decide now rather than at the time they were planned for — a
+ * table that has finished voting should not sit and wait on them.
+ */
+function settle(state: Mafia, ctx: Ctx, job: 'vote' | 'judge', owing: Seat[]) {
+  if (!owing.length) return closeSoon(state, ctx)
+  if (!owing.every(isBot)) return
+  for (const bot of owing) {
+    if (state.thinking.some((t) => t.id === bot.id && t.job === job)) continue
+    ctx.schedule(600 + ctx.random(1_200), 'bot', { step: state.step, id: bot.id, job })
+  }
+}
+
 /**
  * What one AI knows — exactly what a person in its seat would: its own
  * screen's view, everything said at the table since the game began, the
@@ -893,6 +913,10 @@ export const mafia: GameDef<Mafia, Options> = {
           return isError(next) ? prev : next
         }
         if (job !== 'talk' && job !== 'vote' && job !== 'judge' && job !== 'defence') return prev
+        /* A vote is cast once: a hurried AI's planned turn, arriving later, has nothing left to do. */
+        if (job === 'vote' && (prev.phase !== 'vote' || prev.votes[bot.id] !== undefined)) return prev
+        if (job === 'judge' && (prev.phase !== 'judgement' || prev.judgement[bot.id] !== undefined)) return prev
+        if ((job === 'vote' || job === 'judge') && prev.thinking.some((t) => t.id === bot.id && t.job === job)) return prev
         const state: Mafia = structuredClone(prev)
         state.thinking.push({ key: `${state.game}-${state.step}-${bot.id}-${job}-${ctx.now()}`, id: bot.id, job, replyTo: typeof payload.replyTo === 'string' ? payload.replyTo : null })
         return state
@@ -1072,7 +1096,7 @@ export const mafia: GameDef<Mafia, Options> = {
         state.picks[by.id] = target.id
         /* The AIs in the Family follow a person's call. */
         if (isFamily(me.role) && !isBot(me)) for (const p of living(state)) if (isBot(p) && isFamily(p.role)) state.picks[p.id] = target.id
-        const everyone = living(state).every((p) => state.picks[p.id])
+        const everyone = expected(state, ctx).every((p) => state.picks[p.id])
         const family = living(state).filter((p) => isFamily(p.role))
         const agreed = family.some((p) => p.role === 'godfather') || new Set(family.map((p) => state.picks[p.id])).size === 1
         if (everyone && agreed) closeSoon(state, ctx)
@@ -1125,7 +1149,7 @@ export const mafia: GameDef<Mafia, Options> = {
         if (target && (!target.alive || target.id === me.id)) return { error: 'Pick someone else' }
         const state: Mafia = structuredClone(prev)
         state.votes[by.id] = target ? target.id : null
-        if (living(state).every((p) => state.votes[p.id] !== undefined)) closeSoon(state, ctx)
+        settle(state, ctx, 'vote', expected(state, ctx).filter((p) => state.votes[p.id] === undefined))
         return state
       }
 
@@ -1141,7 +1165,7 @@ export const mafia: GameDef<Mafia, Options> = {
         if (typeof payload.guilty !== 'boolean') return { error: 'Guilty or innocent?' }
         const state: Mafia = structuredClone(prev)
         state.judgement[by.id] = payload.guilty
-        if (living(state).every((p) => p.id === state.accused || state.judgement[p.id] !== undefined)) closeSoon(state, ctx)
+        settle(state, ctx, 'judge', expected(state, ctx).filter((p) => p.id !== state.accused && state.judgement[p.id] === undefined))
         return state
       }
 

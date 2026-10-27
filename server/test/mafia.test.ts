@@ -664,6 +664,47 @@ describe('mafia — AI players', () => {
     for (let i = 1; i < talk.length; i++) assert.ok(talk[i]! - talk[i - 1]! >= 2_000, 'at least a couple of seconds between lines')
   })
 
+  it('once every person has voted, the AIs still deciding vote now — and the vote closes', () => {
+    clock = 0
+    timers = []
+    let state = mafia.start(people(2), options({ bots: 3 }), ctx())
+    state.players.forEach((p, i) => (p.role = (['villager', 'doctor', 'mafia', 'detective', 'villager'] as Role[])[i]!))
+    state = tick(tick(tick(tick(tick(state)))))
+    assert.equal(state.phase, 'vote')
+    const hurried = () => timers.filter((t) => t.action === 'bot' && t.payload.job === 'vote' && t.at - clock < 2_000)
+    state = act(state, 'aditi', 'vote', { target: 'ai-1' })
+    assert.equal(hurried().length, 0, 'a person still to vote: the AIs keep their own time')
+    state = act(state, 'rohan', 'vote', { target: 'ai-1' })
+    assert.equal(hurried().length, 3, 'every AI still deciding is asked now')
+    for (const t of hurried()) state = act(state, null, 'bot', t.payload)
+    assert.equal(state.thinking.length, 3)
+    assert.equal(act(state, null, 'bot', { step: state.step, id: 'ai-1', job: 'vote' }), state, 'already thinking: a second turn does nothing')
+    for (const t of [...state.thinking]) state = act(state, null, 'botDone', { key: t.key, target: 'aditi', say: 'Them.' })
+    assert.ok(state.deadline! - clock <= 4_000, 'everyone is in: the vote closes in moments')
+    state = tick(state)
+    assert.equal(state.phase, 'defence')
+  })
+
+  it('somebody who has left the room does not hold up the vote or the verdict', () => {
+    let state = toDay(tick(toNight(table(['mafia', 'doctor', 'detective', 'villager', 'villager']))))
+    for (const id of ['rohan', 'khushi', 'kabir']) state = act(state, id, 'ready')
+    assert.equal(state.phase, 'vote')
+    const here: Ctx = { ...ctx(), present: () => ['aditi', 'rohan', 'khushi', 'kabir'] }
+    const cast = (s: Mafia, by: string, action: string, payload: Record<string, unknown>) => {
+      const next = mafia.act(s, { id: by, name: by }, action, payload, here)
+      if ('error' in next) throw new Error(next.error)
+      return next
+    }
+    for (const by of ['rohan', 'khushi', 'kabir']) state = cast(state, by, 'vote', { target: 'aditi' })
+    assert.ok(state.deadline! - clock > 4_000, 'Aditi is still here, so the vote waits for her')
+    state = cast(state, 'aditi', 'vote', { target: 'rohan' })
+    assert.ok(state.deadline! - clock <= 4_000, 'Meera has gone: everyone left has voted')
+    state = act(tick(state), 'aditi', 'done')
+    assert.equal(state.phase, 'judgement')
+    for (const by of ['rohan', 'khushi', 'kabir']) state = cast(state, by, 'judge', { guilty: true })
+    assert.ok(state.deadline! - clock <= 4_000)
+  })
+
   it('an AI on trial rests its case only after the town has had time to read it', () => {
     clock = 0
     timers = []
