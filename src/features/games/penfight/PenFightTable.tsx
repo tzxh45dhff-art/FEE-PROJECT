@@ -1,7 +1,7 @@
 import { Component, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { CanvasTexture, Plane, Vector3, SRGBColorSpace, RepeatWrapping, type Group, type Mesh, type PerspectiveCamera } from 'three'
-import { DESK, PEN_LENGTH, sampleFlight, type Flick, type Pair, type Position } from './physics'
+import { DESK, PEN_LENGTH, aimContact, sampleFlight, type Flick, type Pair, type Position } from './physics'
 import type { GameSnapshot, PenStyle } from '../types'
 import { usePageVisible } from '@/hooks/usePageVisible'
 
@@ -174,7 +174,7 @@ function Scene({ snapshot, seat, viewSeat, enabled, dragEnabled = true, aim, onA
         if (distance > 0.035) return
         e.stopPropagation()
         ;(e.target as unknown as Element).setPointerCapture(e.pointerId)
-        pointer.current = { id: e.pointerId, start: [p.x, p.z], contact: Math.max(-1, Math.min(1, along / (PEN_LENGTH * 0.42))) }
+        pointer.current = { id: e.pointerId, start: [p.x, p.z], contact: aimContact(along) }
         onAim({ dx: 0, dz: seat === 0 ? -1 : 1, power: 0, contact: pointer.current.contact })
       }}
       onPointerMove={update}

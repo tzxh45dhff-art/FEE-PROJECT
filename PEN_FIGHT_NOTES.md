@@ -10,6 +10,12 @@ or source are required.
 - Challenge an online room member, play the practice rival, or pass one screen
   between two people. Other room members can spectate.
 - Three cosmetic pens have identical physical dimensions and weight.
+- Four mirrored starting layouts cycle between rounds. Maximum flick speed is
+  tuned to avoid a simple opening-shot knockout in the sampled balance grid.
+- Practice defaults to Chill: a rival that estimates distance and has imperfect
+  aim. Sharp evaluates candidate trajectories for a harder match.
+- Practice and pass-and-play have no turn timer. The practice rival waits while
+  instructions are open. Room matches keep their shared turn clock.
 - Touch your own pen and pull back. Release to flick in the opposite direction.
   A centre hit slides; an end hit divides the shot's energy between sliding
   and spinning. Tiny accidental drags do not consume a turn.
@@ -17,7 +23,7 @@ or source are required.
   including keyboard support. Escape cancels a drag.
 - First to three. Both pens falling awards neither player a point. A pen falls
   when its centre loses support. The loser opens the next round after a short
-  result display. Each turn lasts 35 seconds; three missed turns by one player
+  result display. Each room-match turn lasts 35 seconds; three missed turns by one player
   forfeit the match. A valid shot resets that player's missed-turn count.
 - Network players see their own pen from the near side. Pass-and-play keeps
   the camera fixed so the desk does not flip between turns.
@@ -34,21 +40,18 @@ or source are required.
   duplicates and stale turns. A timer settles each shot even if its player
   disconnects. Rejoining returns the current trajectory or settled desk.
 - `src/features/games/penfight/`: the scene, responsive classroom UI, practice
-  rival, and local play. The practice rival evaluates legal shots with the
-  same solver. No model calls. WebGL is required for the 3D scene.
+  rival, and local play. Both rivals use the same shot rules and solver. No model calls. WebGL is required for the 3D scene.
 - Rendering interpolates the trajectory independently of display refresh rate.
   Pointer capture, primary-pointer filtering, cancellation, and padded pen hit
   areas support touch input. The scene stops continuous rendering when hidden.
 
 ## Verification
 
-- Frontend typecheck and production build pass.
-- Server's pinned TypeScript 5.7 compiler passes. Running the root TypeScript 6
-  against the server still reports the pre-existing spread error in
-  `server/src/services/explainer.service.ts:486`; unrelated Study code was not changed.
+- Frontend typecheck and production build pass. Server typechecks pass with
+  both the pinned compiler and the root compiler.
 - Lint has only the two existing Fast Refresh warnings.
-- Full server suite: 260 tests, 257 passed, 3 Docker-dependent skips, no failures.
-- 16 Pen Fight tests cover physics, energy/spin, parallel collisions, scoring,
+- Full server suite: 271 tests, 268 passed, 3 Docker-dependent skips, no failures.
+- 19 Pen Fight tests cover physics, energy/spin, parallel collisions, scoring,
   timeouts, malformed shots, real multiplayer permissions, duplicate/stale
   packets, and disconnecting mid-shot then recovering on rejoin.
 - Browser checks: 320×568, 375×812, 730×900, 768×1024, 1024×768, 1440×900,
@@ -57,6 +60,13 @@ or source are required.
 - Actual scratch-room multiplayer: desktop and phone-sized drag shots, remote
   opponent shots, and page-refresh recovery. Physical iOS/Android devices
   were not available for testing.
+- The manual balance audit (`node --import tsx server/test/penfight.balance.ts`)
+  runs 1,000 rounds per difficulty using a seeded casual aiming policy. The
+  current run averaged 4.38 shots/round against Chill and 4.79 against Sharp,
+  with no round reaching the 50-shot cutoff. These are synthetic policies,
+  not measured human win rates or evidence of player enjoyment.
+- Regression checks probe roughly 1,500 opening shots over both seats and all
+  four layouts, plus touch-centre forgiveness and distinct rival behaviour.
 
 ## Shipping
 

@@ -78,3 +78,10 @@
   .pf-precision output { display:none; }
   .pf-precision button { margin:0; font-size:11px; }
 }
+.pf-practice-options { margin-top:14px; color:#5a6a79; font-size:11px; }
+.pf-practice-options summary { cursor:pointer; padding:8px; min-height:44px; display:list-item; list-style-position:inside; }
+.pf-practice-options summary:focus-visible { outline:3px solid #b64732; outline-offset:2px; }
+.pf-practice-options>div { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:4px 0; }
+.pf-practice-options button { color:#425777; background:#fff3; border:1px solid #99a1a2; padding:8px; border-radius:3px; font-size:12px; font-weight:650; }
+.pf-practice-options button[aria-pressed=true] { background:#fff9e5; border-color:#b64732; box-shadow:inset 0 -2px #b64732; }
+.pf-practice-options small { display:block; font-size:10px; font-weight:400; margin-top:3px; }

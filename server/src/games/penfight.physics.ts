@@ -30,6 +30,7 @@ export const PEN_LENGTH = 0.145
 export const PEN_RADIUS = 0.0052
 /** Roughly a real ballpoint: ~14 g for a 14.5 cm barrel. */
 export const PEN_MASS = 0.0137
+export const MAX_FLICK_SPEED = 1.55
 
 export const DESK: Desk = { width: 0.48, depth: 0.72 }
 
@@ -276,13 +277,19 @@ export function step(pens: Pen[], desk: Desk = DESK) {
 
 /** Contact is along the barrel: -1 is the tip, 0 the centre, +1 the cap. */
 export type Flick = { dx: number; dz: number; power: number; contact: number }
+/** A small centre sweet spot prevents finger-sized aiming noise becoming a spin shot. */
+export function aimContact(along: number): number {
+  const raw = Math.max(-1, Math.min(1, along / (PEN_LENGTH * 0.42)))
+  return Math.abs(raw) <= 0.22 ? 0 : Math.sign(raw) * (Math.abs(raw) - 0.22) / 0.78
+}
+
 export function flick(pen: Pen, shot: Flick) {
   const len = Math.hypot(shot.dx, shot.dz)
   if (!pen.onDesk || !Number.isFinite(len) || len < 1e-8) return
   const offset = Math.max(-1, Math.min(1, shot.contact)) * PEN_LENGTH * 0.42
   // A tip shot spends some of its energy on rotation. It must not get free
   // extra energy merely because the same pull landed away from the centre.
-  const speed = Math.pow(Math.max(0, Math.min(1, shot.power)), 1.35) * 1.7 / Math.sqrt(1 + 12 * offset * offset / (PEN_LENGTH * PEN_LENGTH))
+  const speed = Math.pow(Math.max(0, Math.min(1, shot.power)), 1.35) * MAX_FLICK_SPEED / Math.sqrt(1 + 12 * offset * offset / (PEN_LENGTH * PEN_LENGTH))
   pen.vx = shot.dx / len * speed
   pen.vz = shot.dz / len * speed
   pen.omega = cross(Math.cos(pen.angle) * offset, Math.sin(pen.angle) * offset, pen.vx * PEN_MASS, pen.vz * PEN_MASS) / INERTIA
@@ -292,8 +299,11 @@ export type Position = Pick<Pen, 'x' | 'z' | 'angle' | 'onDesk'>
 export type Pair = [Position, Position]
 export type Flight = { frames: Pair[]; duration: number }
 const position = ({ x, z, angle, onDesk }: Pen): Position => ({ x, z, angle, onDesk })
-export function openingPens(): Pair {
-  return [position(makePen(-0.025, 0.22, 0)), position(makePen(0.025, -0.22, Math.PI))]
+/** A small set of mirrored breaks: variety without handing either seat better geometry. */
+export function openingPens(round = 1): Pair {
+  const layouts = [[0.025, 0.22, 0], [0.05, 0.20, 0.12], [0.04, 0.23, -0.14], [0.065, 0.19, 0.08]] as const
+  const [x, z, angle] = layouts[(Math.max(1, Math.floor(round)) - 1) % layouts.length]!
+  return [position(makePen(-x, z, angle)), position(makePen(x, -z, angle + Math.PI))]
 }
 
 /** The server calculates a bounded trajectory once; every screen replays it. */
@@ -323,10 +333,20 @@ export function sampleFlight(flight: Flight, elapsed: number): Pair {
   })) as Pair
 }
 
-/** A modest practice rival: evaluates shots with exactly the same physics. */
-export function chooseBotShot(pens: Pair, seat: 0 | 1): Flick {
+export type BotDifficulty = 'chill' | 'sharp'
+/** Practice accuracy is explicit. Human shots never get random error or assistance. */
+export function chooseBotShot(pens: Pair, seat: 0 | 1, difficulty: BotDifficulty = 'sharp', random: () => number = Math.random): Flick {
   const mine = pens[seat], other = pens[1 - seat]!
   const direct = Math.atan2(other.z - mine.z, other.x - mine.x)
+  if (difficulty === 'chill') {
+    // Aim like a person: judge the gap, allow a little follow-through, then
+    // execute with modest aim/power error. No perfect trajectory search.
+    const distance = Math.hypot(other.x - mine.x, other.z - mine.z)
+    const travel = distance + 0.07 + random() * 0.1
+    const power = Math.pow(Math.min(1, Math.sqrt(2 * FRICTION_A * travel) / MAX_FLICK_SPEED), 1 / 1.35)
+    const heading = direct + (random() - 0.5) * 0.6
+    return { dx: Math.cos(heading), dz: Math.sin(heading), power: Math.max(0.1, Math.min(1, power + (random() - 0.5) * 0.18)), contact: 0 }
+  }
   let best: Flick = { dx: Math.cos(direct), dz: Math.sin(direct), power: 0.6, contact: 0 }
   let bestValue = -Infinity
   for (const angle of [-0.18, -0.08, 0, 0.08, 0.18]) {

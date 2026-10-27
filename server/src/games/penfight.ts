@@ -73,8 +73,8 @@ export function advance(match: PenMatch, now: number): PenMatch {
     }
   }
   if (match.phase === 'round') {
-    next.pens = openingPens()
     next.round++
+    next.pens = openingPens(next.round)
     next.result = null
   } else next.turn = match.turn === 0 ? 1 : 0
   next.phase = 'aim'

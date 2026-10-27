@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, CircleHelp, Crosshair, RotateCcw, Volume2, VolumeX, X } from 'lucide-react'
 import { advance, createMatch, shoot, type PenMatch } from '../../../../server/src/games/penfight'
-import { chooseBotShot, openingPens, type Flick } from './physics'
+import { chooseBotShot, openingPens, type Flick, type BotDifficulty } from './physics'
 import type { GamePlayer, GameSnapshot, PenStyle } from '../types'
 import PenFightTable, { type Aim } from './PenFightTable'
 import './penfight.css'
@@ -30,6 +30,7 @@ export default function PenFightGame({ snapshot, selfId, opponents, connected, e
 }) {
   const [local, setLocal] = useState<GameSnapshot | null>(null)
   const [mode, setMode] = useState<'bot' | 'local'>('bot')
+  const [difficulty, setDifficulty] = useState<BotDifficulty>('chill')
   const [style, setStyle] = useState<PenStyle>('classic')
   const [aim, setAim] = useState<Aim | null>(null)
   const [pending, setPending] = useState(false)
@@ -60,18 +61,18 @@ export default function PenFightGame({ snapshot, selfId, opponents, connected, e
     setAim(null); setAngle(game?.turn === 1 ? 90 : -90)
   }, [game?.epoch, game?.seq, game?.turn])
   useEffect(() => {
-    if (!local || snapshot || local.phase === 'over') return
+    if (!local || snapshot || local.phase === 'over' || local.phase === 'aim') return
     const timer = setTimeout(() => setLocal(current => current?.seq === local.seq ? localSnapshot(advance(current, Math.max(Date.now(), current.deadline))) : current), Math.max(0, local.deadline - Date.now()))
     return () => clearTimeout(timer)
   }, [local, snapshot])
   useEffect(() => {
-    if (!local || snapshot || mode !== 'bot' || local.turn !== 1 || local.phase !== 'aim') return
+    if (!local || snapshot || help || mode !== 'bot' || local.turn !== 1 || local.phase !== 'aim') return
     const timer = setTimeout(() => {
-      const shot = chooseBotShot(local.pens, 1)
+      const shot = chooseBotShot(local.pens, 1, difficulty)
       setLocal(current => current?.seq === local.seq ? localSnapshot(shoot(current, shot, Date.now())) : current)
     }, 1000)
     return () => clearTimeout(timer)
-  }, [local, mode, snapshot])
+  }, [local, mode, snapshot, difficulty, help])
   useEffect(() => () => { void audio.current?.close() }, [])
   useEffect(() => {
     if (!help) return
@@ -148,11 +149,12 @@ export default function PenFightGame({ snapshot, selfId, opponents, connected, e
       <p>Touch your pen. Pull back. Let go.</p>
       <div className="pf-pen-picker" role="group" aria-label="Choose your pen">{STYLES.map(p => <button key={p.id} aria-pressed={style === p.id} onClick={() => setStyle(p.id)}><PenPreview style={p.id} /><strong>{p.name}</strong><small>{p.note}</small></button>)}</div>
       <p className="pf-fair-note">Same weight. Same reach. All style.</p>
-      <div className="pf-play-options"><button className="pf-primary" onClick={() => void start()}>Play the backbencher<small>Solo practice · a proper opponent</small></button><button className="pf-secondary" onClick={() => void start(undefined, 'local')}>Pass & play<small>Two players · one screen</small></button></div>
+      <div className="pf-play-options"><button className="pf-primary" onClick={() => void start()}>Play the backbencher<small>{difficulty === 'chill' ? 'Solo practice · relaxed rival' : 'Solo practice · sharp rival'}</small></button><button className="pf-secondary" onClick={() => void start(undefined, 'local')}>Pass & play<small>Two players · one screen</small></button></div>
+      <details className="pf-practice-options"><summary>Practice difficulty · {difficulty === 'chill' ? 'Chill' : 'Sharp'}</summary><div role="group" aria-label="Practice difficulty"><button aria-pressed={difficulty === 'chill'} onClick={() => setDifficulty('chill')}>Chill<small>Room to learn</small></button><button aria-pressed={difficulty === 'sharp'} onClick={() => setDifficulty('sharp')}>Sharp<small>Make every shot count</small></button></div></details>
       <div className="pf-friends"><h3>Or challenge someone in your room</h3>{opponents.length ? opponents.map(p => <button key={p.id} disabled={!connected || pending} onClick={() => void start(p)}><span>{p.name}</span><strong>{pending ? 'Opening…' : 'Challenge →'}</strong></button>) : <p>Your friends will appear here when they join the room.</p>}</div>
       {error && <p role="alert" className="pf-error">{error}</p>}
     </div></div> : <>
-      <div className="pf-turn-strip"><p role="status">{status}</p>{game.phase === 'aim' && <span className={seconds <= 8 ? 'pf-clock urgent' : 'pf-clock'} aria-label={`${seconds} seconds left`}>{seconds}s</span>}</div>
+      <div className="pf-turn-strip"><p role="status">{status}</p>{game.phase === 'aim' && !isLocal && <span className={seconds <= 8 ? 'pf-clock urgent' : 'pf-clock'} aria-label={`${seconds} seconds left`}>{seconds}s</span>}</div>
       <footer className="pf-footer">
         {canAim && <><div className="pf-power"><span>{shownAim ? `${Math.round(shownAim.power * 100)}% power` : 'Touch your pen & pull back'}</span><div><i style={{ width: `${(shownAim?.power ?? 0) * 100}%` }} /></div></div><button className="pf-precision-toggle" onClick={() => setPrecise(v => !v)} aria-expanded={precise}><Crosshair size={16} />{precise ? 'Drag controls' : 'Aim controls'}</button></>}
         {game.phase === 'aim' && !canAim && <span>{seat === null ? 'Spectating · enjoy the match' : 'Tip: flick near a tip to add spin.'}</span>}
@@ -178,7 +180,7 @@ export default function PenFightGame({ snapshot, selfId, opponents, connected, e
     {help && <div className="pf-help-wrap" data-lenis-prevent><div className="pf-paper pf-help" ref={helpRef} role="dialog" aria-modal="true" aria-labelledby="pf-rules">
       <button className="pf-close" onClick={() => setHelp(false)} aria-label="Close instructions" autoFocus><X size={20} /></button><p className="pf-eyebrow">NO TEACHERS. JUST RULES.</p><h2 id="pf-rules">The last-bench handbook</h2>
       <ol><li><strong>Touch your own pen.</strong> Pull backwards, away from where you want it to go. The arrow shows the shot.</li><li><strong>Pick your power.</strong> A little tug nudges. A big pull can send you off the desk too.</li><li><strong>Use the whole pen.</strong> Flick the middle to slide straight. Flick near an end to spin.</li><li><strong>Stay on the desk.</strong> Knock theirs off and keep yours on. Both fall? No point. First to three wins.</li></ol>
-      <p>Aim controls also work with a keyboard. Use the arrow keys on each slider, then activate Flick pen. The clock keeps running while this guide is open. Turns last 35 seconds; three missed turns end the match.</p>
+      <p>Aim controls also work with a keyboard. Use the arrow keys on each slider, then activate Flick pen. {isLocal ? 'Take your time: practice and pass-and-play have no turn timer. The practice rival waits while this guide is open.' : 'Room turns last 35 seconds, including while this guide is open. Three missed turns end the match.'}</p>
       <button className="pf-primary" onClick={() => setHelp(false)}>Got it. Let’s play.</button>
     </div></div>}
   </section>

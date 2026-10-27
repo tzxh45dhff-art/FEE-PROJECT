@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { after, before, describe, it } from 'node:test'
 import { advance, createMatch, parseFlick, shoot } from '../src/games/penfight.js'
-import { chooseBotShot, flick, makePen, openingPens, sampleFlight, simulate, step, type Flick } from '../src/games/penfight.physics.js'
+import { aimContact, chooseBotShot, flick, makePen, openingPens, sampleFlight, simulate, step, type Flick } from '../src/games/penfight.physics.js'
 import { enter, makeRoom, makeUser, next, silence, startServer, type Client, type Harness } from './harness.js'
 
 const players: [{ id: string; name: string }, { id: string; name: string }] = [{ id: 'a', name: 'Aditi' }, { id: 'b', name: 'Rohan' }]
@@ -57,7 +57,7 @@ describe('Pen Fight physics and rounds', () => {
     assert.deepEqual(round.scores, [0, 1]); assert.equal(round.turn, 0)
     assert.equal(round.phase, 'round'); assert.equal(round.pens[0].onDesk, false)
     const next = advance(round, round.deadline)
-    assert.equal(next.round, 2); assert.deepEqual(next.pens, openingPens()); assert.equal(next.turn, 0)
+    assert.equal(next.round, 2); assert.deepEqual(next.pens, openingPens(2)); assert.equal(next.turn, 0)
   })
   it('both falling is a draw, and three points end a match', () => {
     const s = shoot(createMatch(players, 1, 0), shot, 0)
@@ -79,6 +79,49 @@ describe('Pen Fight physics and rounds', () => {
     assert.ok(parseFlick(move))
     const flight = simulate(openingPens(), 1, move)
     assert.equal(flight.frames.at(-1)![1].onDesk, true)
+  })
+  it('keeps mirrored, varied openings free of an easy first-shot knockout', () => {
+    const layouts = new Set<string>()
+    for (let round = 1; round <= 4; round++) {
+      const pens = openingPens(round)
+      layouts.add(JSON.stringify(pens))
+      assert.equal(pens[0].x, -pens[1].x)
+      assert.equal(pens[0].z, -pens[1].z)
+      for (const seat of [0, 1] as const) {
+        const mine = pens[seat], other = pens[1 - seat]!
+        const direct = Math.atan2(other.z - mine.z, other.x - mine.x)
+        for (let offset = -0.4; offset <= 0.4; offset += 0.04) {
+          for (const power of [0.8, 0.9, 1]) {
+            for (const contact of [-0.5, 0, 0.5]) {
+              const end = simulate(pens, seat, { dx: Math.cos(direct + offset), dz: Math.sin(direct + offset), power, contact }).frames.at(-1)!
+              assert.ok(!(end[seat].onDesk && !end[1 - seat]!.onDesk), `opening ${round}, seat ${seat}: easy opening win`)
+            }
+          }
+        }
+      }
+    }
+    assert.equal(layouts.size, 4)
+    assert.deepEqual(openingPens(5), openingPens(1))
+  })
+  it('makes a straight centre flick forgiving without removing deliberate tip shots', () => {
+    assert.equal(aimContact(0), 0)
+    assert.equal(aimContact(0.01), 0)
+    assert.equal(aimContact(-0.01), 0)
+    assert.ok(aimContact(0.04) > 0.5)
+    assert.equal(aimContact(1), 1)
+    assert.equal(aimContact(-1), -1)
+  })
+  it('offers varied legal relaxed shots and a repeatable sharp rival', () => {
+    let seed = 19
+    const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296 }
+    const moves = new Set<string>()
+    for (let n = 0; n < 30; n++) {
+      const shot = chooseBotShot(openingPens(), 1, 'chill', random)
+      assert.ok(parseFlick(shot))
+      moves.add(JSON.stringify(shot))
+    }
+    assert.ok(moves.size > 20)
+    assert.deepEqual(chooseBotShot(openingPens(), 1, 'sharp', random), chooseBotShot(openingPens(), 1, 'sharp', random))
   })
   it('fuzzed legal shots stay finite and terminate within the bounded replay', () => {
     let seed = 7
