@@ -1,11 +1,11 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { Gamepad2, Loader2, Trophy } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 
 import { CoverAmbience } from '@/features/music/CoverAmbience'
 import { useGameSession } from '@/features/games/useGameSession'
-import type { GamePlayer, WirePen } from '@/features/games/types'
+import type { GamePlayer } from '@/features/games/types'
 import { DrawSetup, DrawTable, type DrawView } from '@/features/party/DrawGame'
 import { KnowMeSetup, KnowMeTable, type KnowMeView } from '@/features/party/KnowMe'
 import { QuizTable, SongQuizSetup, TriviaSetup, type QuizView } from '@/features/party/Quiz'
@@ -19,13 +19,12 @@ import type { useMeshCall } from '@/features/room-panel/useMeshCall'
 import type { Character } from '@/lib/characters'
 import { EndGameButton } from '@/features/party/EndGameButton'
 import { GameDock } from './GameDock'
-import { usePageVisible } from '@/hooks/usePageVisible'
 import { cn } from '@/lib/utils'
 import { lazyChunk } from '@/lib/lazyChunk'
 import { petCue } from '@/features/pet/petCues'
 import type { GeoOptions, GeoView } from '@/features/party/geo/types'
 
-const PenFightTable = lazyChunk(() => import('@/features/games/penfight/PenFightTable'))
+const PenFightGame = lazyChunk(() => import('@/features/games/penfight/PenFightGame'))
 const GeoSetup = lazyChunk(() => import('@/features/party/geo/GeoGame').then(m => ({ default: m.GeoSetup })))
 const GeoTable = lazyChunk(() => import('@/features/party/geo/GeoGame').then(m => ({ default: m.GeoTable })))
 
@@ -66,8 +65,7 @@ export function GamesStage({
   /** The room's call, for games played face to face (Mafia's table of faces). Never a new call. */
   call?: ReturnType<typeof useMeshCall> | null
 }) {
-  const { snapshot, motion: live, connected, send } = useGameSession(roomId, true)
-  const visible = usePageVisible()
+  const { snapshot, connected, error: penError, send } = useGameSession(roomId, true)
   const party = useParty(roomId)
   const [screen, setScreen] = useState<GameId | 'picker'>('picker')
   const [songQuizStarting, setSongQuizStarting] = useState(false)
@@ -89,6 +87,12 @@ export function GamesStage({
     lastGame.current = game
   }, [party.party?.game])
 
+  const lastPen = useRef<number | null>(null)
+  useEffect(() => {
+    if (snapshot && snapshot.epoch !== lastPen.current) setScreen('penfight')
+    lastPen.current = snapshot?.epoch ?? null
+  }, [snapshot])
+
   const seat = useMemo<0 | 1 | null>(() => {
     if (!snapshot || !selfId) return null
     const index = snapshot.players.findIndex((player) => player.id === selfId)
@@ -98,7 +102,6 @@ export function GamesStage({
   /* Watching rather than playing is a first-class way to be here: the room is
      already together, and two people playing is three people watching. */
   const spectating = snapshot !== null && seat === null
-  const myTurn = seat !== null && snapshot?.turn === seat && snapshot.winner === null
   const partyView = party.party?.view as { phase?: string; players?: GamePlayer[] } | undefined
   const partyRunning = !!party.party && partyView?.phase !== 'over'
   const penRunning = screen === 'penfight' && !!snapshot && snapshot.winner === null
@@ -116,15 +119,6 @@ export function GamesStage({
   const quizOptions = useRef<Partial<Record<'trivia' | 'songquiz', unknown>>>({})
   const mafiaOptions = useRef<MafiaOptions | null>(null)
   const [mafiaStarting, setMafiaStarting] = useState(false)
-
-  const onMotion = useCallback(
-    (pens: [WirePen, WirePen]) => send('game:motion', { pens }),
-    [send],
-  )
-  const onSettled = useCallback(
-    (pens: [WirePen, WirePen]) => send('game:settled', { pens }),
-    [send],
-  )
 
   const revealX = origin ? `${Math.round(origin.left + origin.width / 2)}px` : '50%'
   const revealY = origin ? `${Math.round(origin.top + origin.height / 2)}px` : '50%'
@@ -157,8 +151,7 @@ export function GamesStage({
               connected={connected}
               allowed={seat !== null}
               onEnd={async () => {
-                send('game:end')
-                return {}
+                return send('game:end')
               }}
             />
           ) : partyRunning ? (
@@ -183,7 +176,7 @@ export function GamesStage({
       />
 
       {/* Marked so the page's smooth scrolling hands the wheel to this panel. */}
-      <div data-lenis-prevent className={cn('relative z-10 min-h-0 flex-1', (screen === 'geo' && party.party?.game === 'geo') || (screen === 'draw' && party.party?.game === 'draw') ? 'overflow-hidden' : 'overflow-y-auto')}>
+      <div data-lenis-prevent className={cn('relative z-10 min-h-0 flex-1', screen === 'penfight' || (screen === 'geo' && party.party?.game === 'geo') || (screen === 'draw' && party.party?.game === 'draw') ? 'overflow-hidden' : 'overflow-y-auto')}>
         {screen === 'picker' && (
           <GamePicker
             live={party.party?.game ?? null}
@@ -353,55 +346,9 @@ export function GamesStage({
             />
           ))}
 
-        {screen === 'penfight' && (
-          <div className="flex h-full flex-col">
-      {snapshot === null ? (
-            <Lobby opponents={opponents} onStart={(opponent) => send('game:start', { opponent })} />
-          ) : (
-            <Match
-              players={snapshot.players}
-              scores={snapshot.scores}
-              turn={snapshot.turn}
-              winner={snapshot.winner}
-              seat={seat}
-              myTurn={myTurn}
-              spectating={spectating}
-            >
-              <Suspense
-                fallback={
-                  <span className="grid h-full place-items-center text-[0.8rem] text-mist">
-                    <Loader2 aria-hidden className="size-5 animate-spin" />
-                  </span>
-                }
-              >
-                <PenFightTable
-                  pens={snapshot.pens}
-                  seat={seat ?? 0}
-                  myTurn={myTurn}
-                  canPlay={seat !== null && snapshot.winner === null}
-                  live={live}
-                  onFlick={() => undefined}
-                  onMotion={onMotion}
-                  onSettled={onSettled}
-                  paused={!visible}
-                />
-              </Suspense>
-            </Match>
-          )}
-    
-          {snapshot?.winner !== null && snapshot !== undefined && snapshot !== null && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center">
-              <button
-                type="button"
-                onClick={() => send('game:end')}
-                className="pointer-events-auto rounded-full bg-chalk px-5 py-2.5 text-[0.82rem] font-medium text-void outline-none transition-transform duration-300 hover:scale-[1.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-              >
-                Clear the desk
-              </button>
-            </div>
-          )}
-          </div>
-        )}
+        {screen === 'penfight' && <Suspense fallback={<div className="grid h-full place-items-center text-mist"><Loader2 className="size-6 animate-spin" /></div>}>
+          <PenFightGame snapshot={snapshot} selfId={selfId} opponents={opponents} connected={connected} error={penError} send={send} onBack={() => setScreen('picker')} />
+        </Suspense>}
       </div>
     </motion.div>,
     document.body,
@@ -421,131 +368,6 @@ function Busy({ label, onOpen }: { label: string; onOpen: () => void }) {
       >
         Go to {label}
       </button>
-    </div>
-  )
-}
-
-/** Nothing on the desk yet — pick who you are playing. */
-function Lobby({
-  opponents,
-  onStart,
-}: {
-  opponents: GameCandidate[]
-  onStart: (opponent: GamePlayer) => void
-}) {
-  return (
-    <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center px-6">
-      <span className="grid size-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.05] text-chalk backdrop-blur-md">
-        <Gamepad2 aria-hidden className="size-6" />
-      </span>
-      <h2 className="mt-5 font-display text-[1.6rem] font-semibold tracking-[-0.02em] text-chalk">
-        Pen Fight
-      </h2>
-      <p className="mt-2 max-w-sm text-center text-[0.86rem] leading-relaxed text-mist">
-        Pull your pen back and let go. Knock theirs off the desk to take the round — but flick
-        too hard and yours goes over the edge instead. First to three.
-      </p>
-
-      {opponents.length === 0 ? (
-        <p className="mt-7 rounded-card border border-dashed border-white/15 bg-white/[0.02] px-5 py-4 text-center text-[0.82rem] text-mist">
-          Nobody else is in the room yet. Pen fight takes two.
-        </p>
-      ) : (
-        <div className="mt-7 w-full max-w-sm">
-          <span className="block text-center text-[0.68rem] uppercase tracking-[0.16em] text-dusk">
-            Who are you playing?
-          </span>
-          <div className="mt-3 flex flex-col gap-2">
-            {opponents.map((opponent) => (
-              <button
-                key={opponent.id}
-                type="button"
-                onClick={() => onStart({ id: opponent.id, name: opponent.name })}
-                className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-3 text-left outline-none backdrop-blur-md transition-colors hover:bg-white/[0.1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
-              >
-                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-white/10 text-[0.8rem] font-semibold text-chalk">
-                  {opponent.name.slice(0, 1).toUpperCase()}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[0.9rem] text-chalk">
-                  {opponent.name}
-                </span>
-                <span className="text-[0.72rem] text-dusk">Challenge</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** The desk, with the score above it and whose turn it is underneath. */
-function Match({
-  players,
-  scores,
-  turn,
-  winner,
-  seat,
-  myTurn,
-  spectating,
-  children,
-}: {
-  players: [GamePlayer, GamePlayer]
-  scores: [number, number]
-  turn: 0 | 1
-  winner: 0 | 1 | null
-  seat: 0 | 1 | null
-  myTurn: boolean
-  spectating: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center justify-center gap-5 px-6 pb-2">
-        {players.map((player, index) => (
-          <span key={player.id} className="flex items-center gap-2.5">
-            <span
-              className={cn(
-                'size-2 rounded-full',
-                index === 0 ? 'bg-[#2f6fd0]' : 'bg-[#d0452f]',
-                turn === index && winner === null && 'animate-signal-pulse',
-              )}
-            />
-            <span
-              className={cn(
-                'text-[0.82rem]',
-                index === seat ? 'font-medium text-chalk' : 'text-mist',
-              )}
-            >
-              {index === seat ? 'You' : player.name}
-            </span>
-            <span className="font-mono text-[1rem] tabular-nums text-chalk">
-              {scores[index]}
-            </span>
-          </span>
-        ))}
-      </div>
-
-      <div className="relative min-h-0 flex-1">{children}</div>
-
-      <div className="flex h-14 shrink-0 items-center justify-center px-6">
-        {winner !== null ? (
-          <span className="flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 backdrop-blur-md">
-            <Trophy aria-hidden className="size-4 text-amber-300" />
-            <span className="text-[0.84rem] text-chalk">
-              {winner === seat ? 'You win the desk' : `${players[winner].name} takes it`}
-            </span>
-          </span>
-        ) : (
-          <span className="text-[0.84rem] text-mist">
-            {spectating
-              ? `${players[turn].name} to flick`
-              : myTurn
-                ? 'Your turn — pull your pen back and let go'
-                : `Waiting on ${players[turn].name}`}
-          </span>
-        )}
-      </div>
     </div>
   )
 }

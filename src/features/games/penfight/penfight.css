@@ -1,0 +1,80 @@
+.pf-world { position:relative; width:100%; height:100%; min-height:280px; overflow:hidden; background:#737963; color:#26364c; isolation:isolate; font-family:Inter,sans-serif; container-type:inline-size }
+.pf-scene { position:absolute; inset:65px 0 20px; }
+.pf-world button { cursor:pointer; min-height:44px; touch-action:manipulation; }
+.pf-world button:disabled { opacity:.45; cursor:wait }
+.pf-world button:focus-visible,.pf-world input:focus-visible { outline:3px solid #bf442d; outline-offset:4px }
+.pf-chalkboard { position:absolute; top:12px; left:50%; transform:translateX(-50%); width:min(520px,65%); padding:12px 22px; background:linear-gradient(115deg,#243b32,#1d3029); border:7px solid #675036; border-bottom-color:#513b26; color:#eee9cc; box-shadow:0 5px 0 #382f2470,0 10px 20px #0002; }
+.pf-board-title { text-align:center; }
+.pf-board-title>span { display:block; font-size:9px; letter-spacing:2px; color:#d3d1af9c }
+.pf-board-title h1 { font-family:'Permanent Marker',cursive; font-size:29px; letter-spacing:3px; line-height:1.25; margin:2px 0 5px; color:#e9e8cd }
+.pf-scoreboard { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:10px; border-top:1px solid #d6d2ae4a; padding-top:8px; }
+.pf-scoreboard>div { display:flex; align-items:center; gap:7px; min-width:0; opacity:.7 }
+.pf-scoreboard>div.is-turn { opacity:1 }
+.pf-player-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; flex:1 }
+.pf-scoreboard strong { font-family:'Permanent Marker',cursive; font-size:22px }
+.pf-ink { display:block; width:7px; height:7px; border-radius:50%; flex-shrink:0 }
+.pf-ink-0 { background:#87b9ff }.pf-ink-1 { background:#ff9b81 }
+.pf-score-dots { display:flex; gap:3px }.pf-score-dots i { width:5px; height:5px; border:1px solid #e6e2bf66; border-radius:50% }.pf-score-dots i.won { background:#e6e2bf }
+.pf-tools { position:absolute; right:16px; top:14px; display:flex; flex-direction:column; gap:6px; }
+.pf-tools button,.pf-exit-practice { display:grid; place-items:center; width:44px; height:44px; border:1px solid #ece6c251; color:#f6edd4; background:#313a2eaa; border-radius:6px }
+.pf-turn-strip { position:absolute; top:168px; left:50%; transform:translateX(-50%) rotate(-.5deg); max-width:calc(100% - 110px); padding:8px 15px; background:#f4edcf; box-shadow:2px 4px 8px #30271830; display:flex; align-items:center; gap:15px; }
+.pf-turn-strip p { margin:0; font-size:13px; font-weight:650; overflow-wrap:anywhere; text-align:center }
+.pf-clock { font-family:monospace; font-size:13px; white-space:nowrap; color:#53664c }.pf-clock.urgent { color:#ad3023; font-weight:800 }
+.pf-paper { background:repeating-linear-gradient(transparent 0 29px,#45577812 29px 30px),#f3edcf; border:2px solid #b8a46a; outline:2px solid #302c24; outline-offset:3px; box-shadow:0 16px 40px #1d231e35; border-radius:4px; }
+.pf-lobby-wrap,.pf-help-wrap { position:absolute; inset:0; overflow-y:auto; display:flex; align-items:safe center; justify-content:center; padding:160px 24px 30px 65px; background:#26302445; }
+.pf-lobby { padding:25px 30px; width:min(610px,100%); text-align:center; }
+.pf-eyebrow { font-size:9px!important; font-weight:800; letter-spacing:2px; margin:0 0 10px!important; color:#65728a }
+.pf-paper h2 { margin:0; font-family:'Permanent Marker',cursive; color:#a93d2e; font-size:clamp(24px,3vw,35px); line-height:1.2; letter-spacing:-.7px; overflow-wrap:anywhere; }
+.pf-paper>p { font-size:13px; line-height:1.6; margin:12px 0; }
+.pf-pen-picker { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:17px; }
+.pf-pen-picker button { padding:7px 6px 10px; border:1px solid #7c89a155; border-radius:4px; background:#fff3; min-width:0; color:#344762; }
+.pf-pen-picker button[aria-pressed=true] { border-color:#a94331; background:#fff8e8; box-shadow:inset 0 -3px #a94331 }
+.pf-pen-preview { width:100%; height:44px; }.pf-pen-picker strong { font-size:12px; display:block }.pf-pen-picker small { font-size:9px; display:block; margin-top:4px; color:#6a7180 }
+.pf-fair-note { font-size:10px!important; color:#73786d; margin:8px 0 16px!important }
+.pf-play-options,.pf-result-actions { display:grid; grid-template-columns:1.2fr 1fr; gap:10px; }
+.pf-primary,.pf-secondary { padding:12px 16px; border-radius:3px; border:1px solid #aeb2a0; font-weight:750; font-size:13px; display:flex; flex-wrap:wrap; gap:5px; align-items:center; justify-content:center; }
+.pf-primary { background:#b64732; color:#fff1cf; border-color:#a5402f; box-shadow:0 3px 0 #783427 }.pf-primary:hover { background:#a83b2a }
+.pf-secondary { background:#f7f1d8; color:#3d5071; box-shadow:0 3px 0 #b2ae91 }.pf-secondary:hover { background:#fff9e7 }
+.pf-play-options small { display:block; flex-basis:100%; font-size:10px; font-weight:400; opacity:.8; }
+.pf-friends { margin-top:22px; border-top:1px dashed #7c89a170; padding-top:12px; }
+.pf-friends h3 { margin:0 0 8px; font-size:11px; color:#727c83; font-weight:500 }.pf-friends>p { font-size:12px; line-height:1.5; color:#666f73 }
+.pf-friends button { display:flex; align-items:center; gap:10px; width:100%; padding:9px 12px; background:#f9f5e3; border:1px solid #9b9b8750; margin-top:6px; font-size:12px; color:#405170; }
+.pf-friends button span { flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }.pf-friends button strong { font-size:11px; flex-shrink:0; }
+.pf-footer { position:absolute; bottom:max(20px,env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); width:min(470px,calc(100% - 80px)); display:flex; gap:12px; align-items:center; justify-content:center; background:#f4eed6ed; padding:10px 16px; border-radius:4px; box-shadow:0 3px 10px #29251d30; min-height:58px; }
+.pf-footer>span { font-size:12px; text-align:center; }.pf-power { flex:1; min-width:0; }.pf-power>span { font-size:11px; display:block; margin-bottom:7px; font-weight:600 }.pf-power>div { height:4px; background:#d0c9ac; border-radius:2px; overflow:hidden }.pf-power i { display:block; height:100%; background:linear-gradient(90deg,#577c65,#bd5634); }
+.pf-precision-toggle { display:flex; align-items:center; gap:5px; font-size:11px; color:#475c7a; background:transparent; border:0; padding:0 4px; }
+.pf-exit-practice { background:transparent; border-color:#6b715e40; color:#6b715e; width:34px; flex-shrink:0 }
+.pf-precision { position:absolute; bottom:98px; left:50%; transform:translateX(-50%); width:min(430px,calc(100% - 75px)); padding:14px; }
+.pf-precision label { display:flex; align-items:center; gap:10px; font-size:11px; min-height:44px; }.pf-precision input { min-width:40px; flex:1; accent-color:#a63d2e; height:44px; }.pf-precision output { width:32px }.pf-precision button { width:100%; margin-top:6px; }
+.pf-result-wrap { position:absolute; inset:0; display:grid; place-items:center; padding:25px 25px 25px 65px; background:#20291f38; pointer-events:none }
+.pf-result { width:min(460px,100%); padding:30px; text-align:center; pointer-events:auto }.pf-next-round { font-size:12px; color:#657a65; }
+.pf-error { color:#982c24; background:#f6d9c7; padding:10px; border:1px solid #b64f3b70; font-size:12px; }.pf-live-error { position:absolute; bottom:105px; left:50%; transform:translateX(-50%); max-width:80%; }
+.pf-help-wrap { padding-top:30px; background:#20291fa1; z-index:5 }.pf-help { position:relative; padding:32px; width:min(490px,100%); }.pf-help h2 { font-size:27px; padding-right:20px }.pf-help ol { padding-left:20px; font-size:13px; line-height:1.65; margin:20px 0; }.pf-help li { margin:10px 0 }.pf-help>p:not(.pf-eyebrow) { font-size:11px }.pf-help>.pf-primary { width:100%; }.pf-close { position:absolute; top:8px; right:8px; width:44px; border:0; background:transparent; color:#485c77; display:grid; place-items:center }
+.pf-render-error { height:100%; display:grid; place-items:center; padding:25%; text-align:center; background:#26362a; color:#fff0ce; font-size:14px; }
+@container (max-width:650px) {
+  .pf-chalkboard { top:10px; left:45%; width:calc(100% - 100px); padding:9px 10px; border-width:5px; }
+  .pf-board-title h1 { font-size:23px; }.pf-board-title>span { font-size:7px; letter-spacing:1.4px; }.pf-scoreboard { gap:10px; margin-top:6px; padding-top:5px; }.pf-player-name { font-size:10px; }.pf-score-dots { display:none }.pf-scoreboard strong { font-size:19px; }
+  .pf-tools { right:9px; top:10px; gap:4px; }.pf-turn-strip { top:147px; max-width:calc(100% - 55px); width:max-content; padding:8px 10px; }.pf-turn-strip p { font-size:11px }
+  .pf-lobby-wrap { padding:140px 16px 25px 32px; }.pf-lobby { padding:20px 14px; }.pf-paper h2 { font-size:25px }.pf-pen-picker { gap:5px; }.pf-pen-picker small { display:none; }.pf-pen-picker strong { font-size:10px }.pf-play-options { grid-template-columns:1fr; gap:8px }.pf-primary,.pf-secondary { padding:10px; }.pf-friends { margin-top:15px }
+  .pf-footer { width:calc(100% - 48px); left:calc(50% + 6px); padding:7px 10px; gap:5px; bottom:max(12px,env(safe-area-inset-bottom)); }.pf-power>span { font-size:10px }.pf-precision-toggle { font-size:10px; }.pf-footer .pf-exit-practice { width:30px }.pf-help-wrap { padding:24px 18px 24px 32px; }.pf-help { padding:25px 20px; }.pf-result-wrap { padding:25px 18px 25px 32px; }.pf-result { padding:24px 18px; }
+}
+@media (max-height:560px) and (min-width:650px) {
+  .pf-scene { inset:0 15% 0 18%; }.pf-chalkboard { left:16px; top:16px; transform:none; width:190px; padding:10px; }.pf-board-title h1 { font-size:22px }.pf-board-title>span { font-size:7px; letter-spacing:1px; }.pf-scoreboard { grid-template-columns:1fr; gap:0 }.pf-turn-strip { top:18px; left:55%; max-width:40%; }.pf-footer { left:auto; right:14px; transform:none; width:190px; flex-wrap:wrap; bottom:16px; }.pf-power { flex-basis:100%; }.pf-lobby-wrap { padding:30px 75px 30px 230px; }.pf-lobby h2 { font-size:25px }.pf-help-wrap { padding:20px 60px; }.pf-precision { bottom:25px; left:35px; transform:none; width:225px; }
+}
+@media (prefers-reduced-motion:reduce) { .pf-world * { scroll-behavior:auto } }
+/* Short portrait windows need the same clear sight line as landscape. */
+@media (max-height:600px) and (max-width:649px) {
+  .pf-chalkboard { padding:5px 10px; }
+  .pf-board-title>span { display:none; }
+  .pf-board-title h1 { font-size:18px; margin:0; }
+  .pf-scoreboard { padding-top:3px; margin-top:3px; }
+  .pf-scoreboard strong { font-size:17px; }
+  .pf-turn-strip { top:86px; }
+  .pf-scene { inset:65px 0 65px; }
+  .pf-lobby-wrap { padding-top:105px; }
+  .pf-precision { bottom:80px; display:grid; grid-template-columns:1fr 1fr 90px; gap:8px; padding:8px; width:calc(100% - 48px); }
+  .pf-precision label { display:block; font-size:9px; }
+  .pf-precision input { display:block; width:100%; height:36px; }
+  .pf-precision output { display:none; }
+  .pf-precision button { margin:0; font-size:11px; }
+}

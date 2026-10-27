@@ -37,7 +37,7 @@ const GAMES: Entry[] = [
   { id: 'knowme', title: 'How well do you know me?', line: 'Answer about yourself. They guess. Truth comes out.', lo: 2, hi: 99, label: '2+ players', accent: '#D88BFF', rgb: '216,139,255', bg: 'linear-gradient(155deg,#521c78 0%,#2a1050 55%,#150a2e 100%)', cls: 'gp-c4' },
   { id: 'trivia', title: 'Live trivia', line: 'Bollywood, cricket, films, everything. Fastest wins.', lo: 1, hi: 99, label: '1+ players', accent: '#5CC8FF', rgb: '92,200,255', bg: 'linear-gradient(155deg,#14437f 0%,#0c2757 55%,#07142f 100%)', cls: 'gp-c4' },
   { id: 'songquiz', title: 'Guess the song', line: 'A few seconds of a track. Name it first.', lo: 1, hi: 99, label: '1+ players', accent: '#4FE3A3', rgb: '79,227,163', bg: 'linear-gradient(150deg,#0f5240 0%,#0a2e27 55%,#06161a 100%)', cls: 'gp-c7 wide' },
-  { id: 'penfight', title: 'Pen fight', line: 'Flick your pen, knock theirs off the desk.', lo: 2, hi: 2, label: '2 players', accent: '#9B8CFF', rgb: '155,140,255', bg: 'linear-gradient(155deg,#41309a 0%,#221a5a 55%,#100b2e 100%)', cls: 'gp-c5' },
+  { id: 'penfight', title: 'Pen fight', line: 'A last-bench rivalry. Flick, spin, stay on the desk.', lo: 1, hi: 2, label: '1–2 players', accent: '#9B8CFF', rgb: '155,140,255', bg: 'linear-gradient(155deg,#41309a 0%,#221a5a 55%,#100b2e 100%)', cls: 'gp-c5' },
 ]
 
 const RANGES: Record<string, [number, number]> = { any: [0, 99], '1': [1, 1], '2': [2, 2], '3-5': [3, 5], '6+': [6, 99] }

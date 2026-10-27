@@ -1,404 +1,203 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { Plane, Vector3, type Group } from 'three'
+import { CanvasTexture, Plane, Vector3, SRGBColorSpace, RepeatWrapping, type Group, type Mesh, type PerspectiveCamera } from 'three'
+import { DESK, PEN_LENGTH, sampleFlight, type Flick, type Pair, type Position } from './physics'
+import type { GameSnapshot, PenStyle } from '../types'
+import { usePageVisible } from '@/hooks/usePageVisible'
 
-import {
-  DESK,
-  PEN_LENGTH,
-  PEN_RADIUS,
-  atRest,
-  flick,
-  makePen,
-  step,
-  type Pen,
-} from '@/features/games/penfight/physics'
-import type { WirePen } from '@/features/games/types'
+const MAX_PULL = 0.18
+export type Aim = { dx: number; dz: number; power: number; contact: number }
+const INKS = ['#2453a5', '#ae362c']
 
-/**
- * Lazily imported — this is the module that pulls three.js into the Play tab,
- * so nothing 3D is downloaded until somebody actually opens a game.
- */
-
-/** How far the drag can be pulled, in metres on the desk, before it caps. */
-const MAX_PULL = 0.26
-/** Live pen positions go out at this rate while something is moving. */
-const MOTION_HZ = 20
-
-const PEN_COLOURS = ['#2f6fd0', '#d0452f'] as const
-
-function toPen(wire: WirePen): Pen {
-  return { ...wire, vx: 0, vz: 0, omega: 0 }
+/** Seeded canvas textures: no downloaded models, texture requests, or heavy post-processing. */
+function texture(kind: 'wood' | 'floor') {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 512
+  const c = canvas.getContext('2d')!
+  let seed = 29
+  const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296 }
+  c.fillStyle = kind === 'wood' ? '#956338' : '#b9b6a3'
+  c.fillRect(0, 0, 512, 512)
+  if (kind === 'wood') {
+    for (let i = 0; i < 1800; i++) {
+      const x = random() * 512, y = random() * 512
+      c.strokeStyle = random() > 0.5 ? `rgba(75,39,14,${random() * 0.12})` : `rgba(255,225,163,${random() * 0.22})`
+      c.lineWidth = random() * 1.2
+      c.beginPath(); c.moveTo(x, y); c.bezierCurveTo(x + 4, y + 60, x - 3, y + 120, x + 1, y + 220); c.stroke()
+    }
+    c.strokeStyle = '#805a3470'; c.lineWidth = 1
+    for (const x of [128, 340]) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x + 1, 512); c.stroke() }
+    c.strokeStyle = '#e4bb7b70'
+    for (let i = 0; i < 45; i++) {
+      const x = random() * 500, y = random() * 500
+      c.beginPath(); c.moveTo(x, y); c.lineTo(x + random() * 16 - 8, y + random() * 30); c.stroke()
+    }
+    c.strokeStyle = '#78522a55'; c.lineWidth = 2
+    c.beginPath(); c.ellipse(370, 120, 19, 22, 0.3, 0, Math.PI * 2); c.stroke()
+    c.font = '12px monospace'; c.fillStyle = '#69503865'; c.save(); c.translate(35, 390); c.rotate(-Math.PI / 2); c.fillText('LAST BENCH / HUDDLE', 0, 0); c.restore()
+    c.font = '18px serif'; c.fillStyle = '#e1bb7a70'; c.fillText('A + B', 400, 430)
+  } else {
+    c.strokeStyle = '#6b6b5e'; c.lineWidth = 4
+    for (let x = 0; x <= 512; x += 128) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, 512); c.stroke(); c.beginPath(); c.moveTo(0, x); c.lineTo(512, x); c.stroke() }
+  }
+  const map = new CanvasTexture(canvas)
+  map.colorSpace = SRGBColorSpace
+  if (kind === 'floor') { map.wrapS = map.wrapT = RepeatWrapping; map.repeat.set(4, 4) }
+  return map
 }
 
-function toWire(pen: Pen): WirePen {
-  return { x: pen.x, z: pen.z, angle: pen.angle, onDesk: pen.onDesk }
+function Desk({ x = 0, z = 0, main = false }: { x?: number; z?: number; main?: boolean }) {
+  const wood = useMemo(() => texture('wood'), [])
+  useEffect(() => () => wood.dispose(), [wood])
+  return <group position={[x, 0, z]}>
+    <mesh position={[0, -0.017, 0]} castShadow receiveShadow><boxGeometry args={[DESK.width, 0.034, DESK.depth]} /><meshStandardMaterial map={wood} roughness={0.87} /></mesh>
+    {[-1, 1].flatMap(a => [-1, 1].map(b => <mesh key={`${a}${b}`} position={[a * 0.19, -0.23, b * 0.29]} rotation={[0, 0, a * 0.07]} castShadow><boxGeometry args={[0.025, 0.43, 0.025]} /><meshStandardMaterial color="#292c28" roughness={0.55} metalness={0.5} /></mesh>))}
+    <mesh position={[0, -0.13, -0.28]}><boxGeometry args={[0.41, 0.045, 0.025]} /><meshStandardMaterial color="#30352c" /></mesh>
+    {!main && <group position={[0.12, -0.16, 0.37]} rotation={[0.12, 0.08, -0.08]}>
+      <mesh castShadow><boxGeometry args={[0.14, 0.21, 0.07]} /><meshStandardMaterial color={x > 0 ? '#374359' : '#6d3a30'} roughness={1} /></mesh>
+      <mesh position={[0, -0.025, 0.045]}><boxGeometry args={[0.11, 0.09, 0.025]} /><meshStandardMaterial color={x > 0 ? '#2c3546' : '#562c27'} /></mesh>
+    </group>}
+  </group>
 }
 
-/**
- * One pen.
- *
- * A capsule laid on its side, with a cap at the clicky end so it reads as a
- * pen rather than a lozenge — and so you can tell which way yours is pointing,
- * which matters, because the direction the barrel already faces is what
- * decides how much spin a flick puts on it.
- */
-function PenMesh({ pen, colour, mine }: { pen: Pen; colour: string; mine: boolean }) {
+function PenModel({ index, positions, style }: { index: number; positions: React.RefObject<Pair>; style: PenStyle }) {
   const group = useRef<Group>(null)
-
-  useFrame(() => {
-    const node = group.current
-    if (!node) return
-    node.position.set(pen.x, PEN_RADIUS, pen.z)
-    /* Three rotates +X toward −Z about Y, so the sign is flipped to match the
-       solver's (cos a, sin a) → (x, z) convention. */
-    node.rotation.y = -pen.angle
-    node.visible = pen.onDesk
+  const fall = useRef(0)
+  const last = useRef({ x: 0, z: 0 })
+  useFrame((_, dt) => {
+    const p = positions.current[index]!, g = group.current
+    if (!g) return
+    if (p.onDesk) { fall.current = 0; last.current = p }
+    else fall.current = Math.min(0.8, fall.current + Math.min(dt, 0.04))
+    const f = fall.current
+    g.position.set(p.x + (p.x - last.current.x) * f * 4, 0.007 - f * f * 1.4, p.z + (p.z - last.current.z) * f * 4)
+    g.rotation.set(f * 3, -p.angle, f * 2)
+    g.visible = f < 0.72
   })
-
-  const barrel = PEN_LENGTH - PEN_RADIUS * 2
-
-  return (
-    <group ref={group}>
-      <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
-        <capsuleGeometry args={[PEN_RADIUS, barrel, 4, 12]} />
-        <meshStandardMaterial color={colour} roughness={0.42} metalness={0.05} />
-      </mesh>
-      {/* The cap, a little proud of the barrel at one end. */}
-      <mesh position={[barrel / 2, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[PEN_RADIUS * 1.18, PEN_RADIUS * 1.18, PEN_RADIUS * 2.4, 12]} />
-        <meshStandardMaterial color={mine ? '#f4f1e8' : '#c9c4b8'} roughness={0.55} />
-      </mesh>
+  const color = INKS[index]!, dark = style === 'fine' ? '#202a31' : color
+  return <group ref={group}>
+    <group rotation={[0, 0, -Math.PI / 2]}>
+      <mesh castShadow><cylinderGeometry args={[0.0046, 0.0046, 0.104, 12]} /><meshStandardMaterial color={style === 'classic' ? '#eee9d9' : dark} roughness={0.32} metalness={style === 'fine' ? 0.4 : 0.05} /></mesh>
+      <mesh position={[0, 0.057, 0]} castShadow><cylinderGeometry args={[0.0055, 0.0055, 0.032, 12]} /><meshStandardMaterial color={color} roughness={0.28} /></mesh>
+      <mesh position={[0, -0.058, 0]} castShadow><cylinderGeometry args={[0.0046, 0.002, 0.013, 12]} /><meshStandardMaterial color={style === 'classic' ? '#ddd9cd' : '#adb3b4'} roughness={0.3} metalness={0.65} /></mesh>
+      <mesh position={[0, -0.067, 0]} rotation={[0, 0, Math.PI]}><coneGeometry args={[0.002, 0.008, 10]} /><meshStandardMaterial color="#7c898e" metalness={0.8} roughness={0.2} /></mesh>
+      <mesh position={[0, 0.048, 0.0058]} castShadow><boxGeometry args={[0.0025, 0.038, 0.0018]} /><meshStandardMaterial color={style === 'fine' ? '#c2c6c8' : color} metalness={0.45} roughness={0.25} /></mesh>
+      {[0.035, 0.038].map(y => <mesh key={y} position={[0, y, 0]}><cylinderGeometry args={[0.0049, 0.0049, 0.0015, 12]} /><meshStandardMaterial color="#292d33" /></mesh>)}
+      {style === 'gel' && [-0.035, -0.03, -0.025, -0.02, -0.015].map(y => <mesh key={y} position={[0, y, 0]}><cylinderGeometry args={[0.005, 0.005, 0.0015, 12]} /><meshStandardMaterial color="#26374b" /></mesh>)}
     </group>
-  )
+  </group>
 }
 
-/** The slingshot line, drawn back from your pen while you aim. */
-function AimLine({ from, to }: { from: [number, number] | null; to: [number, number] | null }) {
-  if (!from || !to) return null
-
-  const dx = to[0] - from[0]
-  const dz = to[1] - from[1]
-  const length = Math.hypot(dx, dz)
-  if (length < 0.004) return null
-
-  const angle = Math.atan2(dz, dx)
-  const strength = Math.min(1, length / MAX_PULL)
-
-  return (
-    <group position={[from[0] + dx / 2, PEN_RADIUS * 0.6, from[1] + dz / 2]} rotation={[0, -angle, 0]}>
-      <mesh>
-        <boxGeometry args={[length, 0.0016, 0.0032]} />
-        {/* Warms toward the danger end of the pull, so power is legible
-            without a number on the screen. */}
-        <meshBasicMaterial
-          color={strength > 0.8 ? '#e0552f' : strength > 0.45 ? '#e0a02f' : '#7fb3e8'}
-          transparent
-          opacity={0.85}
-        />
-      </mesh>
-    </group>
-  )
-}
-
-function Table({
-  pens,
-  seat,
-  myTurn,
-  canPlay,
-  onFlick,
-}: {
-  pens: Pen[]
-  seat: 0 | 1
-  myTurn: boolean
-  canPlay: boolean
-  onFlick: (dirX: number, dirZ: number, pull: number) => void
-}) {
-  const { camera } = useThree()
-  const [aimFrom, setAimFrom] = useState<[number, number] | null>(null)
-  const [aimTo, setAimTo] = useState<[number, number] | null>(null)
-  const dragging = useRef(false)
-
-  const deskPlane = useMemo(() => new Plane(new Vector3(0, 1, 0), 0), [])
-
-  /* Pointer → a point on the desk, via the camera. Doing it this way rather
-     than from screen deltas means the drag keeps meaning the same thing when
-     the camera is flipped for the far seat. */
-  const pointOnDesk = useCallback(
-    (event: ThreeEvent<PointerEvent>): [number, number] | null => {
-      const hit = new Vector3()
-      const found = event.ray.intersectPlane(deskPlane, hit)
-      if (!found) return null
-      return [hit.x, hit.z]
-    },
-    [deskPlane],
-  )
-
-  const mine = pens[seat]
-  const startAim = useCallback(
-    (event: ThreeEvent<PointerEvent>) => {
-      if (!canPlay || !myTurn || !mine?.onDesk) return
-      const point = pointOnDesk(event)
-      if (!point) return
-      dragging.current = true
-      setAimFrom([mine.x, mine.z])
-      setAimTo(point)
-    },
-    [canPlay, myTurn, mine, pointOnDesk],
-  )
-
-  const moveAim = useCallback(
-    (event: ThreeEvent<PointerEvent>) => {
-      if (!dragging.current) return
-      const point = pointOnDesk(event)
-      if (point) setAimTo(point)
-    },
-    [pointOnDesk],
-  )
-
-  const release = useCallback(() => {
-    if (!dragging.current || !aimFrom || !aimTo) {
-      dragging.current = false
-      setAimFrom(null)
-      setAimTo(null)
-      return
-    }
-
-    const dx = aimFrom[0] - aimTo[0]
-    const dz = aimFrom[1] - aimTo[1]
-    const pull = Math.min(1, Math.hypot(dx, dz) / MAX_PULL)
-
-    dragging.current = false
-    setAimFrom(null)
-    setAimTo(null)
-
-    /* A twitch is not a shot. Below this the direction is mostly noise, and
-       firing on it costs someone their turn for a misplaced finger. */
-    if (pull > 0.06) onFlick(dx, dz, pull)
-  }, [aimFrom, aimTo, onFlick])
-
-  /* The far player sits opposite, so their camera is on the other side and
-     their own pen is the near one — the same view of the same desk, turned
-     around, rather than a second layout to reason about. */
+function CameraFit({ seat }: { seat: 0 | 1 }) {
+  const { camera, size } = useThree()
   useEffect(() => {
-    const side = seat === 0 ? 1 : -1
-    camera.position.set(0, 0.46, 0.52 * side)
-    camera.lookAt(0, 0, 0)
-    camera.updateProjectionMatrix()
-  }, [camera, seat])
-
-  return (
-    <>
-      <hemisphereLight args={[0xfff3e4, 0x5c574e, 1.05]} />
-      <directionalLight
-        position={[0.35, 0.8, 0.3]}
-        intensity={2.1}
-        color="#ffe6c2"
-        castShadow
-        shadow-mapSize={[1024, 1024]}
-      />
-      <directionalLight position={[-0.4, 0.5, -0.35]} intensity={0.6} color="#9db9e8" />
-
-      {/* The desk. Its top sits at y = 0, which is the plane the solver and
-          every pointer raycast both work on. */}
-      <mesh position={[0, -DESK.width * 0.0215, 0]} receiveShadow>
-        <boxGeometry args={[DESK.width, 0.03, DESK.depth]} />
-        <meshStandardMaterial color="#9a6b3f" roughness={0.86} />
-      </mesh>
-
-      {/* Catches pointer moves anywhere over the desk, including past its
-          edge — a pull-back often ends outside the wood. */}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        onPointerDown={startAim}
-        onPointerMove={moveAim}
-        onPointerUp={release}
-        onPointerLeave={release}
-      >
-        <planeGeometry args={[3, 3]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-
-      {pens.map((pen, index) => (
-        <PenMesh
-          key={index}
-          pen={pen}
-          colour={PEN_COLOURS[index] ?? '#888'}
-          mine={index === seat}
-        />
-      ))}
-
-      <AimLine from={aimFrom} to={aimTo} />
-    </>
-  )
-}
-
-/**
- * Runs the simulation, but only when it is this client's turn.
- *
- * Whoever is flicking is the one authority on where the pens go: they step the
- * solver locally, so their own shot has no network latency in it at all, and
- * publish the result. Everybody else runs no physics whatsoever and simply
- * moves the pens to the positions they are sent. That is the whole sync model,
- * and it works because a pen fight is strictly one-at-a-time.
- */
-function Simulation({
-  pens,
-  live,
-  simulating,
-  onMotion,
-  onSettled,
-}: {
-  pens: Pen[]
-  live: React.RefObject<[WirePen, WirePen] | null>
-  simulating: boolean
-  onMotion: (pens: [WirePen, WirePen]) => void
-  onSettled: (pens: [WirePen, WirePen]) => void
-}) {
-  const lastSent = useRef(0)
-  const wasMoving = useRef(false)
-
-  useFrame((_, delta) => {
-    if (simulating) {
-      step(pens, delta)
-
-      const moving = !atRest(pens)
-      const now = performance.now()
-
-      if (moving) {
-        wasMoving.current = true
-        if (now - lastSent.current > 1000 / MOTION_HZ) {
-          lastSent.current = now
-          onMotion([toWire(pens[0]!), toWire(pens[1]!)])
-        }
-      } else if (wasMoving.current) {
-        /* Came to rest this frame — report once, and only once. */
-        wasMoving.current = false
-        onSettled([toWire(pens[0]!), toWire(pens[1]!)])
-      }
-      return
-    }
-
-    /* Not simulating: follow what the other side is sending. Eased rather than
-       snapped, because frames arrive 20 times a second and the screen is
-       drawing 60 — without this the pens visibly step. */
-    const target = live.current
-    if (!target) return
-
-    for (let i = 0; i < pens.length; i += 1) {
-      const pen = pens[i]!
-      const to = target[i]!
-      const k = Math.min(1, delta * 18)
-      pen.x += (to.x - pen.x) * k
-      pen.z += (to.z - pen.z) * k
-
-      /* Angles are eased the short way round, or a pen crossing π spins all
-         the way back through a full turn. */
-      let diff = to.angle - pen.angle
-      while (diff > Math.PI) diff -= Math.PI * 2
-      while (diff < -Math.PI) diff += Math.PI * 2
-      pen.angle += diff * k
-
-      pen.onDesk = to.onDesk
-    }
-  })
-
+    const cam = camera as PerspectiveCamera
+    // Keep the whole desk in frame, including narrow phones and short landscapes.
+    const aspect = size.width / Math.max(1, size.height)
+    const distance = Math.max(1.02, 0.72 / aspect)
+    cam.position.set(0, distance * 0.91, distance * 0.69 * (seat === 0 ? 1 : -1))
+    cam.fov = 42; cam.lookAt(0, -0.025, 0); cam.updateProjectionMatrix()
+  }, [camera, size.width, size.height, seat])
   return null
 }
 
-export default function PenFightTable({
-  pens: wirePens,
-  seat,
-  myTurn,
-  canPlay,
-  live,
-  onFlick,
-  onMotion,
-  onSettled,
-  paused = false,
-}: {
-  pens: [WirePen, WirePen]
-  seat: 0 | 1
-  myTurn: boolean
-  canPlay: boolean
-  live: React.RefObject<[WirePen, WirePen] | null>
-  onFlick: () => void
-  onMotion: (pens: [WirePen, WirePen]) => void
-  onSettled: (pens: [WirePen, WirePen]) => void
-  paused?: boolean
+function Scene({ snapshot, seat, viewSeat, enabled, dragEnabled = true, aim, onAim, onFlick }: {
+  snapshot: GameSnapshot; seat: 0 | 1; viewSeat?: 0 | 1; enabled: boolean; dragEnabled?: boolean; aim: Aim | null
+  onAim: (aim: Aim | null) => void; onFlick: (shot: Flick) => void
 }) {
-  /*
-   * The solver's pens are mutable objects held across frames, not React state.
-   * They are rewritten sixty times a second by the physics; putting them in
-   * state would re-render the whole tree on every step for no benefit, since
-   * the meshes read them directly in `useFrame`.
-   */
-  const pens = useRef<Pen[]>([makePen(-0.06, 0.14, 0.18), makePen(0.06, -0.14, Math.PI - 0.18)])
-  const [simulating, setSimulating] = useState(false)
-
-  /*
-   * Adopt each new resting position wholesale — that is the version of the
-   * world everyone agreed on, and it is what a round reset arrives as.
-   *
-   * Skipped while simulating: this client is mid-flick and is itself the
-   * authority for those frames, so taking the server's older copy would drag
-   * the pens backwards through the shot being played.
-   *
-   * The dependency is a flattened string rather than the array, because a
-   * fresh `pens` array arrives on every snapshot and comparing by identity
-   * would re-seed the solver constantly.
-   */
-  const resting = `${wirePens[0].x},${wirePens[0].z},${wirePens[0].angle},${wirePens[0].onDesk},${wirePens[1].x},${wirePens[1].z},${wirePens[1].angle},${wirePens[1].onDesk}`
-  const latest = useRef(wirePens)
-  latest.current = wirePens
+  const positions = useRef<Pair>(snapshot.pens)
+  const pointer = useRef<{ id: number; start: [number, number]; contact: number } | null>(null)
+  const draft = useRef<Aim | null>(null)
+  const ring = useRef<Mesh>(null)
+  const arrow = useRef<Group>(null)
+  const floor = useMemo(() => texture('floor'), [])
+  const plane = useMemo(() => new Plane(new Vector3(0, 1, 0), 0), [])
+  useEffect(() => () => floor.dispose(), [floor])
+  useEffect(() => { pointer.current = null; draft.current = null; onAim(null) }, [snapshot.epoch, snapshot.seq, enabled, onAim])
+  useFrame(() => {
+    const elapsed = Date.now() - snapshot.receivedAt + snapshot.serverNow - (snapshot.shot?.startedAt ?? snapshot.serverNow)
+    positions.current = snapshot.shot ? sampleFlight(snapshot.shot, elapsed) : snapshot.pens
+    const p = positions.current[seat]
+    if (ring.current) { ring.current.position.set(p.x, 0.001, p.z); ring.current.visible = enabled && !aim }
+    if (arrow.current) {
+      arrow.current.visible = !!aim && enabled
+      if (aim) {
+        const length = 0.035 + aim.power * 0.15
+        const heading = Math.atan2(aim.dz, aim.dx)
+        arrow.current.position.set(p.x, 0.002, p.z)
+        arrow.current.rotation.y = -heading
+        arrow.current.scale.set(length, 1, 1)
+      }
+    }
+  })
+  const hit = (e: ThreeEvent<PointerEvent>) => {
+    const p = new Vector3()
+    return e.ray.intersectPlane(plane, p) ? p : null
+  }
+  const update = (e: ThreeEvent<PointerEvent>) => {
+    const current = pointer.current, p = hit(e)
+    if (!current || current.id !== e.pointerId || !p) return
+    const dx = current.start[0] - p.x, dz = current.start[1] - p.z
+    const length = Math.hypot(dx, dz)
+    draft.current = { dx: dx / (length || 1), dz: dz / (length || 1), power: Math.min(1, length / MAX_PULL), contact: current.contact }
+    onAim(draft.current)
+  }
+  const cancel = () => { pointer.current = null; draft.current = null; onAim(null) }
   useEffect(() => {
-    if (simulating) return
-    pens.current = [toPen(latest.current[0]), toPen(latest.current[1])]
-  }, [resting, simulating])
+    const cancel = () => { pointer.current = null; draft.current = null; onAim(null) }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') cancel() }
+    window.addEventListener('blur', cancel); window.addEventListener('keydown', key)
+    return () => { window.removeEventListener('blur', cancel); window.removeEventListener('keydown', key) }
+  }, [onAim])
+  return <>
+    <CameraFit seat={viewSeat ?? seat} />
+    <color attach="background" args={['#777d65']} />
+    <hemisphereLight args={['#fff0cf', '#353e31', 1.8]} />
+    <directionalLight position={[-0.8, 1.7, 0.4]} intensity={2} color="#fff0d1" castShadow shadow-mapSize={[1024, 1024]} shadow-camera-left={-1.5} shadow-camera-right={1.5} shadow-camera-top={1.5} shadow-camera-bottom={-1.5} shadow-bias={-0.0003} />
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.45, 0]} receiveShadow><planeGeometry args={[4, 4]} /><meshStandardMaterial map={floor} roughness={1} /></mesh>
+    <Desk main /><Desk x={-0.83} z={-0.35} /><Desk x={0.83} z={-0.35} />
+    <mesh position={[0, -0.31, 0.52]} castShadow><boxGeometry args={[0.33, 0.025, 0.23]} /><meshStandardMaterial color="#805632" /></mesh>
+    {[0, 1].map(i => <PenModel key={i} index={i} positions={positions} style={snapshot.styles[i]!} />)}
+    <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.025, 0.027, 48]} /><meshBasicMaterial color="#f9e3a5" transparent opacity={0.8} /></mesh>
+    <group ref={arrow}>
+      <mesh position={[0.48, 0, 0]}><boxGeometry args={[0.8, 0.001, 0.003]} /><meshBasicMaterial color="#f9edbc" /></mesh>
+      <mesh position={[0.95, 0, 0]} rotation={[0, 0, -Math.PI / 2]}><coneGeometry args={[0.007, 0.1, 3]} /><meshBasicMaterial color="#fff3c5" /></mesh>
+    </group>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.009, 0]}
+      onPointerDown={e => {
+        if (!enabled || !dragEnabled || pointer.current || e.button !== 0 || !e.isPrimary) return
+        const p = hit(e), mine: Position = positions.current[seat]
+        if (!p || !mine.onDesk) return
+        const along = (p.x - mine.x) * Math.cos(mine.angle) + (p.z - mine.z) * Math.sin(mine.angle)
+        const clamped = Math.max(-PEN_LENGTH / 2, Math.min(PEN_LENGTH / 2, along))
+        const distance = Math.hypot(p.x - mine.x - Math.cos(mine.angle) * clamped, p.z - mine.z - Math.sin(mine.angle) * clamped)
+        if (distance > 0.035) return
+        e.stopPropagation()
+        ;(e.target as unknown as Element).setPointerCapture(e.pointerId)
+        pointer.current = { id: e.pointerId, start: [p.x, p.z], contact: Math.max(-1, Math.min(1, along / (PEN_LENGTH * 0.42))) }
+        onAim({ dx: 0, dz: seat === 0 ? -1 : 1, power: 0, contact: pointer.current.contact })
+      }}
+      onPointerMove={update}
+      onPointerUp={e => {
+        if (pointer.current?.id !== e.pointerId) return
+        update(e)
+        const shot = draft.current
+        cancel()
+        ;(e.target as unknown as Element).releasePointerCapture(e.pointerId)
+        if (enabled && shot && shot.power >= 0.06) onFlick(shot)
+      }}
+      onPointerCancel={cancel} onLostPointerCapture={cancel}>
+      <planeGeometry args={[8, 8]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    </mesh>
+  </>
+}
 
-  const doFlick = useCallback(
-    (dirX: number, dirZ: number, pull: number) => {
-      const mine = pens.current[seat]
-      if (!mine) return
-      flick(mine, dirX, dirZ, pull)
-      setSimulating(true)
-      onFlick()
-    },
-    [seat, onFlick],
-  )
-
-  const finish = useCallback(
-    (settled: [WirePen, WirePen]) => {
-      setSimulating(false)
-      onSettled(settled)
-    },
-    [onSettled],
-  )
-
-  return (
-    <Canvas
-      dpr={[1, 1.75]}
-      shadows
-      camera={{ position: [0, 0.46, 0.52], fov: 34 }}
-      gl={{ alpha: true, antialias: true }}
-      /* Held still while the tab is away or a dialog covers the table — the
-         same rule the hub's party follows. */
-      frameloop={paused ? 'demand' : 'always'}
-      style={{ background: 'transparent' }}
-    >
-      <Table
-        pens={pens.current}
-        seat={seat}
-        myTurn={myTurn}
-        canPlay={canPlay}
-        onFlick={doFlick}
-      />
-      <Simulation
-        pens={pens.current}
-        live={live}
-        simulating={simulating}
-        onMotion={onMotion}
-        onSettled={finish}
-      />
-    </Canvas>
-  )
+class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  render() { return this.state.failed ? <div className="pf-render-error">The 3D desk couldn’t open. Enable hardware acceleration in your browser, then reopen Pen Fight.</div> : this.props.children }
+}
+export default function PenFightTable(props: Parameters<typeof Scene>[0]) {
+  const visible = usePageVisible()
+  return <SceneBoundary><Canvas frameloop={visible ? 'always' : 'demand'} shadows dpr={[1, 1.5]} camera={{ fov: 42 }} gl={{ antialias: true, alpha: false }} style={{ touchAction: 'none' }}><Scene {...props} /></Canvas></SceneBoundary>
 }
