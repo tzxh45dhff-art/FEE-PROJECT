@@ -33,6 +33,7 @@ export type MapsSdk = {
   Polyline: new (options: Record<string, unknown>) => Polyline
   SymbolPath: { CIRCLE: number }
   Animation?: { DROP: number; BOUNCE: number }
+  ControlPosition?: { RIGHT_CENTER: number }
   event: { trigger(object: MapsObject, event: string): void; clearInstanceListeners(object: MapsObject): void }
 }
 type MapsWindow = Window & { google?: { maps?: MapsSdk }; __huddleGeoReady?: () => void; gm_authFailure?: () => void }

@@ -18,13 +18,13 @@ const COUNT_FOR_MS = 1_200
 export function RoundIntro({ round, of, seconds, label }: { round: number; of: number; seconds: number; label: string }) {
   const n = Math.max(1, Math.min(3, seconds))
   return (
-    <div className="geo-intro" role="status" aria-live="polite">
-      <motion.div className="geo-intro-card" initial={{ opacity: 0, y: 18, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 24 }}>
-        <span className="geo-intro-kicker">{label}</span>
+    <div className="geo-countin" role="status" aria-live="polite">
+      <motion.div className="geo-countin-card" initial={{ opacity: 0, y: 18, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: 'spring', stiffness: 260, damping: 24 }}>
+        <span className="geo-countin-kicker">{label}</span>
         <h2>
           Round <b>{round}</b> <span>of {of}</span>
         </h2>
-        <div className="geo-intro-count" aria-label={`${n}`}>
+        <div className="geo-countin-count" aria-label={`${n}`}>
           <AnimatePresence mode="popLayout">
             <motion.strong key={n} initial={{ scale: 2.2, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} transition={{ type: 'spring', stiffness: 420, damping: 22 }}>
               {n}

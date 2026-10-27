@@ -44,6 +44,8 @@ export function GeoPanorama({
           fullscreenControl: false,
           panControl: false,
           zoomControl: false,
+          /* Clear of the map, which sits bottom right: the zoom buttons go to the empty middle of the right edge. */
+          zoomControlOptions: sdk.ControlPosition ? { position: sdk.ControlPosition.RIGHT_CENTER } : undefined,
           enableCloseButton: false,
         })
         pano.current = viewer

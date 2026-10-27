@@ -1346,7 +1346,7 @@
 }
 
 /* ── the round intro ────────────────────────────────────────────────── */
-.geo-intro {
+.geo-countin {
   position: absolute;
   inset: 0;
   z-index: 6;
@@ -1355,7 +1355,7 @@
   background: radial-gradient(ellipse at center, #0a1a15a8 0%, #0a1a1566 55%, transparent 100%);
   pointer-events: none;
 }
-.geo-intro-card {
+.geo-countin-card {
   text-align: center;
   padding: 26px 40px 24px;
   border-radius: 18px;
@@ -1364,34 +1364,34 @@
   box-shadow: 0 24px 80px #0007;
   min-width: min(320px, calc(100vw - 40px));
 }
-.geo-intro-kicker {
+.geo-countin-kicker {
   display: block;
   font-size: 11px;
   letter-spacing: 0.32em;
   text-transform: uppercase;
   color: var(--geo-muted);
 }
-.geo-intro-card h2 {
+.geo-countin-card h2 {
   margin-top: 6px;
   font-family: Archivo, sans-serif;
   font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.02em;
 }
-.geo-intro-card h2 b {
+.geo-countin-card h2 b {
   color: var(--geo-accent);
 }
-.geo-intro-card h2 span {
+.geo-countin-card h2 span {
   color: var(--geo-muted);
   font-weight: 600;
 }
-.geo-intro-count {
+.geo-countin-count {
   position: relative;
   height: 120px;
   display: grid;
   place-items: center;
 }
-.geo-intro-count strong {
+.geo-countin-count strong {
   position: absolute;
   font-family: Archivo, sans-serif;
   font-size: 104px;
@@ -1400,7 +1400,7 @@
   color: var(--geo-ink);
   text-shadow: 0 8px 40px #ef795c66;
 }
-.geo-intro-card p {
+.geo-countin-card p {
   color: var(--geo-muted);
   font-size: 13px;
 }
@@ -1430,16 +1430,16 @@
   color: var(--geo-muted);
 }
 @media (max-width: 650px) {
-  .geo-intro-card {
+  .geo-countin-card {
     padding: 20px 24px 18px;
   }
-  .geo-intro-card h2 {
+  .geo-countin-card h2 {
     font-size: 24px;
   }
-  .geo-intro-count {
+  .geo-countin-count {
     height: 96px;
   }
-  .geo-intro-count strong {
+  .geo-countin-count strong {
     font-size: 84px;
   }
   .geo-sound button {
@@ -1533,5 +1533,550 @@
   }
   .geo-round-note {
     bottom: 18px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ * Neo-brutalist skin.
+ *
+ * A travel poster you can poke: flat sunflower, tomato, mint and sky on
+ * cream, thick ink outlines, hard offset shadows that press in when tapped.
+ * Everything above sets the layout (and the phone sheets); this only sets
+ * the look, so it rides on top of every size.
+ * ════════════════════════════════════════════════════════════════════ */
+.geo-setup,
+.geo-table {
+  --nb-ink: #121212;
+  --nb-paper: #fff5df;
+  --nb-card: #fffdf6;
+  --nb-sun: #ffd23f;
+  --nb-tomato: #ff5a36;
+  --nb-mint: #3ddc97;
+  --nb-sky: #4cc9f0;
+  --nb-lilac: #b8a1ff;
+  --nb-line: 3px solid var(--nb-ink);
+  --nb-shadow: 4px 4px 0 var(--nb-ink);
+  --nb-shadow-lg: 7px 7px 0 var(--nb-ink);
+  --geo-ink: var(--nb-ink);
+  --geo-muted: #4b4740;
+  --geo-base: var(--nb-paper);
+  --geo-line: var(--nb-ink);
+  --geo-accent: var(--nb-tomato);
+}
+.geo-setup button:focus-visible,
+.geo-table button:focus-visible,
+.geo-setup summary:focus-visible,
+.geo-setup select:focus-visible {
+  outline: 3px solid var(--nb-sky);
+  outline-offset: 3px;
+}
+
+/* Something you press: lifts on hover, sinks into its shadow on tap. */
+.geo-primary,
+.geo-secondary,
+.geo-destination,
+.geo-choice,
+.geo-return,
+.geo-open-map,
+.geo-stops button,
+.geo-map-centre,
+.geo-map-heading > button {
+  border: var(--nb-line) !important;
+  box-shadow: var(--nb-shadow);
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    background 0.15s;
+}
+.geo-primary:hover:not(:disabled),
+.geo-secondary:hover:not(:disabled),
+.geo-destination:hover,
+.geo-choice:hover,
+.geo-return:hover,
+.geo-stops button:hover,
+.geo-map-centre:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--nb-ink);
+}
+.geo-primary:active:not(:disabled),
+.geo-secondary:active:not(:disabled),
+.geo-destination:active,
+.geo-choice:active,
+.geo-return:active,
+.geo-stops button:active,
+.geo-map-centre:active,
+.geo-map-heading > button:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 var(--nb-ink);
+}
+.geo-primary {
+  background: var(--nb-tomato);
+  color: var(--nb-ink);
+  border-radius: 10px;
+  font-family: Archivo, sans-serif;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+.geo-primary:hover:not(:disabled) {
+  background: #ff7350;
+}
+.geo-secondary {
+  background: var(--nb-card);
+  color: var(--nb-ink);
+  border-radius: 10px;
+  font-weight: 700;
+}
+.geo-text-button {
+  color: var(--nb-ink);
+  font-weight: 700;
+  text-decoration-thickness: 2px;
+}
+.geo-error {
+  color: #c4210a !important;
+  font-weight: 700;
+}
+.geo-eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--nb-ink);
+}
+
+/* ── setup ─────────────────────────────────────────────────────────── */
+.geo-setup {
+  border: var(--nb-line);
+  border-radius: 18px;
+  background: var(--nb-paper);
+  box-shadow: 10px 10px 0 var(--nb-ink);
+  color: var(--nb-ink);
+}
+.geo-intro {
+  background: var(--nb-sun) radial-gradient(circle at 1px 1px, #12121224 1.2px, transparent 1.6px) 0 0 / 18px 18px;
+  border-right: var(--nb-line);
+  color: var(--nb-ink);
+}
+.geo-intro > .geo-eyebrow {
+  color: var(--nb-ink);
+}
+.geo-intro h1 {
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  text-shadow: 4px 4px 0 var(--nb-paper);
+}
+.geo-intro h1 > span {
+  color: var(--nb-tomato);
+  text-shadow: 4px 4px 0 var(--nb-ink);
+}
+.geo-intro-line {
+  font-weight: 800;
+}
+.geo-intro-copy {
+  color: #2b2720;
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 300px;
+}
+.geo-orbit svg {
+  color: var(--nb-ink);
+  opacity: 0.85;
+}
+.geo-orbit-tag {
+  background: var(--nb-mint);
+  color: var(--nb-ink);
+  border: var(--nb-line);
+  border-radius: 8px;
+  box-shadow: var(--nb-shadow);
+  font-size: 10px;
+  font-weight: 800;
+}
+.geo-intro-foot {
+  border-top: var(--nb-line);
+  color: var(--nb-ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+.geo-plan-heading h2 {
+  font-weight: 800;
+  font-size: 32px;
+}
+.geo-people {
+  border: var(--nb-line);
+  background: var(--nb-sky);
+  color: var(--nb-ink);
+  font-weight: 800;
+  box-shadow: var(--nb-shadow);
+}
+.geo-field legend {
+  color: var(--nb-ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+.geo-field legend span {
+  color: var(--nb-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+.geo-destination,
+.geo-choice {
+  background: var(--nb-card);
+  color: var(--nb-ink);
+  border-radius: 12px;
+}
+.geo-destination > svg {
+  color: var(--nb-ink);
+}
+.geo-destination strong,
+.geo-choice strong {
+  font-family: Archivo, sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+}
+.geo-destination > span:not(.geo-selected),
+.geo-choice small {
+  font-size: 12px;
+  color: #3d3933;
+}
+.geo-destination.selected,
+.geo-choice.selected {
+  background: var(--nb-mint);
+  box-shadow: var(--nb-shadow-lg);
+  transform: translate(-2px, -2px);
+}
+.geo-selected {
+  border: var(--nb-line);
+  background: var(--nb-card);
+  color: transparent;
+}
+.selected .geo-selected {
+  background: var(--nb-ink);
+  border-color: var(--nb-ink);
+  color: var(--nb-sun);
+}
+.geo-field-note,
+.geo-advanced > p,
+.geo-departure > p {
+  font-size: 12px;
+  color: #3d3933;
+}
+.geo-movement {
+  border: var(--nb-line);
+  border-radius: 12px;
+  background: var(--nb-card);
+  box-shadow: var(--nb-shadow);
+}
+.geo-movement button {
+  border-radius: 8px;
+}
+.geo-movement span {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--nb-ink);
+}
+.geo-movement small {
+  font-size: 11px;
+  color: #4b4740;
+}
+.geo-movement .selected {
+  background: var(--nb-ink);
+}
+.geo-movement .selected span {
+  color: var(--nb-sun);
+}
+.geo-movement .selected small {
+  color: var(--nb-paper);
+}
+.geo-advanced {
+  border-bottom: var(--nb-line);
+}
+.geo-advanced summary,
+.geo-settings-grid label,
+.geo-opponent {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--nb-ink);
+}
+.geo-settings-grid select,
+.geo-opponent select {
+  border: var(--nb-line);
+  border-radius: 8px;
+  background: var(--nb-card);
+  color: var(--nb-ink);
+  font-weight: 700;
+}
+.geo-departure > span {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--nb-ink);
+}
+.geo-departure > span i {
+  width: 5px;
+  height: 5px;
+  background: var(--nb-ink);
+}
+
+/* ── on the street ─────────────────────────────────────────────────── */
+.geo-table {
+  background: var(--nb-paper);
+}
+.geo-hud-brand,
+.geo-round,
+.geo-timer,
+.geo-compass,
+.geo-health > div,
+.geo-sound,
+.geo-loading-card,
+.geo-spectator,
+.geo-round-note span,
+.geo-distance-pill,
+.geo-view-message {
+  background: var(--nb-card);
+  color: var(--nb-ink);
+  border: var(--nb-line);
+  box-shadow: var(--nb-shadow);
+}
+.geo-hud-brand {
+  background: var(--nb-sun);
+}
+.geo-hud-brand > span {
+  font-family: Archivo, sans-serif;
+  font-weight: 800;
+}
+.geo-round small,
+.geo-timer > span,
+.geo-health span,
+.geo-score-points small,
+.geo-score-name small {
+  color: var(--nb-ink);
+  font-weight: 800;
+  font-size: 10px;
+}
+.geo-round strong,
+.geo-timer strong {
+  font-family: Archivo, sans-serif;
+  font-weight: 800;
+}
+.geo-timer {
+  background: var(--nb-sky);
+}
+.geo-timer.urgent {
+  background: var(--nb-tomato);
+  color: var(--nb-ink);
+}
+.geo-timer.urgent > span {
+  color: var(--nb-ink);
+}
+.geo-compass > span {
+  color: var(--nb-tomato);
+  font-weight: 800;
+}
+.geo-health i {
+  background: #1212121f;
+  border: 2px solid var(--nb-ink);
+}
+.geo-sound button {
+  color: var(--nb-ink);
+}
+.geo-sound button:hover {
+  background: var(--nb-sun);
+}
+.geo-return,
+.geo-open-map {
+  background: var(--nb-card);
+  color: var(--nb-ink);
+  font-weight: 800;
+  border-radius: 10px;
+}
+.geo-round-note {
+  color: var(--nb-ink);
+  text-shadow: none;
+  font-weight: 700;
+}
+.geo-round-note span {
+  border-radius: 8px;
+}
+.geo-spectator button {
+  color: #c4210a;
+  font-weight: 800;
+}
+.geo-loading-card {
+  border-radius: 16px;
+  box-shadow: var(--nb-shadow-lg);
+}
+.geo-loading-card > svg {
+  color: var(--nb-ink);
+}
+.geo-loading-card h2 {
+  font-family: Archivo, sans-serif;
+  font-weight: 800;
+}
+.geo-countdown {
+  color: var(--nb-tomato);
+  -webkit-text-stroke: 2px var(--nb-ink);
+  font-weight: 800;
+}
+.geo-toast {
+  background: var(--nb-tomato);
+  color: var(--nb-ink);
+  border: var(--nb-line);
+  box-shadow: var(--nb-shadow);
+  font-weight: 700;
+}
+
+/* The map: a postcard pinned to the corner, with a bold label tab. */
+.geo-map-panel {
+  border: var(--nb-line);
+  border-radius: 14px;
+  background: var(--nb-card);
+  box-shadow: var(--nb-shadow-lg);
+}
+.geo-map-heading {
+  background: var(--nb-sun);
+  border-bottom: var(--nb-line);
+}
+.geo-map-heading > span {
+  color: var(--nb-ink);
+  font-size: 11px;
+  font-weight: 800;
+}
+.geo-map-heading > button {
+  background: var(--nb-card);
+  color: var(--nb-ink);
+  border-width: 2px !important;
+  box-shadow: 2px 2px 0 var(--nb-ink);
+}
+.geo-map-surface {
+  border-bottom: var(--nb-line);
+}
+.geo-map-centre {
+  background: var(--nb-card);
+  color: var(--nb-ink);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.geo-map-footer {
+  background: var(--nb-card);
+}
+.geo-map-footer > span {
+  color: #3d3933;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* The reveal and the recap. */
+.geo-revealing {
+  background: var(--nb-paper) radial-gradient(circle at 1px 1px, #1212121f 1.2px, transparent 1.6px) 0 0 / 20px 20px;
+}
+.geo-map-panel.results {
+  box-shadow: var(--nb-shadow-lg);
+}
+.geo-map-panel.results .geo-map-heading {
+  border-bottom: var(--nb-line);
+}
+.geo-recap h2 {
+  font-weight: 800;
+  color: var(--nb-ink);
+}
+.geo-recap > p {
+  color: #3d3933;
+  font-size: 13px;
+}
+.geo-score {
+  background: var(--nb-card);
+  border: var(--nb-line);
+  border-radius: 12px;
+  box-shadow: var(--nb-shadow);
+  color: var(--nb-ink);
+}
+.geo-score.selected {
+  background: var(--nb-sun);
+  border-color: var(--nb-ink);
+}
+.geo-score-rank {
+  color: var(--nb-ink);
+  font-weight: 800;
+}
+.geo-score-rank > svg {
+  color: #c98a00;
+}
+.geo-player-dot {
+  border: 2px solid var(--nb-ink);
+  color: var(--nb-ink);
+  font-weight: 800;
+}
+.geo-score-name > strong {
+  font-size: 14px;
+  font-weight: 800;
+}
+.geo-score-name > span {
+  color: #3d3933;
+  font-size: 12px;
+}
+.geo-score-points strong {
+  font-family: Archivo, sans-serif;
+  font-weight: 800;
+  font-size: 19px;
+}
+.geo-stops button {
+  background: var(--nb-card);
+  color: var(--nb-ink);
+  border-radius: 10px;
+  font-weight: 800;
+}
+.geo-stops button[aria-pressed='true'] {
+  background: var(--nb-ink);
+  color: var(--nb-sun);
+}
+
+/* The round's opening card and the distance call. */
+.geo-countin-card {
+  background: var(--nb-sun);
+  color: var(--nb-ink);
+  border: var(--nb-line);
+  border-radius: 18px;
+  box-shadow: 10px 10px 0 var(--nb-ink);
+}
+.geo-countin-kicker,
+.geo-countin-card p,
+.geo-countin-card h2 span {
+  color: var(--nb-ink);
+  font-weight: 800;
+}
+.geo-countin-card h2 {
+  font-weight: 800;
+}
+.geo-countin-count strong {
+  color: var(--nb-paper);
+  -webkit-text-stroke: 4px var(--nb-ink);
+  paint-order: stroke fill;
+  text-shadow: 6px 6px 0 var(--nb-ink);
+}
+.geo-distance-pill {
+  border-radius: 999px;
+  font-weight: 800;
+}
+.geo-distance-pill span {
+  color: #3d3933;
+}
+
+/*
+ * Free space for the map on a laptop or bigger: clear of the HUD across the
+ * top, Google's terms along the bottom, and the Street View zoom buttons in
+ * the middle of the right edge.
+ */
+@media (min-width: 901px) {
+  .geo-map-panel:not(.results):not(.expanded) {
+    right: 26px;
+    bottom: 40px;
+    width: clamp(320px, 26vw, 420px);
+    height: clamp(270px, 32vh, 340px);
+  }
+  .geo-map-panel.expanded:not(.results) {
+    /* Wide enough to aim, short of the zoom buttons on the right edge. */
+    right: 76px;
+    bottom: 40px;
+    width: min(680px, calc(100% - 120px));
+    height: min(520px, calc(100% - 150px));
   }
 }
