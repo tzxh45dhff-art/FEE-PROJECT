@@ -903,6 +903,28 @@ describe('mafia — AI players', () => {
 describe('mafia — a fair deal across games', () => {
   const fair = (n: number) => Math.floor(Math.random() * n)
 
+  it('dealing again after a game: new cards for new people, and the numbers rolled afresh', () => {
+    const seen: string[] = []
+    const holders = new Set<string>()
+    const sizes = new Set<number>()
+    let last = ''
+    let repeats = 0
+    for (let g = 0; g < 40; g++) {
+      clock = g * 1_000_000
+      timers = []
+      const s = mafia.start(people(8), options({ rematch: g > 0 }), { ...ctx(fair), seen: new Set(seen) })
+      const family = s.players.filter((p) => p.role === 'mafia' || p.role === 'godfather').map((p) => p.id).sort().join(',')
+      if (family === last) repeats++
+      last = family
+      family.split(',').forEach((id) => holders.add(id))
+      sizes.add(s.counts.family)
+      seen.push(...mafia.used!(s))
+    }
+    assert.ok(holders.size >= 6, `the Family card goes round the room (${holders.size} of 8 held it)`)
+    assert.deepEqual([...sizes].sort(), [1, 2], 'how many Family is rolled again every game')
+    assert.ok(repeats <= 3, `the very same Family twice running is rare (${repeats} in 40)`)
+  })
+
   it('still random: everyone gets the Family card about equally often over many games', () => {
     const ids = ['a', 'b', 'c', 'd', 'e']
     const family = new Map(ids.map((id) => [id, 0]))

@@ -219,7 +219,9 @@ export function GamesStage({
                 setScreen('picker')
               }}
               onPlayAgain={() => {
-                if (mafiaOptions.current) void party.start('mafia', { ...mafiaOptions.current, rematch: true })
+                /* Whoever deals again — not only whoever set the game up: the last game's own terms, rolled and dealt afresh. */
+                const last = mafiaOptions.current ?? (party.party?.view as { options?: MafiaOptions } | undefined)?.options
+                if (last) void party.start('mafia', { ...last, rematch: true })
               }}
               onJoin={() => void party.join()}
               error={party.error}

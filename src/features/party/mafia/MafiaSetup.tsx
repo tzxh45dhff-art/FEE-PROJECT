@@ -6,7 +6,7 @@ import type { Character } from '@/lib/characters'
 import { cn } from '@/lib/utils'
 import { ARCS, ARC_IDS, type ArcChoice } from './arcs'
 import { Skyline } from './art'
-import { MAX_SPECIALISTS, callName, dealCounts, dealLine, dealRange, maxFamily, showRange } from './helpers'
+import { MAX_SPECIALISTS, callName, dealCounts, dealLine, maxFamily } from './helpers'
 import { Portrait } from './Seat'
 import type { MafiaOptions } from './types'
 import { useNoirFonts } from './useNoirFonts'
@@ -61,17 +61,13 @@ export function MafiaSetup({
   const n = players.length + ai
   const seats: (Person & { ai?: boolean })[] = [...players, ...Array.from({ length: ai }, (_, i) => ({ id: `ai-${i}`, name: 'AI player', you: false, ai: true }))]
   const can = n >= 4 && n <= 12 && !starting
-  /* Secret numbers: an unset count shows only what it could be ("1–2"); the real one is rolled at the deal. */
-  const range = dealRange(Math.max(4, n), { family: familyWanted, doctors: doctorsWanted, detectives: detectivesWanted })
-  const ranged = (r: [number, number]) => randomPowers && r[0] !== r[1]
-  const secret = ranged(range.family) || ranged(range.doctors) || ranged(range.detectives)
-  const custom = {
-    godfather,
-    jester,
-    family: familyWanted ?? (randomPowers ? range.family[1] : null),
-    doctors: doctorsWanted ?? (randomPowers ? range.doctors[1] : null),
-    detectives: detectivesWanted ?? (randomPowers ? range.detectives[1] : null),
-  }
+  /*
+   * Automatic: how many Family, Doctors and Inspectors is rolled in secret
+   * from the size of the table — nobody, the host included, knows. Choose:
+   * the host sets the numbers, and that exact deal is what's dealt.
+   */
+  const auto = randomPowers
+  const custom = { godfather, jester, family: familyWanted, doctors: doctorsWanted, detectives: detectivesWanted }
   const deal = dealCounts(Math.max(4, n), custom)
   const room = Math.max(4, n) - deal.family - deal.jester
   const customised = familyWanted !== null || doctorsWanted !== null || detectivesWanted !== null
@@ -133,7 +129,7 @@ export function MafiaSetup({
         {/* The contract. */}
         <div className="noir-paper noir-paper-edge relative rounded-sm px-5 pb-6 pt-5 sm:px-7">
           <p className="font-deco text-[1.5rem] text-[var(--noir-ink-1)]">The terms</p>
-          <p className="font-type text-[0.86rem] text-[var(--noir-ink-5)]">{secret && n >= 4 ? `${n} at the table: ${showRange(range.family)} of the Family, ${showRange(range.doctors)} Doctors, ${showRange(range.detectives)} Inspectors — the real numbers stay secret.` : dealLine(n, custom)}</p>
+          <p className="font-type text-[0.86rem] text-[var(--noir-ink-5)]">{auto && n >= 4 && n <= 12 ? `${n} at the table. How many are Family, Doctors and Inspectors is decided in secret by the size of the table.` : dealLine(n, custom)}</p>
 
           <Field label="The story">
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3" role="radiogroup" aria-label="The story">
@@ -167,22 +163,39 @@ export function MafiaSetup({
           </Field>
 
           <Field label="The cards">
-            <div className="divide-y divide-[var(--noir-ink-2)]/15">
+            <div className="grid grid-cols-2 gap-1.5">
+              <Choice on={auto} onClick={() => setRandomPowers(true)}>
+                <span className="block font-deco text-[0.95rem]">Automatic</span>
+                <span className="block text-[0.74rem] opacity-75">secret, by table size</span>
+              </Choice>
+              <Choice on={!auto} onClick={() => setRandomPowers(false)}>
+                <span className="block font-deco text-[0.95rem]">Choose</span>
+                <span className="block text-[0.74rem] opacity-75">set each number</span>
+              </Choice>
+            </div>
+            {auto ? (
+              <p className="font-type mt-2 text-[0.82rem] leading-snug text-[var(--noir-ink-5)]">
+                The game picks how many Family, Doctors and Inspectors from how many are playing — and keeps it secret from everyone, you included, until the case file.
+                {deal.godfather ? ' One of the Family is the Godfather.' : ''}
+                {deal.jester ? ' There’s a Jester.' : ''}
+              </p>
+            ) : (
+              <>
+            <div className="mt-2 divide-y divide-[var(--noir-ink-2)]/15">
               <Count
                 title="The Family"
                 note={`up to ${maxFamily(Math.max(4, n))} at this table${deal.godfather ? ' · one is the Godfather' : ''}`}
                 value={deal.family}
-                shown={ranged(range.family) ? showRange(range.family) : undefined}
                 min={1}
                 max={maxFamily(Math.max(4, n))}
                 onChange={setFamily}
               />
-              <Count title="Doctors" note="each saves one life a night" value={deal.doctors} shown={ranged(range.doctors) ? showRange(range.doctors) : undefined} min={0} max={Math.min(MAX_SPECIALISTS, room)} onChange={setDoctors} />
-              <Count title="Inspectors" note={deal.detectives > 1 ? 'share one case file' : 'each checks one person a night'} value={deal.detectives} shown={ranged(range.detectives) ? showRange(range.detectives) : undefined} min={0} max={Math.min(MAX_SPECIALISTS, room - deal.doctors)} onChange={setDetectives} />
+              <Count title="Doctors" note="each saves one life a night" value={deal.doctors} min={0} max={Math.min(MAX_SPECIALISTS, room)} onChange={setDoctors} />
+              <Count title="Inspectors" note={deal.detectives > 1 ? 'share one case file' : 'each checks one person a night'} value={deal.detectives} min={0} max={Math.min(MAX_SPECIALISTS, room - deal.doctors)} onChange={setDetectives} />
             </div>
             <div className="mt-1.5 flex items-center justify-between gap-3">
               <p className="font-type text-[0.8rem] text-[var(--noir-ink-5)]">
-                {secret ? 'Citizens fill the other chairs' : `${deal.citizens} ${deal.citizens === 1 ? 'Citizen' : 'Citizens'} fill the other chairs`}{deal.jester ? ', with a Jester' : ''}.
+                {deal.citizens} {deal.citizens === 1 ? 'Citizen' : 'Citizens'} fill the other chairs{deal.jester ? ', with a Jester' : ''}.
               </p>
               {customised && (
                 <button
@@ -198,6 +211,8 @@ export function MafiaSetup({
                 </button>
               )}
             </div>
+              </>
+            )}
           </Field>
 
           <Field label="Where are you playing?">
@@ -234,7 +249,6 @@ export function MafiaSetup({
 
           <Field label="House rules">
             <Toggle on={story} onChange={setStory} title="Tell the story first" note="A one-minute narrated opening that explains the game — best for new players" />
-            <Toggle on={randomPowers} onChange={setRandomPowers} title="Secret numbers" note="How many Family, Doctors and Inspectors is rolled by table size — nobody knows until the end" />
             <Toggle on={reveal} onChange={setReveal} title="Reveal the dead" note="Show a role when its owner dies" />
             <Toggle on={godfather} onChange={setGodfather} title="The Godfather" note="7+ players · reads clean to the Inspector" />
             <Toggle on={jester} onChange={setJester} title="The Jester" note="6+ players · wins if the town hangs them" />
@@ -253,7 +267,7 @@ export function MafiaSetup({
               disabled={!can}
               whileHover={can ? { rotate: -8, scale: 1.04 } : undefined}
               whileTap={can ? { scale: 0.92 } : undefined}
-              onClick={() => onStart({ nightSeconds: night, daySeconds: day, voteSeconds: vote, reveal, godfather, jester, together: where === 'table', bots: ai, story, arc, randomPowers, family: familyWanted, doctors: doctorsWanted, detectives: detectivesWanted })}
+              onClick={() => onStart({ nightSeconds: night, daySeconds: day, voteSeconds: vote, reveal, godfather, jester, together: where === 'table', bots: ai, story, arc, randomPowers: auto, family: auto ? null : familyWanted, doctors: auto ? null : doctorsWanted, detectives: auto ? null : detectivesWanted })}
               className="relative grid size-24 place-items-center rounded-full bg-[radial-gradient(circle_at_35%_30%,var(--noir-blood-bright),var(--noir-blood)_70%)] text-[var(--noir-on-accent)] shadow-[0_10px_24px_-8px_rgba(80,10,5,.9),inset_0_-4px_10px_rgba(0,0,0,.35)] outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-[var(--noir-ink-2)] focus-visible:ring-offset-2 disabled:opacity-40"
             >
               <span className="absolute inset-2 rounded-full border-2 border-dashed border-[var(--noir-on-accent)]/40" />
