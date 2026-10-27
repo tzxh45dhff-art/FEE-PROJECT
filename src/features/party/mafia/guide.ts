@@ -1,4 +1,4 @@
-import { dealCounts } from './helpers'
+import { dealCounts, dealRange, type Range } from './helpers'
 import type { MafiaOptions, Phase, Role } from './types'
 
 /**
@@ -80,8 +80,13 @@ export const PHASE_GUIDE: Partial<Record<Phase, { title: string; story: string; 
   },
 }
 
-/** Which cards are in play for this table — the same deal the server makes (see `dealCounts`). */
-export function rolesInPlay(n: number, options: MafiaOptions) {
+/**
+ * Which cards are in play for this table — as ranges, since the real counts
+ * are a secret until the end (see `dealRange`). With the roll off, exact.
+ */
+export function rolesInPlay(n: number, options: MafiaOptions): { family: Range; doctors: Range; inspectors: Range; godfather: boolean; jester: boolean } {
   const d = dealCounts(n, options)
-  return { family: d.family, godfather: d.godfather, doctors: d.doctors, inspectors: d.detectives, jester: d.jester > 0, citizens: d.citizens }
+  if (options.randomPowers === false) return { family: [d.family, d.family], doctors: [d.doctors, d.doctors], inspectors: [d.detectives, d.detectives], godfather: d.godfather, jester: d.jester > 0 }
+  const r = dealRange(n, options)
+  return { family: r.family, doctors: r.doctors, inspectors: r.detectives, godfather: d.godfather, jester: d.jester > 0 }
 }

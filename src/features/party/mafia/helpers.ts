@@ -9,8 +9,24 @@ export const recommendedDeal = (n: number) => ({ family: n <= 6 ? 1 : n <= 8 ? 2
 /** The most Family that still leaves them outnumbered after the first night's kill. */
 export const maxFamily = (n: number) => Math.max(1, Math.floor((n - 2) / 2))
 export const MAX_SPECIALISTS = 2
-/** What the server's `rollPowers` can deal at this size: [fewest, most] of each. */
-export const powerRange = (n: number): [number, number] => (n <= 6 ? [1, 1] : n <= 9 ? [1, 2] : [2, 2])
+export type Range = [number, number]
+/** What a table of `n` might be dealt — the server's `dealRange`: [fewest, most] of each; a count the host set is exact. */
+export function dealRange(n: number, o: { family?: number | null; doctors?: number | null; detectives?: number | null }) {
+  const exact = (k: number): Range => [k, k]
+  const power: Range = n <= 6 ? [1, 1] : n <= 9 ? [1, 2] : [2, 2]
+  return {
+    family: o.family != null ? exact(o.family) : n <= 6 ? exact(1) : n <= 8 ? ([1, 2] as Range) : ([2, 3] as Range),
+    doctors: o.doctors != null ? exact(o.doctors) : power,
+    detectives: o.detectives != null ? exact(o.detectives) : n < 5 ? exact(0) : power,
+  }
+}
+/** "One", or "One or two". */
+export function sayRange([lo, hi]: Range) {
+  const word = (k: number) => ['No one', 'One', 'Two', 'Three', 'Four', 'Five'][k] ?? String(k)
+  return lo === hi ? word(lo) : `${word(lo)} or ${word(hi).toLowerCase()}`
+}
+/** "2", or "1–2". */
+export const showRange = ([lo, hi]: Range) => (lo === hi ? String(lo) : `${lo}–${hi}`)
 const clamp = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(value)))
 
 export function dealCounts(n: number, o: { godfather: boolean; jester: boolean; family?: number | null; doctors?: number | null; detectives?: number | null }) {

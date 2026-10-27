@@ -3,7 +3,7 @@ import { randomInt } from 'node:crypto'
 import { isError, shuffle, type Ctx, type GameDef, type Later, type Player } from './engine.js'
 import { ARCS, arcKey, isArc, pickArc, type ArcChoice, type ArcId } from './mafia.arcs.js'
 import { nightPick, think, type Job, type Sight } from './mafia.bots.js'
-import { MAX_PLAYERS, MIN_PLAYERS, ROLE_INFO, TITLES, rollPowers, dealFairly, dealKey, first, roleSet, teamOf, type Role } from './mafia.roles.js'
+import { MAX_PLAYERS, MIN_PLAYERS, ROLE_INFO, TITLES, dealCounts, dealRange, rollDeal, sayRange, dealFairly, dealKey, first, roleSet, teamOf, type Role } from './mafia.roles.js'
 import { narrate, type NarrationFacts, type NarrationKind } from '../services/mafiaNarration.service.js'
 
 /**
@@ -43,7 +43,7 @@ export type Options = {
   bots: number
   /** The story: one the host chose, or a surprise — one this room hasn't played lately. */
   arc: ArcChoice
-  /** Roll how many Doctors and Inspectors (1 or 2 by table size) where the host didn't set a count. */
+  /** Roll how many of the Family, Doctors and Inspectors (within a range by table size) where the host didn't set a count. */
   randomPowers: boolean
   /** How many of each card the host chose; null for the recommended deal. */
   family: number | null
@@ -102,8 +102,8 @@ export type Mafia = {
   game: string
   /** The story this game is told in. */
   arc: ArcId
-  /** The host's own Doctor and Inspector counts, before any roll — a re-deal for a new size rolls again. */
-  chosen: { doctors: number | null; detectives: number | null }
+  /** How many of each were really dealt. Secret: no screen sees it until the case file names every card. */
+  counts: { family: number; doctors: number; detectives: number }
   phase: Phase
   /** Bumped on every phase change; timers carry it, so a stale timer does nothing. */
   step: number
@@ -375,20 +375,23 @@ function hostFor(state: Mafia, by: string, ctx: Ctx) {
 
 export type StoryKey = 'city' | 'cast' | 'family' | 'town' | 'days'
 
-const COUNT = ['No one', 'One', 'Two', 'Three', 'Four', 'Five']
-
 /**
  * The opening: the city, the people at the table, the Family among them,
  * what the town can do about it, and how a day goes. The rules, told as the
  * story — so nobody reaches the first night wondering what is going on.
  */
-export function storyPages(state: Pick<Mafia, 'players' | 'arc'>): { key: StoryKey; text: string }[] {
+export function storyPages(state: Pick<Mafia, 'players' | 'arc' | 'options'>): { key: StoryKey; text: string }[] {
   const arc = ARCS[state.arc]
   const n = state.players.length
-  const family = state.players.filter((p) => isFamily(p.role)).length
   const has = (role: Role) => state.players.some((p) => p.role === role)
-  const doctors = state.players.filter((p) => p.role === 'doctor').length
-  const detectives = state.players.filter((p) => p.role === 'detective').length
+  /* Only the range is ever said — never how many were really dealt. */
+  const count = (match: (role: Role) => boolean) => state.players.filter((p) => match(p.role)).length
+  const range = state.options.randomPowers
+    ? dealRange(n, state.options)
+    : { family: [count(isFamily), count(isFamily)], doctors: [count((r) => r === 'doctor'), count((r) => r === 'doctor')], detectives: [count((r) => r === 'detective'), count((r) => r === 'detective')] } as ReturnType<typeof dealRange>
+  const [, mostFamily] = range.family
+  const [, mostDoctors] = range.doctors
+  const [, mostDetectives] = range.detectives
   return [
     {
       key: 'city',
@@ -401,16 +404,16 @@ export function storyPages(state: Pick<Mafia, 'players' | 'arc'>): { key: StoryK
     {
       key: 'family',
       text:
-        family === 1
+        mostFamily === 1
           ? 'One of them secretly works for the Family. Every night, while the town sleeps, the Family choose one person at this table to kill. By morning, that person is gone.'
-          : `${COUNT[family] ?? family} of them secretly work for the Family, and they know each other. Every night, while the town sleeps, they choose one person at this table to kill. By morning, that person is gone.`,
+          : `${sayRange(range.family)} of them secretly work for the Family, and they know each other. How many, nobody else knows. Every night, while the town sleeps, they choose one person at this table to kill. By morning, that person is gone.`,
     },
     {
       key: 'town',
       text: [
         'Everyone else is the town — and the town is not helpless.',
-        doctors === 1 ? 'The Doctor can save one life each night.' : doctors > 1 ? `${COUNT[doctors]} Doctors can each save a life each night.` : 'There is no Doctor tonight — nobody to save you.',
-        detectives === 1 ? 'The Inspector can secretly check one person each night.' : detectives > 1 ? `${COUNT[detectives]} Inspectors share one case file, each checking somebody a night.` : '',
+        mostDoctors === 0 ? 'There is no Doctor tonight — nobody to save you.' : range.doctors[0] === range.doctors[1] && mostDoctors === 1 ? 'The Doctor can save one life each night.' : `${sayRange(range.doctors)} Doctors can each save a life each night.`,
+        mostDetectives === 0 ? '' : range.detectives[0] === range.detectives[1] && mostDetectives === 1 ? 'The Inspector can secretly check one person each night.' : `${sayRange(range.detectives)} Inspectors share one case file, each checking somebody a night.`,
         'The rest have their eyes, their ears, and their vote.',
         has('godfather') ? 'Beware: the Godfather looks innocent to the Inspector.' : '',
         has('jester') ? 'And somewhere at this table sits a Jester, who wins only if the town hangs them.' : '',
@@ -742,15 +745,19 @@ const WINNERS: Winner[] = ['town', 'family', 'jester']
 const PLAY = new Set(['seen', 'pick', 'ready', 'vote', 'done', 'judge', 'say', 'next', 'skip'])
 
 /**
- * The deal's Doctors and Inspectors: where the host didn't set a count and the
- * roll is on, 1 or 2 by table size. Written into the game's options, so every
- * screen reads the real numbers.
+ * The secret deal: where the host didn't set a count and the roll is on, how
+ * many of the Family, Doctors and Inspectors, rolled within the range for this
+ * size. Kept apart from the options — which every screen receives — so the
+ * numbers never reach a screen.
  */
-function rolled(options: Options, chosen: Mafia['chosen'], count: number, ctx: Ctx): Options {
-  if (!options.randomPowers) return options
-  const roll = rollPowers(count, ctx.random)
-  return { ...options, doctors: chosen.doctors ?? roll.doctors, detectives: chosen.detectives ?? roll.detectives }
+function secretDeal(options: Options, count: number, ctx: Ctx) {
+  if (!options.randomPowers) {
+    const d = dealCounts(count, options)
+    return { family: d.family, doctors: d.doctors, detectives: d.detectives }
+  }
+  return rollDeal(count, options, ctx.random)
 }
+const dealt = (state: Pick<Mafia, 'options' | 'counts'>, count: number) => roleSet(count, { ...state.options, ...state.counts })
 
 /** The slow, paid services this game leans on — swapped for stand-ins in tests. */
 export const services = { narrate, think }
@@ -797,14 +804,13 @@ export const mafia: GameDef<Mafia, Options> = {
       ...people.map((p, i) => ({ ...p, cover: covers[i % covers.length]! })),
       ...cast.map((persona, i) => ({ id: `ai-${i + 1}`, name: arc.personas[persona]!.name, bot: persona, cover: arc.personas[persona]!.blurb })),
     ]
-    const chosen = { doctors: options.doctors, detectives: options.detectives }
-    options = rolled(options, chosen, players.length, ctx)
+    const counts = secretDeal(options, players.length, ctx)
     /* Random, but the cards move around the room: who just held one is less likely to again. */
-    const roles = dealFairly(players.map((p) => p.id), roleSet(players.length, options), ctx.seen, ctx.random)
+    const roles = dealFairly(players.map((p) => p.id), roleSet(players.length, { ...options, ...counts }), ctx.seen, ctx.random)
     const state: Mafia = {
       game: `${ctx.now().toString(36)}${ctx.random(1_000_000).toString(36)}`,
       arc: arc.id,
-      chosen,
+      counts,
       phase: 'deal',
       step: 1,
       round: 0,
@@ -1330,8 +1336,8 @@ export const mafia: GameDef<Mafia, Options> = {
       state.thinking = state.thinking.filter((t) => t.id !== from)
     } else {
       state.players.push({ ...player, role: 'villager', alive: true, presence: state.options.together ? 'table' : 'online', cover })
-      state.options = rolled(state.options, state.chosen, state.players.length, ctx)
-      const roles = shuffle(roleSet(state.players.length, state.options), ctx)
+      state.counts = secretDeal(state.options, state.players.length, ctx)
+      const roles = shuffle(dealt(state, state.players.length), ctx)
       state.players.forEach((p, i) => (p.role = roles[i]!))
     }
     /* Time to read the card they were just handed. */

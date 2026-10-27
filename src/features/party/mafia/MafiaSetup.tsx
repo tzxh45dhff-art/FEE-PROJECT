@@ -6,7 +6,7 @@ import type { Character } from '@/lib/characters'
 import { cn } from '@/lib/utils'
 import { ARCS, ARC_IDS, type ArcChoice } from './arcs'
 import { Skyline } from './art'
-import { MAX_SPECIALISTS, callName, dealCounts, dealLine, maxFamily, powerRange } from './helpers'
+import { MAX_SPECIALISTS, callName, dealCounts, dealLine, dealRange, maxFamily, showRange } from './helpers'
 import { Portrait } from './Seat'
 import type { MafiaOptions } from './types'
 import { useNoirFonts } from './useNoirFonts'
@@ -61,15 +61,16 @@ export function MafiaSetup({
   const n = players.length + ai
   const seats: (Person & { ai?: boolean })[] = [...players, ...Array.from({ length: ai }, (_, i) => ({ id: `ai-${i}`, name: 'AI player', you: false, ai: true }))]
   const can = n >= 4 && n <= 12 && !starting
-  /* With the roll on, an unset count shows what it could be ("1–2") and the deal is planned on the most. */
-  const [few, most] = powerRange(Math.max(4, n))
-  const rolling = (wanted: number | null) => randomPowers && wanted === null && few !== most
+  /* Secret numbers: an unset count shows only what it could be ("1–2"); the real one is rolled at the deal. */
+  const range = dealRange(Math.max(4, n), { family: familyWanted, doctors: doctorsWanted, detectives: detectivesWanted })
+  const ranged = (r: [number, number]) => randomPowers && r[0] !== r[1]
+  const secret = ranged(range.family) || ranged(range.doctors) || ranged(range.detectives)
   const custom = {
     godfather,
     jester,
-    family: familyWanted,
-    doctors: doctorsWanted ?? (randomPowers ? most : null),
-    detectives: detectivesWanted ?? (randomPowers && n >= 5 ? most : null),
+    family: familyWanted ?? (randomPowers ? range.family[1] : null),
+    doctors: doctorsWanted ?? (randomPowers ? range.doctors[1] : null),
+    detectives: detectivesWanted ?? (randomPowers ? range.detectives[1] : null),
   }
   const deal = dealCounts(Math.max(4, n), custom)
   const room = Math.max(4, n) - deal.family - deal.jester
@@ -132,7 +133,7 @@ export function MafiaSetup({
         {/* The contract. */}
         <div className="noir-paper noir-paper-edge relative rounded-sm px-5 pb-6 pt-5 sm:px-7">
           <p className="font-deco text-[1.5rem] text-[var(--noir-ink-1)]">The terms</p>
-          <p className="font-type text-[0.86rem] text-[var(--noir-ink-5)]">{rolling(doctorsWanted) || rolling(detectivesWanted) ? `${n} at the table: ${few}–${most} Doctors and Inspectors each, rolled at the deal.` : dealLine(n, custom)}</p>
+          <p className="font-type text-[0.86rem] text-[var(--noir-ink-5)]">{secret && n >= 4 ? `${n} at the table: ${showRange(range.family)} of the Family, ${showRange(range.doctors)} Doctors, ${showRange(range.detectives)} Inspectors — the real numbers stay secret.` : dealLine(n, custom)}</p>
 
           <Field label="The story">
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3" role="radiogroup" aria-label="The story">
@@ -171,16 +172,17 @@ export function MafiaSetup({
                 title="The Family"
                 note={`up to ${maxFamily(Math.max(4, n))} at this table${deal.godfather ? ' · one is the Godfather' : ''}`}
                 value={deal.family}
+                shown={ranged(range.family) ? showRange(range.family) : undefined}
                 min={1}
                 max={maxFamily(Math.max(4, n))}
                 onChange={setFamily}
               />
-              <Count title="Doctors" note="each saves one life a night" value={deal.doctors} shown={rolling(doctorsWanted) ? `${few}–${most}` : undefined} min={0} max={Math.min(MAX_SPECIALISTS, room)} onChange={setDoctors} />
-              <Count title="Inspectors" note={deal.detectives > 1 ? 'share one case file' : 'each checks one person a night'} value={deal.detectives} shown={rolling(detectivesWanted) && n >= 5 ? `${few}–${most}` : undefined} min={0} max={Math.min(MAX_SPECIALISTS, room - deal.doctors)} onChange={setDetectives} />
+              <Count title="Doctors" note="each saves one life a night" value={deal.doctors} shown={ranged(range.doctors) ? showRange(range.doctors) : undefined} min={0} max={Math.min(MAX_SPECIALISTS, room)} onChange={setDoctors} />
+              <Count title="Inspectors" note={deal.detectives > 1 ? 'share one case file' : 'each checks one person a night'} value={deal.detectives} shown={ranged(range.detectives) ? showRange(range.detectives) : undefined} min={0} max={Math.min(MAX_SPECIALISTS, room - deal.doctors)} onChange={setDetectives} />
             </div>
             <div className="mt-1.5 flex items-center justify-between gap-3">
               <p className="font-type text-[0.8rem] text-[var(--noir-ink-5)]">
-                {rolling(doctorsWanted) || rolling(detectivesWanted) ? 'Citizens fill the other chairs' : `${deal.citizens} ${deal.citizens === 1 ? 'Citizen' : 'Citizens'} fill the other chairs`}{deal.jester ? ', with a Jester' : ''}.
+                {secret ? 'Citizens fill the other chairs' : `${deal.citizens} ${deal.citizens === 1 ? 'Citizen' : 'Citizens'} fill the other chairs`}{deal.jester ? ', with a Jester' : ''}.
               </p>
               {customised && (
                 <button
@@ -232,7 +234,7 @@ export function MafiaSetup({
 
           <Field label="House rules">
             <Toggle on={story} onChange={setStory} title="Tell the story first" note="A one-minute narrated opening that explains the game — best for new players" />
-            <Toggle on={randomPowers} onChange={setRandomPowers} title="Roll the Doctors and Inspectors" note="1 or 2 of each, by table size — nobody knows for sure how many" />
+            <Toggle on={randomPowers} onChange={setRandomPowers} title="Secret numbers" note="How many Family, Doctors and Inspectors is rolled by table size — nobody knows until the end" />
             <Toggle on={reveal} onChange={setReveal} title="Reveal the dead" note="Show a role when its owner dies" />
             <Toggle on={godfather} onChange={setGodfather} title="The Godfather" note="7+ players · reads clean to the Inspector" />
             <Toggle on={jester} onChange={setJester} title="The Jester" note="6+ players · wins if the town hangs them" />

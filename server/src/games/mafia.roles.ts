@@ -41,13 +41,32 @@ export const recommendedDeal = (count: number) => ({ family: count <= 6 ? 1 : co
 export const maxFamily = (count: number) => Math.max(1, Math.floor((count - 2) / 2))
 
 /**
- * Doctors and Inspectors rolled at the deal: one each at a small table, one
- * or two at a middling one, two at a big one — so nobody at a mid-sized table
- * can be sure how many there are. No Inspector at four, as ever.
+ * What a table of `count` might be dealt, as [fewest, most] of each — all
+ * anyone ever sees before the end. The roll picks within it; a count the host
+ * set is exact. Godfather and Jester are on or off, so they need no range.
  */
-export function rollPowers(count: number, random: (max: number) => number) {
-  const roll = () => (count <= 6 ? 1 : count <= 9 ? 1 + random(2) : 2)
-  return { doctors: roll(), detectives: count >= 5 ? roll() : 0 }
+export function dealRange(count: number, extras: Pick<Extras, 'family' | 'doctors' | 'detectives'>) {
+  type Range = [number, number]
+  const exact = (n: number): Range => [n, n]
+  const power: Range = count <= 6 ? [1, 1] : count <= 9 ? [1, 2] : [2, 2]
+  return {
+    family: extras.family != null ? exact(extras.family) : count <= 6 ? exact(1) : count <= 8 ? ([1, 2] as Range) : ([2, 3] as Range),
+    doctors: extras.doctors != null ? exact(extras.doctors) : power,
+    detectives: extras.detectives != null ? exact(extras.detectives) : count < 5 ? exact(0) : power,
+  }
+}
+
+/** The secret counts for this deal: each rolled within its range. */
+export function rollDeal(count: number, extras: Pick<Extras, 'family' | 'doctors' | 'detectives'>, random: (max: number) => number) {
+  const range = dealRange(count, extras)
+  const pick = ([lo, hi]: [number, number]) => lo + random(hi - lo + 1)
+  return { family: pick(range.family), doctors: pick(range.doctors), detectives: pick(range.detectives) }
+}
+
+/** "One", or "One or two": how a range is said aloud. */
+export function sayRange([lo, hi]: [number, number]) {
+  const word = (n: number) => ['No one', 'One', 'Two', 'Three', 'Four', 'Five'][n] ?? String(n)
+  return lo === hi ? word(lo) : `${word(lo)} or ${word(hi).toLowerCase()}`
 }
 
 /** At most two of each town role: more is a different game, and a duller one. */

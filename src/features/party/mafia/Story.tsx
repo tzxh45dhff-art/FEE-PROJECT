@@ -7,11 +7,10 @@ import { cn } from '@/lib/utils'
 import { Emblem, Skyline } from './art'
 import { useArc } from './arcs'
 import { PHASE_GUIDE, ROLE_GUIDE, rolesInPlay } from './guide'
-import { callName } from './helpers'
+import { callName, sayRange, showRange } from './helpers'
 import { Portrait } from './Seat'
 import { ROLE_TITLE, isFamily, type MafiaView, type Phase, type Role, type StoryKey } from './types'
 
-const COUNT = ['No one', 'One', 'Two', 'Three', 'Four', 'Five']
 
 /* ── the opening story ────────────────────────────────────────────────── */
 
@@ -166,8 +165,9 @@ function Picture({ page, view, selfId, character }: { page: StoryKey; view: Mafi
     return (
       <div className="flex flex-col items-center gap-3 py-2">
         <div className="flex items-center gap-2">
-          {Array.from({ length: cards.family }, (_, i) => (
-            <motion.div key={i} initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }} transition={{ delay: 0.4 + i * 0.25, type: 'spring' }}>
+          {/* As many as there might be: the ones there might not be are only faint. */}
+          {Array.from({ length: cards.family[1] }, (_, i) => (
+            <motion.div key={i} initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }} transition={{ delay: 0.4 + i * 0.25, type: 'spring' }} className={i >= cards.family[0] ? 'opacity-35' : undefined}>
               <Emblem role="mafia" className="size-14 text-[var(--noir-blood-bright)] drop-shadow-[0_0_14px_rgba(212,58,47,.6)] sm:size-16" />
             </motion.div>
           ))}
@@ -186,16 +186,16 @@ function Picture({ page, view, selfId, character }: { page: StoryKey; view: Mafi
           ))}
         </div>
         <p className="font-type text-center text-[0.86rem] text-[var(--noir-paper-dim)]">
-          {COUNT[cards.family] ?? cards.family} of these {n} cards {cards.family === 1 ? 'belongs' : 'belong'} to the Family. Nobody knows which — except the Family.
+          {sayRange(cards.family)} of these {n} cards {cards.family[1] === 1 ? 'belongs' : 'belong'} to the Family. {cards.family[0] === cards.family[1] ? 'Nobody knows which — except the Family.' : 'How many, and which — only the Family know.'}
         </p>
       </div>
     )
   }
   if (page === 'town') {
-    const tiles: { role: Role; count?: number; note: string }[] = [
-      ...(cards.doctors ? [{ role: 'doctor' as Role, count: cards.doctors, note: 'Saves one person each night' }] : []),
-      ...(cards.inspectors ? [{ role: 'detective' as Role, count: cards.inspectors, note: cards.inspectors > 1 ? 'Share one case file' : 'Checks one person each night' }] : []),
-      ...(cards.citizens ? [{ role: 'villager' as Role, count: cards.citizens, note: 'Eyes, ears — and a vote' }] : []),
+    const tiles: { role: Role; count?: [number, number]; note: string }[] = [
+      ...(cards.doctors[1] ? [{ role: 'doctor' as Role, count: cards.doctors, note: 'Saves one person each night' }] : []),
+      ...(cards.inspectors[1] ? [{ role: 'detective' as Role, count: cards.inspectors, note: cards.inspectors[1] > 1 ? 'Share one case file' : 'Checks one person each night' }] : []),
+      { role: 'villager' as Role, note: 'Eyes, ears — and a vote' },
       ...(cards.godfather ? [{ role: 'godfather' as Role, note: 'Runs the Family; checks out clean' }] : []),
       ...(cards.jester ? [{ role: 'jester' as Role, note: 'Wins only if hanged' }] : []),
     ]
@@ -212,7 +212,7 @@ function Picture({ page, view, selfId, character }: { page: StoryKey; view: Mafi
             <Emblem role={t.role} className={cn('size-12 sm:size-14', isFamily(t.role) ? 'text-[var(--noir-blood)]' : t.role === 'jester' ? 'text-[var(--noir-jester)]' : 'text-[var(--noir-ink-2)]')} />
             <span className="font-deco mt-1 text-[1rem] leading-tight text-[var(--noir-ink-1)]">
               {ROLE_TITLE[t.role]}
-              {t.count && t.count > 1 ? ` ×${t.count}` : ''}
+              {t.count && t.count[1] > 1 ? ` ×${showRange(t.count)}` : ''}
             </span>
             <span className="font-type text-[0.74rem] leading-snug text-[var(--noir-ink-5)]">{t.note}</span>
           </motion.li>
@@ -346,9 +346,9 @@ export function HowToPlay({ view }: { view: MafiaView }) {
   const arc = useArc()
   const cards = rolesInPlay(view.players.length, view.options)
   const roles: Role[] = [
-    ...(cards.citizens ? ['villager' as Role] : []),
-    ...(cards.doctors ? ['doctor' as Role] : []),
-    ...(cards.inspectors ? ['detective' as Role] : []),
+    'villager' as Role,
+    ...(cards.doctors[1] ? ['doctor' as Role] : []),
+    ...(cards.inspectors[1] ? ['detective' as Role] : []),
     'mafia',
     ...(cards.godfather ? ['godfather' as Role] : []),
     ...(cards.jester ? ['jester' as Role] : []),
@@ -356,7 +356,7 @@ export function HowToPlay({ view }: { view: MafiaView }) {
   return (
     <div className="flex flex-col gap-5">
       <p className="font-old text-[1rem] italic leading-relaxed text-[var(--noir-ink-2)]">
-        {arc.heading}. {COUNT[cards.family] ?? cards.family} of the {view.players.length} people at this table secretly {cards.family === 1 ? 'works' : 'work'} for the Family, a gang that kills one
+        {arc.heading}. {sayRange(cards.family)} of the {view.players.length} people at this table secretly {cards.family[1] === 1 ? 'works' : 'work'} for the Family, a gang that kills one
         person every night. Everyone else is the town. Work out who the Family are — and hang them — before they take over.
       </p>
       <section>
