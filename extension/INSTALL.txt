@@ -1,0 +1,17 @@
+HUDDLE — WATCH TOGETHER
+
+The extension keeps Netflix and Prime Video playback in sync with your Huddle
+room. Each viewer needs their own account and access to the title.
+
+1. Extract the downloaded ZIP to a folder you can keep on your computer.
+2. In Chrome, open chrome://extensions and turn on Developer mode.
+3. Choose Load unpacked and select the extracted folder (the one containing
+   manifest.json). Keep the folder in place after installation.
+4. Open Huddle, sign in, and enter your room. The extension connects from the
+   Huddle page.
+5. Open the same film or episode on Netflix or Prime Video. Use the Huddle
+   panel on the player to start watching together.
+
+For another computer, each person installs the extension and signs into their
+own Huddle and streaming accounts. If the extension was already installed,
+replace its extracted files and reload it on chrome://extensions.

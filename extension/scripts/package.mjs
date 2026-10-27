@@ -29,7 +29,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '..')
 
 /** What goes in. Everything else in `extension/` is tooling or secrets. */
-const INCLUDE = ['manifest.json', 'icons', 'src', 'README.md']
+const INCLUDE = ['manifest.json', 'icons', 'src', 'INSTALL.txt']
 
 const CRC_TABLE = (() => {
   const table = new Int32Array(256)
