@@ -22,6 +22,8 @@ export type MafiaOptions = {
   story?: boolean
   /** The story: chosen by the host, or a surprise the room hasn't played lately. */
   arc?: ArcChoice
+  /** Roll 1 or 2 Doctors and Inspectors by table size, where the host didn't set a count. */
+  randomPowers?: boolean
   /** The host's own deal; null or absent keeps the recommended count. */
   family?: number | null
   doctors?: number | null

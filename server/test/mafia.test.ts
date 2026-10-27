@@ -943,6 +943,28 @@ describe('mafia — a fair deal across games', () => {
   })
 })
 
+describe('mafia — Doctors and Inspectors by the roll', () => {
+  const dealt = (n: number, random: (max: number) => number, over: Partial<Options> = {}) => {
+    clock = 0
+    timers = []
+    const s = mafia.start(people(n), options(over), ctx(random))
+    return { doctors: s.players.filter((p) => p.role === 'doctor').length, detectives: s.players.filter((p) => p.role === 'detective').length, options: s.options }
+  }
+  it('one each at a small table, one or two at a middling one, two at a big one', () => {
+    assert.deepEqual([dealt(4, () => 1).doctors, dealt(4, () => 1).detectives], [1, 0])
+    assert.deepEqual([dealt(6, () => 1).doctors, dealt(6, () => 1).detectives], [1, 1])
+    assert.deepEqual([dealt(8, () => 0).doctors, dealt(8, () => 0).detectives], [1, 1])
+    assert.deepEqual([dealt(8, (n) => n - 1).doctors, dealt(8, (n) => n - 1).detectives], [2, 2])
+    assert.deepEqual([dealt(11, () => 0).doctors, dealt(11, () => 0).detectives], [2, 2])
+  })
+  it('the counts are the game’s own, and the host’s choice beats the roll', () => {
+    const rolled = dealt(8, (n) => n - 1)
+    assert.equal(rolled.options.doctors, 2, 'screens read the real count from the options')
+    assert.equal(dealt(11, () => 0, { doctors: 1 }).doctors, 1)
+    assert.equal(dealt(11, () => 0, { randomPowers: false }).doctors, 1, 'off: the usual deal')
+  })
+})
+
 describe('mafia — the stories', () => {
   it('a surprise is a story the room has not played; once they have had them all, the one played longest ago', () => {
     assert.equal(pickArc('goa', ['arc:goa'], () => 0), 'goa', 'the host’s pick stands')

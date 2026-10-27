@@ -3,7 +3,7 @@ import { randomInt } from 'node:crypto'
 import { isError, shuffle, type Ctx, type GameDef, type Later, type Player } from './engine.js'
 import { ARCS, arcKey, isArc, pickArc, type ArcChoice, type ArcId } from './mafia.arcs.js'
 import { nightPick, think, type Job, type Sight } from './mafia.bots.js'
-import { MAX_PLAYERS, MIN_PLAYERS, ROLE_INFO, TITLES, dealFairly, dealKey, first, roleSet, teamOf, type Role } from './mafia.roles.js'
+import { MAX_PLAYERS, MIN_PLAYERS, ROLE_INFO, TITLES, rollPowers, dealFairly, dealKey, first, roleSet, teamOf, type Role } from './mafia.roles.js'
 import { narrate, type NarrationFacts, type NarrationKind } from '../services/mafiaNarration.service.js'
 
 /**
@@ -43,6 +43,8 @@ export type Options = {
   bots: number
   /** The story: one the host chose, or a surprise — one this room hasn't played lately. */
   arc: ArcChoice
+  /** Roll how many Doctors and Inspectors (1 or 2 by table size) where the host didn't set a count. */
+  randomPowers: boolean
   /** How many of each card the host chose; null for the recommended deal. */
   family: number | null
   doctors: number | null
@@ -100,6 +102,8 @@ export type Mafia = {
   game: string
   /** The story this game is told in. */
   arc: ArcId
+  /** The host's own Doctor and Inspector counts, before any roll — a re-deal for a new size rolls again. */
+  chosen: { doctors: number | null; detectives: number | null }
   phase: Phase
   /** Bumped on every phase change; timers carry it, so a stale timer does nothing. */
   step: number
@@ -737,6 +741,17 @@ const WINNERS: Winner[] = ['town', 'family', 'jester']
 /** Moves that are part of play — frozen while the host has the game paused. */
 const PLAY = new Set(['seen', 'pick', 'ready', 'vote', 'done', 'judge', 'say', 'next', 'skip'])
 
+/**
+ * The deal's Doctors and Inspectors: where the host didn't set a count and the
+ * roll is on, 1 or 2 by table size. Written into the game's options, so every
+ * screen reads the real numbers.
+ */
+function rolled(options: Options, chosen: Mafia['chosen'], count: number, ctx: Ctx): Options {
+  if (!options.randomPowers) return options
+  const roll = rollPowers(count, ctx.random)
+  return { ...options, doctors: chosen.doctors ?? roll.doctors, detectives: chosen.detectives ?? roll.detectives }
+}
+
 /** The slow, paid services this game leans on — swapped for stand-ins in tests. */
 export const services = { narrate, think }
 
@@ -769,6 +784,7 @@ export const mafia: GameDef<Mafia, Options> = {
       story: body.story !== false && body.rematch !== true,
       bots: Number.isInteger(body.bots) ? Math.min(MAX_PLAYERS - 1, Math.max(0, body.bots as number)) : 0,
       arc: isArc(body.arc) ? body.arc : 'surprise',
+      randomPowers: body.randomPowers !== false,
     }
   },
 
@@ -781,11 +797,14 @@ export const mafia: GameDef<Mafia, Options> = {
       ...people.map((p, i) => ({ ...p, cover: covers[i % covers.length]! })),
       ...cast.map((persona, i) => ({ id: `ai-${i + 1}`, name: arc.personas[persona]!.name, bot: persona, cover: arc.personas[persona]!.blurb })),
     ]
+    const chosen = { doctors: options.doctors, detectives: options.detectives }
+    options = rolled(options, chosen, players.length, ctx)
     /* Random, but the cards move around the room: who just held one is less likely to again. */
     const roles = dealFairly(players.map((p) => p.id), roleSet(players.length, options), ctx.seen, ctx.random)
     const state: Mafia = {
       game: `${ctx.now().toString(36)}${ctx.random(1_000_000).toString(36)}`,
       arc: arc.id,
+      chosen,
       phase: 'deal',
       step: 1,
       round: 0,
@@ -1311,6 +1330,7 @@ export const mafia: GameDef<Mafia, Options> = {
       state.thinking = state.thinking.filter((t) => t.id !== from)
     } else {
       state.players.push({ ...player, role: 'villager', alive: true, presence: state.options.together ? 'table' : 'online', cover })
+      state.options = rolled(state.options, state.chosen, state.players.length, ctx)
       const roles = shuffle(roleSet(state.players.length, state.options), ctx)
       state.players.forEach((p, i) => (p.role = roles[i]!))
     }

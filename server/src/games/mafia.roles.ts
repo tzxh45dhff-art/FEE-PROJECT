@@ -40,6 +40,16 @@ export const recommendedDeal = (count: number) => ({ family: count <= 6 ? 1 : co
  */
 export const maxFamily = (count: number) => Math.max(1, Math.floor((count - 2) / 2))
 
+/**
+ * Doctors and Inspectors rolled at the deal: one each at a small table, one
+ * or two at a middling one, two at a big one — so nobody at a mid-sized table
+ * can be sure how many there are. No Inspector at four, as ever.
+ */
+export function rollPowers(count: number, random: (max: number) => number) {
+  const roll = () => (count <= 6 ? 1 : count <= 9 ? 1 + random(2) : 2)
+  return { doctors: roll(), detectives: count >= 5 ? roll() : 0 }
+}
+
 /** At most two of each town role: more is a different game, and a duller one. */
 export const MAX_SPECIALISTS = 2
 

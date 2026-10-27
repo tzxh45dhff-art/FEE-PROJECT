@@ -6,7 +6,7 @@ import type { Character } from '@/lib/characters'
 import { cn } from '@/lib/utils'
 import { ARCS, ARC_IDS, type ArcChoice } from './arcs'
 import { Skyline } from './art'
-import { MAX_SPECIALISTS, callName, dealCounts, dealLine, maxFamily } from './helpers'
+import { MAX_SPECIALISTS, callName, dealCounts, dealLine, maxFamily, powerRange } from './helpers'
 import { Portrait } from './Seat'
 import type { MafiaOptions } from './types'
 import { useNoirFonts } from './useNoirFonts'
@@ -50,6 +50,7 @@ export function MafiaSetup({
   const [godfather, setGodfather] = useState(true)
   const [jester, setJester] = useState(false)
   const [story, setStory] = useState(true)
+  const [randomPowers, setRandomPowers] = useState(true)
   /* The host's own deal. Null is "recommended for this many" — and stays that way as people come and go. */
   const [familyWanted, setFamily] = useState<number | null>(null)
   const [doctorsWanted, setDoctors] = useState<number | null>(null)
@@ -60,7 +61,16 @@ export function MafiaSetup({
   const n = players.length + ai
   const seats: (Person & { ai?: boolean })[] = [...players, ...Array.from({ length: ai }, (_, i) => ({ id: `ai-${i}`, name: 'AI player', you: false, ai: true }))]
   const can = n >= 4 && n <= 12 && !starting
-  const custom = { godfather, jester, family: familyWanted, doctors: doctorsWanted, detectives: detectivesWanted }
+  /* With the roll on, an unset count shows what it could be ("1–2") and the deal is planned on the most. */
+  const [few, most] = powerRange(Math.max(4, n))
+  const rolling = (wanted: number | null) => randomPowers && wanted === null && few !== most
+  const custom = {
+    godfather,
+    jester,
+    family: familyWanted,
+    doctors: doctorsWanted ?? (randomPowers ? most : null),
+    detectives: detectivesWanted ?? (randomPowers && n >= 5 ? most : null),
+  }
   const deal = dealCounts(Math.max(4, n), custom)
   const room = Math.max(4, n) - deal.family - deal.jester
   const customised = familyWanted !== null || doctorsWanted !== null || detectivesWanted !== null
@@ -122,7 +132,7 @@ export function MafiaSetup({
         {/* The contract. */}
         <div className="noir-paper noir-paper-edge relative rounded-sm px-5 pb-6 pt-5 sm:px-7">
           <p className="font-deco text-[1.5rem] text-[var(--noir-ink-1)]">The terms</p>
-          <p className="font-type text-[0.86rem] text-[var(--noir-ink-5)]">{dealLine(n, custom)}</p>
+          <p className="font-type text-[0.86rem] text-[var(--noir-ink-5)]">{rolling(doctorsWanted) || rolling(detectivesWanted) ? `${n} at the table: ${few}–${most} Doctors and Inspectors each, rolled at the deal.` : dealLine(n, custom)}</p>
 
           <Field label="The story">
             <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3" role="radiogroup" aria-label="The story">
@@ -165,12 +175,12 @@ export function MafiaSetup({
                 max={maxFamily(Math.max(4, n))}
                 onChange={setFamily}
               />
-              <Count title="Doctors" note="each saves one life a night" value={deal.doctors} min={0} max={Math.min(MAX_SPECIALISTS, room)} onChange={setDoctors} />
-              <Count title="Inspectors" note={deal.detectives > 1 ? 'share one case file' : 'each checks one person a night'} value={deal.detectives} min={0} max={Math.min(MAX_SPECIALISTS, room - deal.doctors)} onChange={setDetectives} />
+              <Count title="Doctors" note="each saves one life a night" value={deal.doctors} shown={rolling(doctorsWanted) ? `${few}–${most}` : undefined} min={0} max={Math.min(MAX_SPECIALISTS, room)} onChange={setDoctors} />
+              <Count title="Inspectors" note={deal.detectives > 1 ? 'share one case file' : 'each checks one person a night'} value={deal.detectives} shown={rolling(detectivesWanted) && n >= 5 ? `${few}–${most}` : undefined} min={0} max={Math.min(MAX_SPECIALISTS, room - deal.doctors)} onChange={setDetectives} />
             </div>
             <div className="mt-1.5 flex items-center justify-between gap-3">
               <p className="font-type text-[0.8rem] text-[var(--noir-ink-5)]">
-                {deal.citizens} {deal.citizens === 1 ? 'Citizen' : 'Citizens'} fill the other chairs{deal.jester ? ', with a Jester' : ''}.
+                {rolling(doctorsWanted) || rolling(detectivesWanted) ? 'Citizens fill the other chairs' : `${deal.citizens} ${deal.citizens === 1 ? 'Citizen' : 'Citizens'} fill the other chairs`}{deal.jester ? ', with a Jester' : ''}.
               </p>
               {customised && (
                 <button
@@ -222,6 +232,7 @@ export function MafiaSetup({
 
           <Field label="House rules">
             <Toggle on={story} onChange={setStory} title="Tell the story first" note="A one-minute narrated opening that explains the game — best for new players" />
+            <Toggle on={randomPowers} onChange={setRandomPowers} title="Roll the Doctors and Inspectors" note="1 or 2 of each, by table size — nobody knows for sure how many" />
             <Toggle on={reveal} onChange={setReveal} title="Reveal the dead" note="Show a role when its owner dies" />
             <Toggle on={godfather} onChange={setGodfather} title="The Godfather" note="7+ players · reads clean to the Inspector" />
             <Toggle on={jester} onChange={setJester} title="The Jester" note="6+ players · wins if the town hangs them" />
@@ -240,7 +251,7 @@ export function MafiaSetup({
               disabled={!can}
               whileHover={can ? { rotate: -8, scale: 1.04 } : undefined}
               whileTap={can ? { scale: 0.92 } : undefined}
-              onClick={() => onStart({ nightSeconds: night, daySeconds: day, voteSeconds: vote, reveal, godfather, jester, together: where === 'table', bots: ai, story, arc, family: familyWanted, doctors: doctorsWanted, detectives: detectivesWanted })}
+              onClick={() => onStart({ nightSeconds: night, daySeconds: day, voteSeconds: vote, reveal, godfather, jester, together: where === 'table', bots: ai, story, arc, randomPowers, family: familyWanted, doctors: doctorsWanted, detectives: detectivesWanted })}
               className="relative grid size-24 place-items-center rounded-full bg-[radial-gradient(circle_at_35%_30%,var(--noir-blood-bright),var(--noir-blood)_70%)] text-[var(--noir-on-accent)] shadow-[0_10px_24px_-8px_rgba(80,10,5,.9),inset_0_-4px_10px_rgba(0,0,0,.35)] outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-[var(--noir-ink-2)] focus-visible:ring-offset-2 disabled:opacity-40"
             >
               <span className="absolute inset-2 rounded-full border-2 border-dashed border-[var(--noir-on-accent)]/40" />
@@ -302,7 +313,7 @@ function StoryChoice({ id, on, onClick, name, note }: { id?: (typeof ARC_IDS)[nu
 }
 
 /** A card and how many of it: − and +, held to what this table can take. */
-function Count({ title, note, value, min, max, onChange }: { title: string; note: string; value: number; min: number; max: number; onChange: (n: number) => void }) {
+function Count({ title, note, value, shown, min, max, onChange }: { title: string; note: string; value: number; shown?: string; min: number; max: number; onChange: (n: number) => void }) {
   return (
     <div className="flex items-center justify-between gap-3 py-2">
       <span className="min-w-0">
@@ -313,8 +324,8 @@ function Count({ title, note, value, min, max, onChange }: { title: string; note
         <Step label={`One fewer: ${title}`} disabled={value <= min} onClick={() => onChange(value - 1)}>
           −
         </Step>
-        <span className="font-deco w-8 text-center text-[1.3rem] text-[var(--noir-ink-1)]" aria-live="polite">
-          {value}
+        <span className="font-deco min-w-8 px-0.5 text-center text-[1.3rem] text-[var(--noir-ink-1)]" aria-live="polite">
+          {shown ?? value}
         </span>
         <Step label={`One more: ${title}`} disabled={value >= max} onClick={() => onChange(value + 1)}>
           +

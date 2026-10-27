@@ -9,6 +9,8 @@ export const recommendedDeal = (n: number) => ({ family: n <= 6 ? 1 : n <= 8 ? 2
 /** The most Family that still leaves them outnumbered after the first night's kill. */
 export const maxFamily = (n: number) => Math.max(1, Math.floor((n - 2) / 2))
 export const MAX_SPECIALISTS = 2
+/** What the server's `rollPowers` can deal at this size: [fewest, most] of each. */
+export const powerRange = (n: number): [number, number] => (n <= 6 ? [1, 1] : n <= 9 ? [1, 2] : [2, 2])
 const clamp = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(value)))
 
 export function dealCounts(n: number, o: { godfather: boolean; jester: boolean; family?: number | null; doctors?: number | null; detectives?: number | null }) {
