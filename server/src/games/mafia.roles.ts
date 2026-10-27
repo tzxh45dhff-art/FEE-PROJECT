@@ -50,7 +50,7 @@ export function dealRange(count: number, extras: Pick<Extras, 'family' | 'doctor
   const exact = (n: number): Range => [n, n]
   const power: Range = count <= 6 ? [1, 1] : count <= 9 ? [1, 2] : [2, 2]
   return {
-    family: extras.family != null ? exact(extras.family) : count <= 6 ? exact(1) : count <= 8 ? ([1, 2] as Range) : ([2, 3] as Range),
+    family: extras.family != null ? exact(extras.family) : count <= 5 ? exact(1) : count <= 7 ? ([1, 2] as Range) : count === 8 ? exact(2) : ([2, 3] as Range),
     doctors: extras.doctors != null ? exact(extras.doctors) : power,
     detectives: extras.detectives != null ? exact(extras.detectives) : count < 5 ? exact(0) : power,
   }

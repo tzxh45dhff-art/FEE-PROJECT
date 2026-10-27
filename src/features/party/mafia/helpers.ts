@@ -15,7 +15,7 @@ export function dealRange(n: number, o: { family?: number | null; doctors?: numb
   const exact = (k: number): Range => [k, k]
   const power: Range = n <= 6 ? [1, 1] : n <= 9 ? [1, 2] : [2, 2]
   return {
-    family: o.family != null ? exact(o.family) : n <= 6 ? exact(1) : n <= 8 ? ([1, 2] as Range) : ([2, 3] as Range),
+    family: o.family != null ? exact(o.family) : n <= 5 ? exact(1) : n <= 7 ? ([1, 2] as Range) : n === 8 ? exact(2) : ([2, 3] as Range),
     doctors: o.doctors != null ? exact(o.doctors) : power,
     detectives: o.detectives != null ? exact(o.detectives) : n < 5 ? exact(0) : power,
   }

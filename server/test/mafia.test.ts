@@ -912,7 +912,7 @@ describe('mafia — a fair deal across games', () => {
     for (let g = 0; g < 40; g++) {
       clock = g * 1_000_000
       timers = []
-      const s = mafia.start(people(8), options({ rematch: g > 0 }), { ...ctx(fair), seen: new Set(seen) })
+      const s = mafia.start(people(7), options({ rematch: g > 0 }), { ...ctx(fair), seen: new Set(seen) })
       const family = s.players.filter((p) => p.role === 'mafia' || p.role === 'godfather').map((p) => p.id).sort().join(',')
       if (family === last) repeats++
       last = family
@@ -920,7 +920,7 @@ describe('mafia — a fair deal across games', () => {
       sizes.add(s.counts.family)
       seen.push(...mafia.used!(s))
     }
-    assert.ok(holders.size >= 6, `the Family card goes round the room (${holders.size} of 8 held it)`)
+    assert.ok(holders.size >= 6, `the Family card goes round the room (${holders.size} of 7 held it)`)
     assert.deepEqual([...sizes].sort(), [1, 2], 'how many Family is rolled again every game')
     assert.ok(repeats <= 3, `the very same Family twice running is rare (${repeats} in 40)`)
   })
@@ -983,7 +983,13 @@ describe('mafia — secret numbers', () => {
     const s = mafia.start(people(n), options(over), ctx(random))
     return { doctors: s.players.filter((p) => p.role === 'doctor').length, detectives: s.players.filter((p) => p.role === 'detective').length, options: s.options }
   }
-  it('one each at a small table, one or two at a middling one, two at a big one', () => {
+  it('one each at a small table, one or two at a middling one, two at a big one — and never a lone killer among eight', () => {
+    for (let roll = 0; roll < 2; roll++) {
+      clock = 0
+      timers = []
+      const eight = mafia.start(people(8), options(), ctx((n) => Math.min(roll, n - 1)))
+      assert.equal(eight.players.filter((p) => p.role === 'mafia' || p.role === 'godfather').length, 2)
+    }
     assert.deepEqual([dealt(4, (n) => n - 1).doctors, dealt(4, (n) => n - 1).detectives], [1, 0])
     assert.deepEqual([dealt(6, (n) => n - 1).doctors, dealt(6, (n) => n - 1).detectives], [1, 1])
     assert.deepEqual([dealt(8, () => 0).doctors, dealt(8, () => 0).detectives], [1, 1])
