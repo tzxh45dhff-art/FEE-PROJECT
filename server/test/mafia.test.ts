@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import type { Ctx, Player } from '../src/games/engine.js'
-import { familyChoice, mafia, services, sightFor, storyPages, tally, winnerOf, type Mafia, type Options } from '../src/games/mafia.js'
+import { familyChoice, mafia, namedIn, services, sightFor, storyPages, tally, winnerOf, type Mafia, type Options } from '../src/games/mafia.js'
 import { briefing, composeMs, judgeByRules, lineByRules, nightPick, texture, voteByRules } from '../src/games/mafia.bots.js'
 import { ARCS, ARC_IDS, pickArc } from '../src/games/mafia.arcs.js'
 import { dealCounts, dealFairly, dealKey, first, maxFamily, roleSet, type Role } from '../src/games/mafia.roles.js'
@@ -940,6 +940,17 @@ describe('mafia — a fair deal across games', () => {
     assert.equal(deals.length, 2)
     assert.ok(deals.every((k) => k.startsWith(`deal:${state.game}:`) && !k.includes(':ai-')))
     assert.deepEqual(keys.filter((k) => !k.startsWith('deal:')), [`arc:${state.arc}`], 'and which story it was')
+  })
+})
+
+describe('mafia — names at the table', () => {
+  it('an AI answers to any part of its name, hyphens and titles aside', () => {
+    const seat = (name: string) => ({ id: name, name, role: 'villager' as Role, alive: true, presence: 'online' as const, cover: '' })
+    const kira = seat('KIRA-7')
+    const doc = seat('Dr Sen')
+    assert.deepEqual(namedIn('Kira, where were you last night?', [kira, doc]), [kira])
+    assert.deepEqual(namedIn('Ask the dr about it', [kira, doc]), [], 'a title alone names nobody')
+    assert.deepEqual(namedIn('Sen is lying', [kira, doc]), [doc])
   })
 })
 

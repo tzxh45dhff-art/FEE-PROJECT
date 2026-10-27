@@ -483,8 +483,10 @@ function stitch(beats: Beat[]): Beat[] {
      * what the whole thing does, and leaving the old lines lit would point at
      * the wrong part of it.
      */
-    beat.show = { ...lastCode.visual, highlight: undefined }
-    beat.group = out[lastCode.at]!.group
+    /* Typed afresh: inside this loop TypeScript loses track of what `lastCode` holds. */
+    const listing: { at: number; visual: Extract<Visual, { kind: 'code' }> } = lastCode
+    beat.show = { ...listing.visual, highlight: undefined }
+    beat.group = out[listing.at]!.group
     lastCode = { at: i, visual: beat.show }
   }
 

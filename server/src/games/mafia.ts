@@ -322,9 +322,11 @@ export function sightFor(state: Mafia, id: string, replyTo: string | null, now =
 }
 
 /** Which players a line speaks to, by any part of their name: "Rosie", "Lobo", "Father Pereira". */
-function namedIn(text: string, among: Seat[]) {
-  const words = new Set(text.toLowerCase().split(/[^\p{L}’']+/u))
-  return among.filter((p) => p.name.toLowerCase().split(/\s+/).some((w) => w.length > 2 && !TITLE_WORDS.has(w) && words.has(w)))
+export function namedIn(text: string, among: Seat[]) {
+  /* Names split as the line does, so "KIRA-7" answers to "Kira". */
+  const split = (line: string) => line.toLowerCase().split(/[^\p{L}’']+/u)
+  const words = new Set(split(text))
+  return among.filter((p) => split(p.name).some((w) => w.length > 2 && !TITLE_WORDS.has(w) && words.has(w)))
 }
 
 /**
