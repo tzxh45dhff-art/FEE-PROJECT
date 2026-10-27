@@ -1,223 +1,179 @@
-# Huddle
+<div align="center">
 
-One room where you watch, listen, play and talk together — actually together,
-holding the same frame at the same moment rather than counting down and hoping.
+<img src="public/readme-banner.svg" alt="Huddle — one room, everything together" width="100%" />
 
-A full-stack app: a React front end, an Express + Socket.io back end, and a
-shared clock in the middle that everything else is keyed to.
+**Your people, your space.** A shared room for the things you already do together.
+
+[Explore Huddle](#inside-the-room) &nbsp;·&nbsp; [Get started](#getting-started) &nbsp;·&nbsp; [How it works](#how-it-works) &nbsp;·&nbsp; [Configuration](#configuration)
+
+![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827)
+![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-8-9466FF?style=flat-square&logo=vite&logoColor=white)
+![Socket.IO](https://img.shields.io/badge/Socket.IO-realtime-ec5967?style=flat-square&logo=socketdotio&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-%2B%20SQLite-38B8A8?style=flat-square&logo=prisma&logoColor=white)
+
+</div>
 
 ---
 
-## What is in it
+## Inside the room
 
-| | |
+Huddle brings friends into one shared space. Start a film, put on a song, play a quick game, or get some work done together—all while staying in the same room and conversation.
+
+<table>
+<tr>
+<td width="50%">
+
+### 🔴 Watch together
+
+Share YouTube, direct video links, or uploaded films. Play, pause, seek, and speed changes follow the room's shared playback state.
+
+</td>
+<td width="50%">
+
+### 🟢 Listen in sync
+
+Build a shared music queue, spin through the record view, and follow time-synced lyrics and a live visualiser.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### 🟡 Play a round
+
+Gather around Mafia, Somewhere, Draw & Guess, Pen Fight, Trivia, Guess the Song, Truth or Dare, and How Well Do You Know Me?
+
+</td>
+<td width="50%">
+
+### 🟣 Study side by side
+
+Keep subjects, documents, notes, quizzes, lessons, a tutor, a focus timer, and coding problems together in one workspace.
+
+</td>
+</tr>
+</table>
+
+The **3D hub** brings the room to life with characters, pets, emotes, a photo booth, chat, and voice/video calls. Rooms are private by default; an open room can be discovered by others.
+
+## The games
+
+| Game | The idea |
 | --- | --- |
-| **Watch** | One player shared by the room. Play, pause, scrub or change speed and everyone moves with you. YouTube, a direct link, or a film you have uploaded. |
-| **Listen** | A shared queue with a record view, a live visualiser, and time-synced lyrics that follow the song. |
-| **Play** | Turn-based games in the room. Pen Fight first — a 2D rigid-body solver, no engine. |
-| **Chat & call** | Text alongside whatever is on, plus voice and video over WebRTC. Any face can be floated out into a draggable window that sits above every other screen. |
-| **The room** | A 3D hub where everyone stands as a character of their own, against a backdrop the room picks. |
+| **Mafia** | Hidden roles, night moves, discussion, and votes in a cinematic mystery. |
+| **Somewhere** | Explore a Street View location and guess where you are. Play classic rounds or a duel. |
+| **Draw & Guess** | Draw a word while everyone races to guess it. Includes custom words and drawing tools. |
+| **Pen Fight** | Flick your pen across a classroom desk. Challenge a friend, pass and play, or practise solo. |
+| **Live Trivia** | Race through questions, use power-ups, and see the answers revealed together. |
+| **Guess the Song** | Recognise tracks from short clips across different music categories. |
+| **Truth or Dare** | Pick your comfort level and let the room take turns. |
+| **How Well Do You Know Me?** | Predict a friend's answers and find out how well you know them. |
 
-Rooms are **private by default** and joined by their code. An open room is a
-deliberate choice, and is the only kind that appears in Discover.
+## Getting started
 
----
+You need **Node.js 22.12 or newer**, npm, and a recent browser with WebGL support for the 3D scenes. The server uses SQLite through Prisma.
 
-## Running it
-
-Two processes: a Vite dev server for the front end, and the API. One command
-starts both.
+**1. Install the frontend and server dependencies.**
 
 ```bash
 npm install
-npm run server:install
-npm --prefix server run generate   # Prisma client
-npm --prefix server run db:push    # create the SQLite database
+npm --prefix server install
+```
+
+**2. Create the server configuration.**
+
+```bash
+cp server/.env.example server/.env
+```
+
+Set a fresh `JWT_SECRET` in `server/.env` before exposing the app. The example also documents the database, port, allowed origins, and optional integrations. Keep `.env` files and credentials out of Git.
+
+**3. Prepare the database and start both services.**
+
+```bash
+npm --prefix server run generate
+npm --prefix server run db:push
 npm run dev:all
 ```
 
-Front end on `http://localhost:5173`, API on `http://localhost:4000`. In
-development Vite proxies `/api`, `/socket.io` and `/uploads` to the API, so
-everything is same-origin and the session cookie works with no configuration.
+Open **http://localhost:5173**. The API defaults to **http://localhost:4000**. Vite proxies the API and Socket.IO during local development.
 
-Copy `server/.env.example` to `server/.env` first — `JWT_SECRET` is the only
-value the server refuses to start without.
-
-### Showing it to someone else
-
-`npm run sync` starts the API and opens an ngrok tunnel to it, so a deployed
-front end can reach a back end running on your machine.
-
-It takes the port and the tunnel back by force before starting, then refuses to
-report success until it has actually fetched something through the public URL —
-because both of the failures worth naming are invisible from inside the script
-unless it goes and checks. A previous run still holding the port makes the new
-server exit while the script prints a working banner; and ngrok's agent can lose
-its session while the process stays alive, so nothing looks wrong locally and
-the public URL answers nothing.
-
----
+> **Already running a server?** Use a separate port and a separate test database for experiments so you don't interrupt an existing room or overwrite its data.
 
 ## Configuration
 
-Everything below is optional. The app runs without any of it — each one
-switches on a feature rather than being required for the rest to work.
+Most integrations are optional and live in `server/.env`; see [`server/.env.example`](server/.env.example) for the complete list. Features that require a provider need the corresponding credentials and may incur provider charges.
 
-| Variable | Enables | Without it |
+| Feature | Configuration | Where |
 | --- | --- | --- |
-| `YOUTUBE_API_KEY` | Searching YouTube from inside the app | Pasting a link still works |
-| `METERED_API_KEY` + `METERED_DOMAIN` | A TURN relay for calls | Calls connect only where a direct path exists — in practice, the same wifi |
-| `TURN_URL` / `TURN_USERNAME` / `TURN_CREDENTIAL` | The same, with any static TURN provider | As above |
-| `R2_*` | Publishing uploaded film to Cloudflare R2 as HLS | Uploads are served straight from the server instead |
-| `CLIENT_ORIGIN` | Which origins may call the API | Defaults to `localhost:5173`; a deployed front end **must** be listed or CORS blocks every request |
-| `CROSS_SITE` | Front end on a different origin to the API | Leave `false` when they share one |
+| **Somewhere: map and Street View** | `VITE_GOOGLE_MAPS_API_KEY` | Root `.env`; browser key restricted to your website referrers and Maps JavaScript API. |
+| **Somewhere: location lookup** | `GOOGLE_MAPS_SERVER_KEY` | `server/.env`; separate server key restricted to Street View Static API. |
+| **AI study tools** | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` and deployment settings | `server/.env`; embeddings and speech can use separate resources. |
+| **YouTube search** | `YOUTUBE_API_KEY` | `server/.env`; pasted YouTube links work without search. |
+| **Calls across networks** | `METERED_API_KEY` + `METERED_DOMAIN`, or `TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL` | `server/.env`; a TURN relay helps when direct connections cannot be established. |
+| **Cloud video storage** | `R2_*` settings | `server/.env`; without R2, uploads are served locally. |
+| **Split frontend/API** | `VITE_API_URL`, `CLIENT_ORIGIN`, and `CROSS_SITE` | Frontend and server environments; configure allowed origins and HTTPS deliberately. |
 
-`VITE_API_URL` belongs in the **front end's** `.env`, and only for a split
-deployment. Setting it switches the client from cookie auth to bearer tokens,
-because a third-party cookie is discarded by Safari outright.
+A browser Maps key is visible to the browser by design, so apply API and referrer restrictions. Never put a server key into frontend code or commit real credentials.
 
----
+## How it works
 
-## Scripts
+```text
+                  ┌───────────────────────────────────┐
+                  │        React + Vite frontend      │
+                  │ Watch · Listen · Play · Study     │
+                  └───────────────┬───────────────────┘
+                                  │ HTTPS + Socket.IO
+                  ┌───────────────▼───────────────────┐
+                  │       Express + TypeScript        │
+                  │ Rooms · sync · games · services   │
+                  └───────────────┬───────────────────┘
+                                  │ Prisma
+                  ┌───────────────▼───────────────────┐
+                  │              SQLite               │
+                  └───────────────────────────────────┘
+```
 
-| Command | Does |
+- **Shared playback:** clients measure their clock offset against the server and correct drift so the room stays together.
+- **Realtime games:** the server manages game state, turns, timers, and per-player views. Pen Fight shots are simulated on the server and replayed on each screen.
+- **Study and coding:** study tools use configured AI services; Python and JavaScript can run in the browser, while other languages can use the configured judge.
+- **Calls:** WebRTC carries media; the room socket handles signalling, with an optional TURN relay for difficult network paths.
+
+## Project map
+
+```text
+src/features/         React features: rooms, games, watch, music, study, and more
+src/components/       Shared interface components
+src/lib/              API, socket, configuration, and shared helpers
+server/src/games/     Party-game rules and Pen Fight physics
+server/src/sockets/   Realtime room and feature gateways
+server/src/services/  Media, AI, judge, storage, and room services
+server/prisma/        Database schema
+extension/            Companion browser extension
+```
+
+Assets can be placed in `src/assets/characters`, `scenes`, `models`, `landing`, and `videos` according to the app's asset discovery rules.
+
+## Useful commands
+
+| Command | Purpose |
 | --- | --- |
-| `npm run dev:all` | Front end and API together |
-| `npm run dev` | Front end only |
-| `npm run sync` | API + ngrok tunnel, verified end to end |
-| `npm run build` | Typecheck and build the front end |
-| `npm run lint` | Oxlint |
-| `npm run db:push` | Apply the Prisma schema |
-| `npm run db:studio` | Browse the database |
-| `npm --prefix server run publish -- "<file>"` | Transcode an upload to HLS and put it on R2 |
+| `npm run dev:all` | Run the frontend and API together. |
+| `npm run dev` | Run the frontend only. |
+| `npm run build` | Typecheck and build the frontend. |
+| `npm run lint` | Run Oxlint. |
+| `npx tsc --noEmit -p server` | Typecheck the server. |
+| `npm --prefix server test` | Run the server test suite. |
+| `npm run db:studio` | Open Prisma Studio. |
+| `bash server/start-server.sh` | Start the Linux server and its configured tunnel. |
 
 ---
 
-## How the sync actually holds
+<div align="center">
 
-Four things have to be true at once, and most of the work is in the fourth.
+**Made for the people you want in the room.**
 
-**Nobody trusts their own watch.** Browser clocks are routinely seconds out, so
-each client measures its offset from the server across several round trips and
-keeps the median. "Where the film is" then means the same thing on every device.
+<sub>Huddle · Watch together. Listen together. Play together. Study together.</sub>
 
-**Drift is corrected by speed, not by jumping.** A player that slips behind is
-run imperceptibly fast until it catches up. You only ever see a jump when the
-gap is already big enough that you would have noticed it anyway — and on a
-source that cannot be nudged, like YouTube, the threshold is wider still,
-because every correction there costs a rebuffer.
-
-**A stall is not treated as drift.** While a player is buffering — and for a
-while after — it is left alone. The room's clock ran on while it was stuck, so
-a player that has just recovered is behind by definition, and reading that as
-fresh drift is what turns one stall into a loop of stall, jump, stall.
-
-**The player and the room can disagree, and the room is not always right.**
-Fullscreen on a phone hands the video to the operating system's own player,
-whose pause button never reaches this app. So the player reports back anything
-it did that we did not ask for, and drift correction stands down whenever the
-player is genuinely stopped — seeking a paused video does not catch it up, it
-just paints the frame at the new position.
-
----
-
-## Uploaded film
-
-An upload is repackaged to HLS and published to R2 rather than served whole. A
-plain MP4 is one enormous file with its index at one end, so "press play" means
-"download the index first" — on a feature film that is tens of megabytes before
-a single frame.
-
-The published ladder is the source rendition, **copied not re-encoded**, plus
-lighter renditions beneath it. The top rung is bit-for-bit what was uploaded, so
-nobody on a good connection loses anything; the rungs below exist because a
-player with only one stream to choose from has nothing to drop to when the line
-gets slow — it stalls, refills, and stalls again. Every rendition is cut on the
-same grid, so switching between them is seamless.
-
----
-
-## Drop-in assets
-
-Several folders are globbed at build time — put a file in and it appears, with
-nothing to import or register. Each has its own README with naming and export
-notes.
-
-```
-src/assets/characters/   .glb characters for the hub
-src/assets/scenes/       backdrops the room can stand in
-src/assets/landing/      stone.png (page texture), listen.png
-src/assets/videos/       local footage
-src/assets/models/       props
-```
-
----
-
-## Structure
-
-```
-src/
-  features/
-    auth/          sign in, sign up, session
-    dashboard/     the hub — rails, 3D stage, settings, room list
-    games/         Play, and the Pen Fight solver
-    landing/       the marketing page
-    music/         Listen — queue, record view, lyrics, visualiser
-    room-panel/    chat, the call, the floating window
-    rooms/         room list, presence, presence-watch
-    watch/         Watch — players, controls, drift correction
-  components/      shared UI, layout, backgrounds
-  hooks/           reduced motion, page visibility, pointer tilt
-  lib/             api client, socket, asset discovery, utils
-  pages/           routed screens
-  vendor/          third-party sources kept in-tree
-
-server/src/
-  controllers/     HTTP handlers
-  services/        the real work — transcode, publish, rooms, music, lyrics
-  sockets/         one gateway per live feature, all on one connection
-  models/          Prisma access
-  config/          environment
-```
-
-Everything live rides **one** socket connection — presence, chat, the call's
-signalling, watch, music, games. One connection, one handshake, and membership
-checked the same way for all of them.
-
----
-
-## Design notes
-
-**Tokens live in one place.** Palette, type, radii and easing are defined once
-in the `@theme` block in `src/index.css`.
-
-**Surfaces carry no colour.** The surface scale is pure neutral dark, `#000000`
-up through `#2a2a2e`, with no cast.
-
-**The accent is load-bearing.** `--color-signal` is red and reserved for live
-state — presence dots, the shared playhead, a live cursor. Use
-`--color-signal-bright` for red *text*; pure `#ff0000` fails contrast at small
-sizes. Primary buttons stay white, the way a streaming app's play button is.
-
-**Reduced motion is honoured throughout.** `prefers-reduced-motion: reduce`
-gates the Framer transitions, stops the 3D scenes rendering new frames, and
-removes the hero's simulation outright — there is no still version of a pit of
-falling spheres worth showing.
-
-**The 3D scenes stop when nobody is looking.** A backgrounded tab, a covered
-stage, or a reduced-motion preference drops the canvas to render-on-demand, so
-it holds its last frame instead of spending a GPU on something nobody can see.
-
----
-
-## Notes for anyone picking this up
-
-- `src/vendor/` holds third-party sources kept in-tree rather than installed.
-  Where one has been changed, the change is marked `DEVIATION FROM UPSTREAM`
-  with the reason — those comments are load-bearing, and `Ballpit.jsx` will not
-  render at all if one of them is reverted.
-- `server/prisma/dev.db` is deliberately untracked. It was committed once, and
-  the copies in history still hold real password hashes.
-- Presence is in memory, so it means nothing across a restart and does not
-  survive more than one server process. That is the point at which it moves to
-  Redis.
+</div>

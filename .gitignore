@@ -62,3 +62,8 @@ server/prisma/night.db
 server/night.db
 server/night-uploads/
 server/.cache/
+
+# Project notes stay local; the root README is the public entry point.
+*.md
+*.MD
+!/README.md
