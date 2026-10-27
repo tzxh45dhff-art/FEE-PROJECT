@@ -48,7 +48,7 @@ export const PHASE_GUIDE: Partial<Record<Phase, { title: string; story: string; 
   },
   dawn: {
     title: 'Morning',
-    story: 'The Bombay Herald lands on every doorstep.',
+    story: 'The morning paper lands on every doorstep.',
     plain: () => 'The paper tells you who died overnight — that’s your first clue. Read it, then tap Continue.',
   },
   day: {

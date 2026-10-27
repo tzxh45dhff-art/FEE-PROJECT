@@ -83,7 +83,7 @@ export const ROLE_INFO: Record<Role, { title: string; line: string }> = {
   jester: { title: 'The Jester', line: 'You win only if the town hangs you. Make them believe it.' },
 }
 
-const TITLES = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'father', 'uncle', 'aunty', 'auntie'])
+export const TITLES = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'father', 'uncle', 'aunty', 'auntie', 'colonel', 'begum', 'madame', 'dj', 'thakur', 'pandit', 'ustad', 'hakim', 'seth'])
 /** What the table calls someone: the first name — or "Mrs Lobo", never just "Mrs". */
 export const first = (name: string) => {
   const [head, next] = name.trim().split(/\s+/)

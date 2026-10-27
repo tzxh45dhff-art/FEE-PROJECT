@@ -2,8 +2,8 @@ import * as azure from '../services/azure.service.js'
 import { ROLE_INFO, first, teamOf, type Role } from './mafia.roles.js'
 
 /**
- * The AI players of Mafia: Bombay regulars who take a seat when the table is
- * short.
+ * The AI players of Mafia: the story's regulars (see mafia.arcs.ts) who
+ * take a seat when the table is short.
  *
  * An AI knows exactly what a person in its seat would know — it is handed the
  * same filtered view a screen gets, never the game itself — so a citizen AI
@@ -15,24 +15,15 @@ import { ROLE_INFO, first, teamOf, type Role } from './mafia.roles.js'
 
 export type Persona = { name: string; blurb: string; manner: string }
 
-export const PERSONAS: Persona[] = [
-  { name: 'Rosie D’Souza', blurb: 'jazz singer at a Colaba club', manner: 'warm and teasing; watches who looks away' },
-  { name: 'Farokh Irani', blurb: 'runs the Irani café on the corner', manner: 'chatty and fatherly; loves a good rumour' },
-  { name: 'Shankar Patil', blurb: 'foreman at the docks', manner: 'blunt, few words; distrusts smooth talkers' },
-  { name: 'Mrs Lobo', blurb: 'landlady who knows every tenant', manner: 'sharp and gossipy; remembers exactly who said what' },
-  { name: 'Vicky Khanna', blurb: 'fixer for a film studio', manner: 'smooth and charming; always making a deal' },
-  { name: 'Abdul Karim', blurb: 'taxi driver who hears everything', manner: 'street-smart and jokey; quick to point a finger' },
-  { name: 'Meenakshi Rao', blurb: 'crime reporter at the Herald', manner: 'logical; asks pointed questions' },
-  { name: 'Father Pereira', blurb: 'parish priest from Bandra', manner: 'gentle; pleads for mercy, hard to read' },
-  { name: 'Gopal Mistry', blurb: 'tailor on Abdul Rehman Street', manner: 'nervous and precise; notices small details' },
-  { name: 'Lily Fernandes', blurb: 'telephone operator at the exchange', manner: 'quick and nosy; claims to have overheard things' },
-  { name: 'Bashir Khan', blurb: 'retired boxer', manner: 'loud and loyal; trusts his gut' },
-]
 
 export type Job = 'talk' | 'vote' | 'judge' | 'defence'
 
+const DEFAULT_WORLD = { tone: 'Bombay, 1956 film noir', venue: 'the Irani café on the corner' }
+
 /** What one AI can see — drawn from its own screen's view, plus the table talk. */
 export type Sight = {
+  /** The story the game is told in, and where the table sits tonight. */
+  world?: { tone: string; venue: string }
   me: { id: string; role: Role; persona: Persona; files: { round: number; target: string; family: boolean }[]; lastProtected: string | null; selfSaveUsed: boolean }
   phase: string
   round: number
@@ -247,7 +238,7 @@ export function briefing(s: Sight): string {
   const nameOf = (id: string | null | undefined) => (id === s.me.id ? 'you' : id ? first(s.players.find((p) => p.id === id)?.name ?? 'someone') : 'no one')
   const me = s.me
   const lines = [
-    `You are ${me.persona.name}, ${me.persona.blurb}, at a game of Mafia set in Bombay, 1956. Your manner: ${me.persona.manner}.`,
+    `You are ${me.persona.name}, ${me.persona.blurb}, at a game of Mafia set in ${(s.world ?? DEFAULT_WORLD).tone}. Your manner: ${me.persona.manner}.`,
     `Your secret card: ${ROLE_INFO[me.role].title}. ${ROLE_INFO[me.role].line}`,
   ]
   if (family(me.role)) {
@@ -261,7 +252,7 @@ export function briefing(s: Sight): string {
 
   /* The table as it stands. */
   const cast = s.players.filter((p) => p.id !== me.id && p.cover).map((p) => `${first(p.name)} — ${p.cover}`)
-  if (cast.length) lines.push('', `WHO'S WHO at the Irani café tonight: ${cast.join('; ')}.`)
+  if (cast.length) lines.push('', `WHO'S WHO at ${(s.world ?? DEFAULT_WORLD).venue} tonight: ${cast.join('; ')}.`)
   const alive = s.players.filter((p) => p.alive && p.id !== me.id).map((p) => first(p.name))
   lines.push('', `THE TABLE: ${s.players.length} players began. Alive besides you (${alive.length}): ${alive.join(', ') || 'nobody'}.`)
   const dead = s.players.filter((p) => !p.alive)
@@ -379,7 +370,7 @@ async function decide(job: Job, s: Sight, random: (n: number) => number): Promis
           {
             role: 'system',
             content:
-              'You play one character at a party game of Mafia, Bombay 1956 noir, as a real player would. Everyone else at the table is a player like you, each with their own secret card — judge them all by the same standard: what they said, how they voted, what happened. Follow the game closely, remember who said and did what, and reason from it. Talk to the others by name, answer questions put to you, and ask your own. You speak like a real person at the table — short, natural, a little colourful, never gory, no emojis, no stage directions. Never assume anyone\'s gender: use their name or "they". Stick to the facts you are given: never invent a death, a vote, or something someone said, and never talk to the dead. You only answer with JSON.',
+              `You play one character at a party game of Mafia, ${(s.world ?? DEFAULT_WORLD).tone}, as a real player would. Everyone else at the table is a player like you, each with their own secret card — judge them all by the same standard: what they said, how they voted, what happened. Follow the game closely, remember who said and did what, and reason from it. Talk to the others by name, answer questions put to you, and ask your own. You speak like a real person at the table — short, natural, a little colourful, never gory, no emojis, no stage directions. Never assume anyone’s gender: use their name or "they". Stick to the facts you are given: never invent a death, a vote, or something someone said, and never talk to the dead. You only answer with JSON.`,
           },
           { role: 'user', content: `${briefing(s)}\n\n${ASK[job](s)}${texture(job, s, random)}` },
         ],

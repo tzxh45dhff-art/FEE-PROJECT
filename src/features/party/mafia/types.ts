@@ -1,5 +1,7 @@
 /** Mafia, as one screen receives it — mirrors `view()` in server/src/games/mafia.ts. */
 
+import type { ArcChoice, ArcId } from './arcs'
+
 export type Role = 'mafia' | 'godfather' | 'doctor' | 'detective' | 'villager' | 'jester'
 export type Phase = 'prologue' | 'deal' | 'night' | 'hush' | 'dawn' | 'day' | 'vote' | 'defence' | 'judgement' | 'verdict' | 'over'
 export type Presence = 'online' | 'table'
@@ -18,6 +20,8 @@ export type MafiaOptions = {
   bots?: number
   /** Open with the story before the cards. */
   story?: boolean
+  /** The story: chosen by the host, or a surprise the room hasn't played lately. */
+  arc?: ArcChoice
   /** The host's own deal; null or absent keeps the recommended count. */
   family?: number | null
   doctors?: number | null
@@ -56,6 +60,8 @@ export type Ledger = {
 
 export type MafiaView = {
   game: string
+  /** The story this game is told in. */
+  arc: ArcId
   phase: Phase
   step: number
   round: number

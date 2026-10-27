@@ -7,10 +7,11 @@ import { env } from '../config/env.js'
 import * as azure from './azure.service.js'
 import * as speech from './speech.service.js'
 import { UPLOAD_DIR, UPLOAD_ROUTE } from './upload.service.js'
+import { ARCS } from '../games/mafia.arcs.js'
 import { first } from '../games/mafia.roles.js'
 
 /**
- * The narrator of Mafia: Bombay, 1956.
+ * The narrator of Mafia, in whichever story the table is playing.
  *
  * Fixed moments (the opening, nightfall, the vote) are written by hand and
  * voiced once — the audio is cached by its words, so they cost nothing after
@@ -146,7 +147,10 @@ export function brief(kind: NarrationKind, facts: NarrationFacts): string {
   }
 }
 
-const SYSTEM = `You narrate a party game of Mafia set in Bombay, 1956 — film noir, monsoon rain, jazz clubs in Colaba, the docks, Crawford Market, Marine Drive, Irani cafés, Malabar Hill. You are a deep-voiced 1950s film narrator: cinematic, wry, a little menacing, never gory. You only answer with JSON.`
+/** The story's world and its morning paper; Bombay, 1956 unless a game says otherwise. */
+export type World = { world: string; paper: string }
+const BOMBAY: World = { world: ARCS.bombay.world, paper: ARCS.bombay.paper }
+const system = (w: World) => `You narrate a party game of Mafia ${w.world} You only answer with JSON.`
 
 /** Words for a moment, and the voice reading them. Falls back to the hand-written line at every step. */
 export async function narrate(
@@ -154,6 +158,7 @@ export async function narrate(
   facts: NarrationFacts,
   fallback: string,
   headline: string | null,
+  world: World = BOMBAY,
 ): Promise<{ text: string; headline: string | null; audio: string | null }> {
   let text = fallback
   let head = headline
@@ -162,12 +167,12 @@ export async function narrate(
       WRITE_MS,
       azure.chatJson<{ story?: unknown; headline?: unknown }>(
         [
-          { role: 'system', content: SYSTEM },
+          { role: 'system', content: system(world) },
           {
             role: 'user',
             content: `${brief(kind, facts)}
 
-Write what the narrator says aloud: 2 or 3 sentences, under 260 characters. The first sentence states plainly what happened (who died, or that nobody did; who was hanged) — the colour comes after, spoken English, no lists, no emojis, no stage directions. Use people's first names only. Never reveal anything not stated above.${kind === 'dawn' ? ' Also write a 1950s newspaper front-page headline for the Bombay Herald that names the main fact: ALL CAPS, under 42 characters.' : ''}
+Write what the narrator says aloud: 2 or 3 sentences, under 260 characters. The first sentence states plainly what happened (who died, or that nobody did; who was hanged) — the colour comes after, spoken English, no lists, no emojis, no stage directions. Use people's first names only. Never reveal anything not stated above.${kind === 'dawn' ? ` Also write a front-page headline for ${world.paper}, in the voice of the story’s time and place, that names the main fact: ALL CAPS, under 42 characters.` : ''}
 Answer as JSON: {"story": "..."${kind === 'dawn' ? ', "headline": "..."' : ''}}`,
           },
         ],

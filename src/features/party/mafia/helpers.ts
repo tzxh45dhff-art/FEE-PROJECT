@@ -36,7 +36,7 @@ export function dealLine(n: number, o: Parameters<typeof dealCounts>[1]) {
   return `${n} at the table: ${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}.`
 }
 
-const TITLES = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'father', 'uncle', 'aunty', 'auntie'])
+const TITLES = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'father', 'uncle', 'aunty', 'auntie', 'colonel', 'begum', 'madame', 'dj', 'thakur', 'pandit', 'ustad', 'hakim', 'seth'])
 
 /** What the table calls someone: the first name — or "Mrs Lobo", never just "Mrs". */
 export function callName(name: string) {

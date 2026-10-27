@@ -17,6 +17,7 @@ import { ROLE_TITLE, isFamily, type MafiaView, type SeatView } from './types'
 import { canHear, useHearing } from './useHearing'
 import { useNarrator } from './useNarrator'
 import { useNoirFonts } from './useNoirFonts'
+import { ArcContext, arcOf } from './arcs'
 import { useNoirSound } from './useNoirSound'
 import './noir.css'
 
@@ -103,8 +104,9 @@ export function MafiaTable({
   /** A move the game refused, said out loud rather than swallowed. */
   error?: string | null
 }) {
-  useNoirFonts()
   const full = party.view
+  const arc = arcOf(full.arc)
+  useNoirFonts(arc)
   /*
    * The town square is a choice for this game, not this device for ever. It
    * used to be remembered for good — so anyone who once put a phone in the
@@ -364,13 +366,13 @@ export function MafiaTable({
             <path
               d={`M${s.from.x},${s.from.y} Q${(s.from.x + s.to.x) / 2},${Math.max(s.from.y, s.to.y) + 40} ${s.to.x},${s.to.y}`}
               fill="none"
-              stroke="#b3261e"
+              style={{ stroke: 'var(--noir-blood)' }}
               strokeWidth="2"
               strokeLinecap="round"
               opacity={trial ? 0.4 : 0.85}
             />
-            <circle cx={s.to.x} cy={s.to.y} r="4.5" fill="#d43a2f" stroke="#2a0807" strokeWidth="1.5" />
-            <circle cx={s.from.x} cy={s.from.y} r="3" fill="#b3261e" />
+            <circle cx={s.to.x} cy={s.to.y} r="4.5" style={{ fill: 'var(--noir-blood-bright)', stroke: 'var(--noir-card-3)' }} strokeWidth="1.5" />
+            <circle cx={s.from.x} cy={s.from.y} r="3" style={{ fill: 'var(--noir-blood)' }} />
           </g>
         ))}
       </svg>
@@ -384,11 +386,11 @@ export function MafiaTable({
     <div className="noir-paper noir-paper-edge w-full rounded-sm px-4 py-4 sm:px-5">
       {phase === 'night' && ask && (
         <>
-          <p className="font-type text-[0.74rem] uppercase tracking-[0.22em] text-[#6a5638]">
+          <p className="font-type text-[0.74rem] uppercase tracking-[0.22em] text-[var(--noir-ink-6)]">
             {ROLE_TITLE[me.role]} · night {view.round}
           </p>
-          <p className="font-deco text-[1.35rem] leading-tight text-[#1c140b]">{ask.title}</p>
-          <p className="font-type mt-1 text-[0.86rem] text-[#5a4a35]">{ask.hint}</p>
+          <p className="font-deco text-[1.35rem] leading-tight text-[var(--noir-ink-1)]">{ask.title}</p>
+          <p className="font-type mt-1 text-[0.86rem] text-[var(--noir-ink-5)]">{ask.hint}</p>
           <TargetGrid
             targets={nightTargets}
             chosen={me.pick}
@@ -402,9 +404,9 @@ export function MafiaTable({
       )}
       {phase === 'vote' && (
         <>
-          <p className="font-type text-[0.74rem] uppercase tracking-[0.22em] text-[#6a5638]">Day {view.round} · nominations</p>
-          <p className="font-deco text-[1.35rem] leading-tight text-[#1c140b]">Who stands trial?</p>
-          <p className="font-type mt-1 text-[0.86rem] leading-snug text-[#5a4a35]">
+          <p className="font-type text-[0.74rem] uppercase tracking-[0.22em] text-[var(--noir-ink-6)]">Day {view.round} · nominations</p>
+          <p className="font-deco text-[1.35rem] leading-tight text-[var(--noir-ink-1)]">Who stands trial?</p>
+          <p className="font-type mt-1 text-[0.86rem] leading-snug text-[var(--noir-ink-5)]">
             The most-named goes on trial, if they beat “no one”. They get 25 seconds to defend themselves, then the town says guilty or innocent.
           </p>
           <div className="lg:hidden">
@@ -418,7 +420,7 @@ export function MafiaTable({
               onChoose={(id) => act('vote', { target: id })}
             />
           </div>
-          <p className="font-type mt-3 hidden text-[0.86rem] text-[#3a2c1c] lg:block">
+          <p className="font-type mt-3 hidden text-[0.86rem] text-[var(--noir-ink-3)] lg:block">
             {typeof myVote === 'string'
               ? `You named ${firstName(seatById(myVote))}${pins(myVote).length > 1 ? `, with ${pins(myVote).length - 1} other${pins(myVote).length === 2 ? '' : 's'}` : ''}. Tap another photograph to change.`
               : 'Tap a photograph to name them.'}
@@ -518,14 +520,14 @@ export function MafiaTable({
   const file = me?.role === 'detective' && phase === 'dawn' ? me.files.find((f) => f.round === view.round) : undefined
   const telegram = file && (
     <motion.div initial={{ y: 40, opacity: 0, rotate: 3 }} animate={{ y: 0, opacity: 1, rotate: 1.5 }} transition={{ delay: 1.2 }} className="noir-paper mx-auto mt-4 w-full max-w-[23rem] rounded-sm px-4 py-3">
-      <p className="font-type text-[0.72rem] uppercase tracking-[0.22em] text-[#6a5638]">Telegram · for the Inspector only</p>
-      <p className="font-type mt-1 text-[1rem] text-[#1c140b]">
+      <p className="font-type text-[0.72rem] uppercase tracking-[0.22em] text-[var(--noir-ink-6)]">Telegram · for the Inspector only</p>
+      <p className="font-type mt-1 text-[1rem] text-[var(--noir-ink-1)]">
         FILE ON {firstName(seatById(file.target)).toUpperCase()} STOP {file.family ? 'WORKS FOR THE FAMILY' : 'NO FAMILY CONNECTION FOUND'} STOP
       </p>
       {!file.family && view.options.godfather && view.players.length >= 7 && (
-        <p className="font-type mt-1 text-[0.78rem] text-[#6a5638]">Remember: the Godfather can come back clean.</p>
+        <p className="font-type mt-1 text-[0.78rem] text-[var(--noir-ink-6)]">Remember: the Godfather can come back clean.</p>
       )}
-      <p className="font-type mt-1 text-[0.74rem] text-[#6a5638]">Kept in your dossier.</p>
+      <p className="font-type mt-1 text-[0.74rem] text-[var(--noir-ink-6)]">Kept in your dossier.</p>
     </motion.div>
   )
 
@@ -629,8 +631,8 @@ export function MafiaTable({
                       initial={{ scale: 2.4, opacity: 0 }}
                       animate={{ scale: 1, opacity: 0.9 }}
                       transition={{ delay: 0.7, type: 'spring', stiffness: 220, damping: 12 }}
-                      className="noir-stamp absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm bg-[#efe3c8]/80 px-3 py-1 text-[1.4rem] [@media(max-height:520px)]:px-2 [@media(max-height:520px)]:text-[0.95rem]"
-                      style={{ color: view.verdict.jester ? '#6b3fa0' : isFamily(view.verdict.role) ? 'var(--noir-blood)' : '#1f5a3a' }}
+                      className="noir-stamp absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-sm bg-[var(--noir-paper)]/80 px-3 py-1 text-[1.4rem] [@media(max-height:520px)]:px-2 [@media(max-height:520px)]:text-[0.95rem]"
+                      style={{ color: view.verdict.jester ? 'var(--noir-jester)' : isFamily(view.verdict.role) ? 'var(--noir-blood)' : 'var(--noir-town)' }}
                     >
                       {view.verdict.jester ? 'THE JESTER' : isFamily(view.verdict.role) ? 'FAMILY' : 'INNOCENT'}
                     </motion.span>
@@ -666,8 +668,8 @@ export function MafiaTable({
 
   /* ── chat: the Family's whispers, or the ghosts' ────────────────────── */
 
-  /* Not during the deal: a chat box appearing would tell the whole room what your card says. */
-  const whispering = !!me && me.alive && isFamily(me.role) && phase !== 'over' && phase !== 'deal'
+  /* Not during the story or the deal: a chat box appearing would tell the whole room what your card says. */
+  const whispering = !!me && me.alive && isFamily(me.role) && phase !== 'over' && phase !== 'deal' && phase !== 'prologue'
   const haunting = !!me && !me.alive && phase !== 'over'
   const chat = (whispering || haunting) && (
     <Whispers
@@ -679,8 +681,8 @@ export function MafiaTable({
   )
   const prediction = haunting && me && (
     <div className="noir-paper rounded-sm px-4 py-3">
-      <p className="font-type text-[0.74rem] uppercase tracking-[0.22em] text-[#6a5638]">Call the ending</p>
-      <p className="font-type text-[0.86rem] text-[#3a2c1c]">Who wins? Revealed in the case file.</p>
+      <p className="font-type text-[0.74rem] uppercase tracking-[0.22em] text-[var(--noir-ink-6)]">Call the ending</p>
+      <p className="font-type text-[0.86rem] text-[var(--noir-ink-3)]">Who wins? Revealed in the case file.</p>
       <Predict value={me.prediction} onPredict={(winner) => act('predict', { winner })} jester={view.options.jester} />
     </div>
   )
@@ -706,195 +708,197 @@ export function MafiaTable({
   const aside = movePanel || chat || prediction || talkFeed
 
   return (
-    <div className="noir noir-room relative isolate flex h-full min-h-0 w-full flex-col overflow-clip" data-mood={mood}>
-      <div className="noir-grain" aria-hidden />
-      <div className="noir-rain" data-on={mood === 'night'} aria-hidden />
-      {mood === 'night' && <Skyline className="pointer-events-none absolute inset-x-0 bottom-0 h-40 w-full text-[#03060c] opacity-90" />}
+    <ArcContext.Provider value={arc}>
+      <div className="noir noir-room relative isolate flex h-full min-h-0 w-full flex-col overflow-clip" data-mood={mood} data-arc={arc.id}>
+        <div className="noir-grain" aria-hidden />
+        <div className="noir-rain" data-on={mood === 'night'} aria-hidden />
+        {mood === 'night' && <Skyline arc={arc.id} className="pointer-events-none absolute inset-x-0 bottom-0 h-40 w-full text-[var(--noir-skyline)] opacity-90" />}
 
-      {/* The top bar: where we are, the clock, the switches. */}
-      <header className="relative z-20 flex shrink-0 items-center gap-2 px-3 pb-2 pt-2 sm:gap-3 sm:px-6 [@media(max-height:520px)]:py-1">
-        <div className="min-w-0 flex-1">
-          <p className="font-type truncate text-[0.74rem] uppercase tracking-[0.24em] text-[var(--noir-brass)] [@media(max-height:520px)]:text-[0.66rem]">
-            {phase === 'over' || view.round === 0 ? 'Bombay · 1956' : `${mood === 'night' ? 'Night' : 'Day'} ${view.round}`}
-            {layout === 'square' && (full.me ? ' · town square' : ' · watching')}
-            {me && !me.alive && phase !== 'over' && ' · you are a ghost'}
-          </p>
-          <h2 className="font-deco truncate text-[1.15rem] leading-tight text-[var(--noir-paper)] min-[400px]:text-[1.3rem] sm:text-[1.9rem] [@media(max-height:520px)]:text-[1.2rem]">
-            {phase === 'hush' ? (view.after === 'dawn' ? 'Morning' : 'The count') : PHASE_TITLE[phase]}
-          </h2>
-        </div>
-        {clockTotal > 0 && left > 0 && phase !== 'prologue' && <Clock left={left} total={clockTotal} paused={view.paused !== null} onTick={total > 0 ? tick : undefined} />}
-        <div className="flex items-center gap-1.5">
-          {me && phase !== 'over' && (
-            <button
-              type="button"
-              onClick={() => setSheet('dossier')}
-              className="font-type flex h-10 items-center gap-1.5 rounded-full border border-[var(--noir-brass)]/50 bg-black/40 px-3 text-[0.86rem] text-[var(--noir-paper)] outline-none hover:border-[var(--noir-brass)] focus-visible:ring-2 focus-visible:ring-[var(--noir-brass)]"
-            >
-              <FolderLock aria-hidden className="size-4 text-[var(--noir-brass)]" />
-              <span className="hidden sm:inline">My dossier</span>
-              <span className="sr-only sm:hidden">My dossier</span>
-            </button>
-          )}
-          <IconButton label="The town's notebook" onClick={() => setSheet('notebook')} dot={view.ledger.length > 0}>
-            <BookOpen className="size-4" />
-          </IconButton>
-          <IconButton label={soundOn ? 'Mute the narrator' : 'Unmute the narrator'} onClick={toggleSound} className={phase !== 'over' ? 'hidden sm:grid' : undefined}>
-            {soundOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
-          </IconButton>
-          {phase !== 'over' && (
-            <div className="relative">
-              <IconButton label="More" onClick={() => setMenu((m) => !m)} pressed={menu}>
-                <MoreHorizontal className="size-4" />
-              </IconButton>
-              <AnimatePresence>
-                {menu && (
-                  <>
-                    <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-30 cursor-default" onClick={() => setMenu(false)} />
-                    <motion.div
-                      initial={{ opacity: 0, y: -6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.15 }}
-                      className="absolute right-0 top-12 z-40 w-64 rounded-md border border-[var(--noir-brass)]/40 bg-[#14100c] p-1.5 shadow-[0_18px_40px_-10px_rgba(0,0,0,.9)]"
-                      role="menu"
-                      onClick={() => setMenu(false)}
-                    >
-                      <MenuItem icon={soundOn ? VolumeX : Volume2} onClick={toggleSound} className="sm:hidden">
-                        {soundOn ? 'Mute the narrator' : 'Unmute the narrator'}
-                      </MenuItem>
-                      {isHost && (
-                        <MenuItem icon={view.paused !== null ? Play : Pause} onClick={() => act(view.paused !== null ? 'resume' : 'pause')}>
-                          {view.paused !== null ? 'Resume the game' : 'Pause the game'}
-                        </MenuItem>
-                      )}
-                      {full.me && (
-                        <MenuItem icon={presence === 'online' ? Armchair : Wifi} onClick={() => act('presence', { mode: presence === 'online' ? 'table' : 'online' })}>
-                          {presence === 'online' ? 'I’m sitting at the table' : 'I’m playing online'}
-                        </MenuItem>
-                      )}
-                      <MenuItem icon={CircleHelp} onClick={() => setSheet('howto')}>
-                        How to play
-                      </MenuItem>
-                      {full.me && (
-                        <MenuItem icon={MonitorSpeaker} onClick={toggleSquare}>
-                          {squareHere ? 'Back to my own screen' : 'Use this screen as the town square'}
-                        </MenuItem>
-                      )}
-                      {layout === 'seats' && !onCall && call && (
-                        <MenuItem icon={Video} onClick={() => void call.join()}>
-                          Join the room call
-                        </MenuItem>
-                      )}
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/*
-        Watching rather than playing. This used to look exactly like the game
-        with its controls missing — somebody dealt out by a dropped connection
-        had no way to tell, and no way in.
-      */}
-      {!full.me && phase !== 'over' && (
-        <div className="relative z-20 mx-3 mb-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-sm border border-[var(--noir-brass)]/50 bg-black/70 px-4 py-2.5 sm:mx-6">
-          <p className="font-type text-center text-[0.86rem] text-[var(--noir-paper)]">
-            {full.joinable
-              ? 'You’re watching — you weren’t at the table when the cards were dealt. There’s still a seat.'
-              : 'You’re watching this game. You’ll be dealt into the next one.'}
-          </p>
-          {full.joinable && onJoin && <BarButton onClick={onJoin}>Join this game</BarButton>}
-        </div>
-      )}
-
-      {view.paused !== null && (
-        <div className="font-type relative z-10 mx-auto mb-2 rounded-sm bg-black/70 px-4 py-1.5 text-center text-[0.86rem] text-[var(--noir-brass)]">
-          The host has paused the game. Nothing can be chosen until it resumes.
-        </div>
-      )}
-
-      {/* The body. */}
-      {/* Room inside the edges for the photographs' brass frames and their lift on hover — nothing gets sliced off. */}
-      <div className="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-2 sm:px-6" data-lenis-prevent>
-        {/* The first time a part of the round comes up, it explains itself — above everything else. */}
-        <AnimatePresence>
-          {guide && (
-            <div className="mx-auto mb-3 w-full max-w-6xl">
-              <PhaseGuide key={phase} phase={phase} role={me?.role ?? null} accused={iAmAccused} withAIs={hasBots} onClose={() => setGuided((done) => new Set(done).add(phase))} />
-            </div>
-          )}
-        </AnimatePresence>
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 lg:flex-row lg:items-start">
-          <div className="flex min-w-0 flex-1 flex-col gap-4">
-            {showCentre && centre}
-            {trial && accused && layout !== 'square' && (
-              <p className="font-deco text-center text-[1.2rem] leading-tight text-[var(--noir-paper)] sm:text-[1.6rem]">
-                {phase === 'defence' ? `${firstName(accused)} makes their case` : `Guilty or innocent? ${view.judgement?.done ?? 0} of ${view.judgement?.of ?? 0} have decided`}
-              </p>
-            )}
-            {trial && accused && view.plea && (
-              <motion.blockquote
-                key={view.plea}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="noir-paper noir-paper-edge mx-auto w-full max-w-2xl rounded-sm px-4 py-3 sm:px-5"
+        {/* The top bar: where we are, the clock, the switches. */}
+        <header className="relative z-20 flex shrink-0 items-center gap-2 px-3 pb-2 pt-2 sm:gap-3 sm:px-6 [@media(max-height:520px)]:py-1">
+          <div className="min-w-0 flex-1">
+            <p className="font-type truncate text-[0.74rem] uppercase tracking-[0.24em] text-[var(--noir-brass)] [@media(max-height:520px)]:text-[0.66rem]">
+              {phase === 'over' || view.round === 0 ? arc.label : `${mood === 'night' ? 'Night' : 'Day'} ${view.round}`}
+              {layout === 'square' && (full.me ? ' · town square' : ' · watching')}
+              {me && !me.alive && phase !== 'over' && ' · you are a ghost'}
+            </p>
+            <h2 className="font-deco truncate text-[1.15rem] leading-tight text-[var(--noir-paper)] min-[400px]:text-[1.3rem] sm:text-[1.9rem] [@media(max-height:520px)]:text-[1.2rem]">
+              {phase === 'hush' ? (view.after === 'dawn' ? 'Morning' : 'The count') : PHASE_TITLE[phase]}
+            </h2>
+          </div>
+          {clockTotal > 0 && left > 0 && phase !== 'prologue' && <Clock left={left} total={clockTotal} paused={view.paused !== null} onTick={total > 0 ? tick : undefined} />}
+          <div className="flex items-center gap-1.5">
+            {me && phase !== 'over' && (
+              <button
+                type="button"
+                onClick={() => setSheet('dossier')}
+                className="font-type flex h-10 items-center gap-1.5 rounded-full border border-[var(--noir-brass)]/50 bg-black/40 px-3 text-[0.86rem] text-[var(--noir-paper)] outline-none hover:border-[var(--noir-brass)] focus-visible:ring-2 focus-visible:ring-[var(--noir-brass)]"
               >
-                <p className="font-type text-[0.72rem] uppercase tracking-[0.22em] text-[#6a5638]">{firstName(accused)}’s defence</p>
-                <p className="font-old mt-1 text-[1rem] italic leading-relaxed text-[#1c140b] sm:text-[1.1rem]">“{view.plea}”</p>
-              </motion.blockquote>
+                <FolderLock aria-hidden className="size-4 text-[var(--noir-brass)]" />
+                <span className="hidden sm:inline">My dossier</span>
+                <span className="sr-only sm:hidden">My dossier</span>
+              </button>
             )}
-            {showWall && seatWall}
-            {layout === 'square' && !showCentre && <TownSquare view={view} />}
+            <IconButton label="The town's notebook" onClick={() => setSheet('notebook')} dot={view.ledger.length > 0}>
+              <BookOpen className="size-4" />
+            </IconButton>
+            <IconButton label={soundOn ? 'Mute the narrator' : 'Unmute the narrator'} onClick={toggleSound} className={phase !== 'over' ? 'hidden sm:grid' : undefined}>
+              {soundOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
+            </IconButton>
+            {phase !== 'over' && (
+              <div className="relative">
+                <IconButton label="More" onClick={() => setMenu((m) => !m)} pressed={menu}>
+                  <MoreHorizontal className="size-4" />
+                </IconButton>
+                <AnimatePresence>
+                  {menu && (
+                    <>
+                      <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-30 cursor-default" onClick={() => setMenu(false)} />
+                      <motion.div
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 top-12 z-40 w-64 rounded-md border border-[var(--noir-brass)]/40 bg-[var(--noir-panel)] p-1.5 shadow-[0_18px_40px_-10px_rgba(0,0,0,.9)]"
+                        role="menu"
+                        onClick={() => setMenu(false)}
+                      >
+                        <MenuItem icon={soundOn ? VolumeX : Volume2} onClick={toggleSound} className="sm:hidden">
+                          {soundOn ? 'Mute the narrator' : 'Unmute the narrator'}
+                        </MenuItem>
+                        {isHost && (
+                          <MenuItem icon={view.paused !== null ? Play : Pause} onClick={() => act(view.paused !== null ? 'resume' : 'pause')}>
+                            {view.paused !== null ? 'Resume the game' : 'Pause the game'}
+                          </MenuItem>
+                        )}
+                        {full.me && (
+                          <MenuItem icon={presence === 'online' ? Armchair : Wifi} onClick={() => act('presence', { mode: presence === 'online' ? 'table' : 'online' })}>
+                            {presence === 'online' ? 'I’m sitting at the table' : 'I’m playing online'}
+                          </MenuItem>
+                        )}
+                        <MenuItem icon={CircleHelp} onClick={() => setSheet('howto')}>
+                          How to play
+                        </MenuItem>
+                        {full.me && (
+                          <MenuItem icon={MonitorSpeaker} onClick={toggleSquare}>
+                            {squareHere ? 'Back to my own screen' : 'Use this screen as the town square'}
+                          </MenuItem>
+                        )}
+                        {layout === 'seats' && !onCall && call && (
+                          <MenuItem icon={Video} onClick={() => void call.join()}>
+                            Join the room call
+                          </MenuItem>
+                        )}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
-          {aside && layout !== 'square' && (
-            /* On a phone your move comes first, and by day the conversation does; the rest waits below the story. */
-            <aside className={cn('flex w-full flex-col gap-3 lg:sticky lg:top-0 lg:order-none lg:w-[22rem] lg:shrink-0', movePanel || (talkFeed && phase === 'day') ? 'order-first' : 'order-last')}>
-              {movePanel}
-              {talkFeed}
-              {prediction}
-              {chat}
-            </aside>
-          )}
-        </div>
-      </div>
+        </header>
 
-      {/* The narrator, in subtitles. */}
-      {phase !== 'over' && phase !== 'dawn' && phase !== 'prologue' && view.narration && (
-        <div className="relative z-10 shrink-0 bg-[linear-gradient(0deg,rgba(0,0,0,.85),transparent)] pb-2 pt-4 [@media(max-height:520px)]:pb-1 [@media(max-height:520px)]:pt-1.5">
-          <Subtitles id={view.narration.id} text={view.narration.text} />
-        </div>
-      )}
+        {/*
+          Watching rather than playing. This used to look exactly like the game
+          with its controls missing — somebody dealt out by a dropped connection
+          had no way to tell, and no way in.
+        */}
+        {!full.me && phase !== 'over' && (
+          <div className="relative z-20 mx-3 mb-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-sm border border-[var(--noir-brass)]/50 bg-black/70 px-4 py-2.5 sm:mx-6">
+            <p className="font-type text-center text-[0.86rem] text-[var(--noir-paper)]">
+              {full.joinable
+                ? 'You’re watching — you weren’t at the table when the cards were dealt. There’s still a seat.'
+                : 'You’re watching this game. You’ll be dealt into the next one.'}
+            </p>
+            {full.joinable && onJoin && <BarButton onClick={onJoin}>Join this game</BarButton>}
+          </div>
+        )}
 
-      {error && (
-        <div role="alert" className="font-type relative z-20 mx-auto mb-2 rounded-sm bg-[var(--noir-blood)]/90 px-4 py-1.5 text-center text-[0.86rem] text-[#f7ead0]">
-          {error}
-        </div>
-      )}
+        {view.paused !== null && (
+          <div className="font-type relative z-10 mx-auto mb-2 rounded-sm bg-black/70 px-4 py-1.5 text-center text-[0.86rem] text-[var(--noir-brass)]">
+            The host has paused the game. Nothing can be chosen until it resumes.
+          </div>
+        )}
 
-      {/* Your current choice, always in reach of a thumb. */}
-      {decision && layout !== 'square' && (
-        <div className="relative z-10 shrink-0 border-t border-[var(--noir-brass)]/30 bg-[#0d0a07]/95 px-3 py-2.5 sm:px-6 [@media(max-height:520px)]:py-1.5">
-          <div className="mx-auto flex w-full max-w-6xl items-center gap-3">
-            <div className="min-w-0 flex-1" aria-live="polite">
-              <p className="font-type truncate text-[1rem] text-[var(--noir-paper)]">{decision.line}</p>
-              <p className="font-type text-[0.78rem] leading-snug text-[var(--noir-paper-dim)] [@media(max-height:520px)]:hidden">{decision.hint}</p>
+        {/* The body. */}
+        {/* Room inside the edges for the photographs' brass frames and their lift on hover — nothing gets sliced off. */}
+        <div className="relative z-10 min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-2 sm:px-6" data-lenis-prevent>
+          {/* The first time a part of the round comes up, it explains itself — above everything else. */}
+          <AnimatePresence>
+            {guide && (
+              <div className="mx-auto mb-3 w-full max-w-6xl">
+                <PhaseGuide key={phase} phase={phase} role={me?.role ?? null} accused={iAmAccused} withAIs={hasBots} onClose={() => setGuided((done) => new Set(done).add(phase))} />
+              </div>
+            )}
+          </AnimatePresence>
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 lg:flex-row lg:items-start">
+            <div className="flex min-w-0 flex-1 flex-col gap-4">
+              {showCentre && centre}
+              {trial && accused && layout !== 'square' && (
+                <p className="font-deco text-center text-[1.2rem] leading-tight text-[var(--noir-paper)] sm:text-[1.6rem]">
+                  {phase === 'defence' ? `${firstName(accused)} makes their case` : `Guilty or innocent? ${view.judgement?.done ?? 0} of ${view.judgement?.of ?? 0} have decided`}
+                </p>
+              )}
+              {trial && accused && view.plea && (
+                <motion.blockquote
+                  key={view.plea}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="noir-paper noir-paper-edge mx-auto w-full max-w-2xl rounded-sm px-4 py-3 sm:px-5"
+                >
+                  <p className="font-type text-[0.72rem] uppercase tracking-[0.22em] text-[var(--noir-ink-6)]">{firstName(accused)}’s defence</p>
+                  <p className="font-old mt-1 text-[1rem] italic leading-relaxed text-[var(--noir-ink-1)] sm:text-[1.1rem]">“{view.plea}”</p>
+                </motion.blockquote>
+              )}
+              {showWall && seatWall}
+              {layout === 'square' && !showCentre && <TownSquare view={view} />}
             </div>
-            {decision.action && <div className="shrink-0">{decision.action}</div>}
+            {aside && layout !== 'square' && (
+              /* On a phone your move comes first, and by day the conversation does; the rest waits below the story. */
+              <aside className={cn('flex w-full flex-col gap-3 lg:sticky lg:top-0 lg:order-none lg:w-[22rem] lg:shrink-0', movePanel || (talkFeed && phase === 'day') ? 'order-first' : 'order-last')}>
+                {movePanel}
+                {talkFeed}
+                {prediction}
+                {chat}
+              </aside>
+            )}
           </div>
         </div>
-      )}
+
+        {/* The narrator, in subtitles. */}
+        {phase !== 'over' && phase !== 'dawn' && phase !== 'prologue' && view.narration && (
+          <div className="relative z-10 shrink-0 bg-[linear-gradient(0deg,rgba(0,0,0,.85),transparent)] pb-2 pt-4 [@media(max-height:520px)]:pb-1 [@media(max-height:520px)]:pt-1.5">
+            <Subtitles id={view.narration.id} text={view.narration.text} />
+          </div>
+        )}
+
+        {error && (
+          <div role="alert" className="font-type relative z-20 mx-auto mb-2 rounded-sm bg-[var(--noir-blood)]/90 px-4 py-1.5 text-center text-[0.86rem] text-[var(--noir-on-accent)]">
+            {error}
+          </div>
+        )}
+
+        {/* Your current choice, always in reach of a thumb. */}
+        {decision && layout !== 'square' && (
+          <div className="relative z-10 shrink-0 border-t border-[var(--noir-brass)]/30 bg-[var(--noir-panel-lo)]/95 px-3 py-2.5 sm:px-6 [@media(max-height:520px)]:py-1.5">
+            <div className="mx-auto flex w-full max-w-6xl items-center gap-3">
+              <div className="min-w-0 flex-1" aria-live="polite">
+                <p className="font-type truncate text-[1rem] text-[var(--noir-paper)]">{decision.line}</p>
+                <p className="font-type text-[0.78rem] leading-snug text-[var(--noir-paper-dim)] [@media(max-height:520px)]:hidden">{decision.hint}</p>
+              </div>
+              {decision.action && <div className="shrink-0">{decision.action}</div>}
+            </div>
+          </div>
+        )}
 
 
-      {me && (
-        <DossierSheet view={view} open={sheet === 'dossier'} onClose={closeSheet} onPredict={(winner) => act('predict', { winner })} notes={notes} onNote={cycle} />
-      )}
-      <NotebookSheet view={view} open={sheet === 'notebook'} onClose={closeSheet} />
-      <HowToPlaySheet view={view} open={sheet === 'howto'} onClose={closeSheet} />
-    </div>
+        {me && (
+          <DossierSheet view={view} open={sheet === 'dossier'} onClose={closeSheet} onPredict={(winner) => act('predict', { winner })} notes={notes} onNote={cycle} />
+        )}
+        <NotebookSheet view={view} open={sheet === 'notebook'} onClose={closeSheet} />
+        <HowToPlaySheet view={view} open={sheet === 'howto'} onClose={closeSheet} />
+      </div>
+    </ArcContext.Provider>
   )
 }
 
@@ -935,12 +939,12 @@ function MenuItem({ icon: Icon, onClick, children, disabled, className }: { icon
 function BarButton({ on, tone = 'brass', onClick, children }: { on?: boolean; tone?: 'brass' | 'blood' | 'green' | 'ink'; onClick: () => void; children: React.ReactNode }) {
   const fill =
     tone === 'blood'
-      ? 'bg-[var(--noir-blood)] border-[var(--noir-blood)] text-[#f7ead0]'
+      ? 'bg-[var(--noir-blood)] border-[var(--noir-blood)] text-[var(--noir-on-accent)]'
       : tone === 'green'
-        ? 'bg-[#1f5a3a] border-[#1f5a3a] text-[#eaf5ea]'
+        ? 'bg-[var(--noir-town)] border-[var(--noir-town)] text-[var(--noir-on-accent)]'
         : tone === 'ink'
-          ? 'bg-[var(--noir-paper)] border-[var(--noir-paper)] text-[#1c140b]'
-          : 'bg-[var(--noir-brass)] border-[var(--noir-brass)] text-[#1c140b]'
+          ? 'bg-[var(--noir-paper)] border-[var(--noir-paper)] text-[var(--noir-ink-1)]'
+          : 'bg-[var(--noir-brass)] border-[var(--noir-brass)] text-[var(--noir-ink-1)]'
   return (
     <motion.button
       type="button"
@@ -975,7 +979,7 @@ function TargetGrid({
   note: (id: string) => string | null
   onChoose: (id: string) => void
 }) {
-  if (!targets.length) return <p className="font-type mt-3 text-[0.86rem] text-[#5a4a35]">Nobody to choose from.</p>
+  if (!targets.length) return <p className="font-type mt-3 text-[0.86rem] text-[var(--noir-ink-5)]">Nobody to choose from.</p>
   return (
     <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-3 [@media(max-height:520px)]:grid-cols-5 [@media(max-height:520px)]:lg:grid-cols-4">
       {targets.map((t) => {
@@ -988,14 +992,14 @@ function TargetGrid({
             onClick={() => onChoose(t.id)}
             aria-pressed={on}
             aria-label={`${verb} ${t.name}`}
-            className={cn('relative flex flex-col overflow-hidden rounded-sm border text-left outline-none focus-visible:ring-2 focus-visible:ring-[#2a2015]', on ? (red ? 'border-[var(--noir-blood)] ring-2 ring-[var(--noir-blood)]' : 'border-[#2a2015] ring-2 ring-[#2a2015]') : 'border-[#2a2015]/30')}
+            className={cn('relative flex flex-col overflow-hidden rounded-sm border text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--noir-ink-2)]', on ? (red ? 'border-[var(--noir-blood)] ring-2 ring-[var(--noir-blood)]' : 'border-[var(--noir-ink-2)] ring-2 ring-[var(--noir-ink-2)]') : 'border-[var(--noir-ink-2)]/30')}
           >
             <Portrait name={t.name} character={character(t.id)} className="aspect-square w-full [@media(max-height:520px)]:aspect-[4/3]" />
-            <span className="font-type truncate bg-[#efe3c8] px-1.5 py-1.5 text-[0.84rem] text-[#1c140b]">{callName(t.name)}</span>
-            {t.bot && <span className="font-type absolute right-1 top-1 rounded-sm bg-[var(--noir-brass)] px-1 text-[0.62rem] font-bold text-[#1c140b]">AI</span>}
-            {note(t.id) && <span className="font-type absolute left-1 top-1 rounded-sm bg-black/75 px-1.5 py-0.5 text-[0.7rem] text-[#f0d9a8]">{note(t.id)}</span>}
+            <span className="font-type truncate bg-[var(--noir-paper)] px-1.5 py-1.5 text-[0.84rem] text-[var(--noir-ink-1)]">{callName(t.name)}</span>
+            {t.bot && <span className="font-type absolute right-1 top-1 rounded-sm bg-[var(--noir-brass)] px-1 text-[0.62rem] font-bold text-[var(--noir-ink-1)]">AI</span>}
+            {note(t.id) && <span className="font-type absolute left-1 top-1 rounded-sm bg-black/75 px-1.5 py-0.5 text-[0.7rem] text-[var(--noir-paper)]">{note(t.id)}</span>}
             {on && (
-              <span className="noir-stamp absolute left-1/2 top-[38%] -translate-x-1/2 -translate-y-1/2 rounded-sm bg-[#efe3c8]/85 px-1.5 text-[0.8rem]" style={{ color: red ? 'var(--noir-blood)' : '#1c140b' }}>
+              <span className="noir-stamp absolute left-1/2 top-[38%] -translate-x-1/2 -translate-y-1/2 rounded-sm bg-[var(--noir-paper)]/85 px-1.5 text-[0.8rem]" style={{ color: red ? 'var(--noir-blood)' : 'var(--noir-ink-1)' }}>
                 {verb.toUpperCase()}
               </span>
             )}
@@ -1028,20 +1032,20 @@ function TownSquare({ view }: { view: MafiaView }) {
               : ''
   return (
     <div className="noir-paper noir-paper-edge mx-auto w-full max-w-3xl rounded-sm px-5 py-5 sm:px-7">
-      <p className="font-type text-[0.78rem] uppercase tracking-[0.22em] text-[#6a5638]">The town square · {alive.length} still standing</p>
-      <p className="font-deco mt-1 text-[1.6rem] leading-tight text-[#1c140b] sm:text-[2rem]">{status}</p>
+      <p className="font-type text-[0.78rem] uppercase tracking-[0.22em] text-[var(--noir-ink-6)]">The town square · {alive.length} still standing</p>
+      <p className="font-deco mt-1 text-[1.6rem] leading-tight text-[var(--noir-ink-1)] sm:text-[2rem]">{status}</p>
       <ul className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {view.players.map((p) => (
           <li
             key={p.id}
             className={cn(
-              'font-type flex items-center justify-between gap-2 rounded-sm border border-[#2a2015]/20 px-2.5 py-2 text-[0.95rem]',
+              'font-type flex items-center justify-between gap-2 rounded-sm border border-[var(--noir-ink-2)]/20 px-2.5 py-2 text-[0.95rem]',
               !p.alive && 'opacity-60',
               p.id === view.accused && 'border-[var(--noir-blood)] bg-[var(--noir-blood)]/10',
             )}
           >
             <span className={cn('truncate', !p.alive && 'line-through')}>{callName(p.name)}</span>
-            <span className="shrink-0 text-[0.72rem] uppercase text-[#6a5638]">
+            <span className="shrink-0 text-[0.72rem] uppercase text-[var(--noir-ink-6)]">
               {view.phase === 'day' && view.ready.includes(p.id) ? 'ready' : p.role && !p.alive ? ROLE_TITLE[p.role] : ''}
             </span>
           </li>
@@ -1049,7 +1053,7 @@ function TownSquare({ view }: { view: MafiaView }) {
       </ul>
       {(view.phase === 'vote' || view.phase === 'defence' || view.phase === 'judgement') && tallies.length > 0 && (
         <div className="mt-4">
-          <p className="font-type text-[0.78rem] uppercase tracking-[0.22em] text-[#6a5638]">Named</p>
+          <p className="font-type text-[0.78rem] uppercase tracking-[0.22em] text-[var(--noir-ink-6)]">Named</p>
           <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1">
             {tallies.map(({ p, n }) => (
               <p key={p.id} className="font-deco text-[1.3rem] text-[var(--noir-blood)]">
@@ -1092,7 +1096,7 @@ function TableTalk({
           ? 'Listening — what you say reaches the AIs as text.'
           : 'The AIs hear you by day.'
   return (
-    <div className="rounded-sm border border-[var(--noir-brass)]/35 bg-[#14100c]/90 px-3 py-3">
+    <div className="rounded-sm border border-[var(--noir-brass)]/35 bg-[var(--noir-panel)]/90 px-3 py-3">
       <div className="flex items-center justify-between gap-2">
         <p className="font-type text-[0.74rem] uppercase tracking-[0.2em] text-[var(--noir-brass)]">Table talk</p>
         {canHear && canSpeak && (
@@ -1115,7 +1119,7 @@ function TableTalk({
         {lines.length === 0 && thinking.length === 0 && <p className="font-type text-[0.84rem] text-[var(--noir-paper-dim)]/80">Nobody has said anything yet. Say something — the AIs answer when named.</p>}
         {lines.map((l) => (
           <p key={`${l.by}-${l.at}`} className="font-type text-[0.88rem] leading-snug text-[var(--noir-paper)]">
-            <span className={l.bot ? 'text-[var(--noir-brass)]' : 'text-[#9fb4d8]'}>{l.who}</span>
+            <span className={l.bot ? 'text-[var(--noir-brass)]' : 'text-[var(--noir-moon)]'}>{l.who}</span>
             {l.kind === 'heard' && <Mic aria-label="said aloud" className="mx-1 inline size-3 text-[var(--noir-paper-dim)]" />}
             <span className="text-[var(--noir-paper-dim)]">: </span>
             {l.text}
@@ -1141,7 +1145,7 @@ function TableTalk({
             aria-label="Say something to the table"
             className="font-type min-h-11 min-w-0 flex-1 rounded-sm border border-[var(--noir-brass)]/30 bg-black/40 px-2.5 text-[0.9rem] text-[var(--noir-paper)] outline-none placeholder:text-[var(--noir-paper-dim)]/50 focus:border-[var(--noir-brass)]"
           />
-          <button type="submit" aria-label="Say it" className="grid size-11 place-items-center rounded-sm bg-[var(--noir-brass)] text-[#1c140b] outline-none focus-visible:ring-2 focus-visible:ring-white">
+          <button type="submit" aria-label="Say it" className="grid size-11 place-items-center rounded-sm bg-[var(--noir-brass)] text-[var(--noir-ink-1)] outline-none focus-visible:ring-2 focus-visible:ring-white">
             <Send className="size-4" />
           </button>
         </form>
@@ -1159,13 +1163,13 @@ function Whispers({ title, lines, onSend, ghost }: { title: string; lines: { by:
     list.current?.scrollTo({ top: list.current.scrollHeight })
   }, [lines.length])
   return (
-    <div className={cn('rounded-sm border px-3 py-3', ghost ? 'border-[#9fb4d8]/30 bg-[#0b1424]/80' : 'border-[var(--noir-blood)]/40 bg-[#1a0806]/80')}>
-      <p className={cn('font-type text-[0.74rem] uppercase tracking-[0.2em]', ghost ? 'text-[#9fb4d8]' : 'text-[var(--noir-blood-bright)]')}>{title}</p>
+    <div className={cn('rounded-sm border px-3 py-3', ghost ? 'border-[var(--noir-moon)]/30 bg-[var(--noir-sky-1)]/80' : 'border-[var(--noir-blood)]/40 bg-[var(--noir-panel-lo)]/80')}>
+      <p className={cn('font-type text-[0.74rem] uppercase tracking-[0.2em]', ghost ? 'text-[var(--noir-moon)]' : 'text-[var(--noir-blood-bright)]')}>{title}</p>
       <div ref={list} className="mt-2 max-h-40 space-y-1 overflow-y-auto pr-1" data-lenis-prevent>
         {lines.length === 0 && <p className="font-type text-[0.84rem] text-[var(--noir-paper-dim)]/80">{ghost ? 'Say what you saw. The living can’t hear you.' : 'Plan quietly. The town can’t see this.'}</p>}
         {lines.map((l) => (
           <p key={`${l.by}-${l.at}`} className="font-type text-[0.88rem] leading-snug text-[var(--noir-paper)]">
-            <span className={ghost ? 'text-[#9fb4d8]' : 'text-[var(--noir-blood-bright)]'}>{l.who}:</span> {l.text}
+            <span className={ghost ? 'text-[var(--noir-moon)]' : 'text-[var(--noir-blood-bright)]'}>{l.who}:</span> {l.text}
           </p>
         ))}
       </div>
@@ -1186,7 +1190,7 @@ function Whispers({ title, lines, onSend, ghost }: { title: string; lines: { by:
           aria-label={ghost ? 'Message the other ghosts' : 'Message the Family'}
           className="font-type min-h-11 min-w-0 flex-1 rounded-sm border border-[var(--noir-brass)]/30 bg-black/40 px-2.5 text-[0.9rem] text-[var(--noir-paper)] outline-none placeholder:text-[var(--noir-paper-dim)]/50 focus:border-[var(--noir-brass)]"
         />
-        <button type="submit" aria-label="Send" className="grid size-11 place-items-center rounded-sm bg-[var(--noir-brass)] text-[#1c140b] outline-none focus-visible:ring-2 focus-visible:ring-white">
+        <button type="submit" aria-label="Send" className="grid size-11 place-items-center rounded-sm bg-[var(--noir-brass)] text-[var(--noir-ink-1)] outline-none focus-visible:ring-2 focus-visible:ring-white">
           <Send className="size-4" />
         </button>
       </form>

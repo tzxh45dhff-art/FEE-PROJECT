@@ -1,12 +1,14 @@
 import { randomInt } from 'node:crypto'
 
 import { isError, shuffle, type Ctx, type GameDef, type Later, type Player } from './engine.js'
-import { PERSONAS, nightPick, think, type Job, type Sight } from './mafia.bots.js'
-import { MAX_PLAYERS, MIN_PLAYERS, ROLE_INFO, dealFairly, dealKey, first, roleSet, teamOf, type Role } from './mafia.roles.js'
+import { ARCS, arcKey, isArc, pickArc, type ArcChoice, type ArcId } from './mafia.arcs.js'
+import { nightPick, think, type Job, type Sight } from './mafia.bots.js'
+import { MAX_PLAYERS, MIN_PLAYERS, ROLE_INFO, TITLES, dealFairly, dealKey, first, roleSet, teamOf, type Role } from './mafia.roles.js'
 import { narrate, type NarrationFacts, type NarrationKind } from '../services/mafiaNarration.service.js'
 
 /**
- * Mafia — Bombay, 1956.
+ * Mafia — Bombay 1956, a snowbound hotel, a Goan carnival, a neon city or a
+ * desert fort: one game, told in whichever story the table is playing.
  *
  * A night, a morning paper, a day of arguing, a nomination, a defence, a
  * verdict — round and round until one side is gone. The accused speaks
@@ -39,6 +41,8 @@ export type Options = {
   story: boolean
   /** AI players to fill the table. */
   bots: number
+  /** The story: one the host chose, or a surprise — one this room hasn't played lately. */
+  arc: ArcChoice
   /** How many of each card the host chose; null for the recommended deal. */
   family: number | null
   doctors: number | null
@@ -50,7 +54,7 @@ export type Seat = Player & {
   alive: boolean
   presence: Presence
   died?: { round: number; how: 'killed' | 'voted' }
-  /** An AI player: which Bombay regular is in the seat. */
+  /** An AI player: which of the story's regulars is in the seat. */
   bot?: number
   /** Who they are in the story: "jazz singer at a Colaba club", "a young lawyer from the High Court". */
   cover: string
@@ -94,6 +98,8 @@ export type Ledger = {
 export type Mafia = {
   /** This game, among all the room's games — so a rematch never inherits the last one's narration. */
   game: string
+  /** The story this game is told in. */
+  arc: ArcId
   phase: Phase
   /** Bumped on every phase change; timers carry it, so a stale timer does nothing. */
   step: number
@@ -180,7 +186,7 @@ export const readMs = (text: string) => Math.round((text.length / READ_RATE) * 1
 const seat = (state: Mafia, id: string) => state.players.find((p) => p.id === id)
 const living = (state: Mafia) => state.players.filter((p) => p.alive)
 const isFamily = (role: Role) => teamOf(role) === 'family'
-const TITLE_WORDS = new Set(['mrs', 'miss', 'father'])
+const TITLE_WORDS = TITLES
 
 function schedule(state: Mafia, ctx: Ctx, ms: number) {
   ctx.clearSchedule()
@@ -291,7 +297,8 @@ export function sightFor(state: Mafia, id: string, replyTo: string | null, now =
   }
   const left = state.deadline !== null ? state.deadline - now : state.paused
   return {
-    me: { id, role: v.me.role, persona: PERSONAS[me.bot ?? 0]!, files: v.me.files, lastProtected: v.me.lastProtected, selfSaveUsed: v.me.selfSaveUsed },
+    world: { tone: ARCS[state.arc].tone, venue: ARCS[state.arc].venue },
+    me: { id, role: v.me.role, persona: ARCS[state.arc].personas[me.bot ?? 0]!, files: v.me.files, lastProtected: v.me.lastProtected, selfSaveUsed: v.me.selfSaveUsed },
     phase: state.phase,
     round: state.round,
     msLeft: left !== null && left >= 0 && left < 3_600_000 ? left : null,
@@ -371,7 +378,8 @@ const COUNT = ['No one', 'One', 'Two', 'Three', 'Four', 'Five']
  * what the town can do about it, and how a day goes. The rules, told as the
  * story — so nobody reaches the first night wondering what is going on.
  */
-export function storyPages(state: Pick<Mafia, 'players'>): { key: StoryKey; text: string }[] {
+export function storyPages(state: Pick<Mafia, 'players' | 'arc'>): { key: StoryKey; text: string }[] {
+  const arc = ARCS[state.arc]
   const n = state.players.length
   const family = state.players.filter((p) => isFamily(p.role)).length
   const has = (role: Role) => state.players.some((p) => p.role === role)
@@ -380,11 +388,11 @@ export function storyPages(state: Pick<Mafia, 'players'>): { key: StoryKey; text
   return [
     {
       key: 'city',
-      text: 'Bombay, nineteen fifty-six. The monsoon has not stopped for a week. Every night this month somebody in the neighbourhood has gone missing, and every morning another body turns up at the docks. The police shrug. Everyone whispers the same name — the Family.',
+      text: arc.city,
     },
     {
       key: 'cast',
-      text: `Tonight, ${n} regulars have locked themselves inside the Irani café on the corner, with sweet chai and one flickering lamp. Look around the table. These are your neighbours — and your suspects.`,
+      text: arc.cast(n),
     },
     {
       key: 'family',
@@ -408,7 +416,7 @@ export function storyPages(state: Pick<Mafia, 'players'>): { key: StoryKey; text
     },
     {
       key: 'days',
-      text: 'Each morning the paper names the dead. Then the town argues, names a suspect, hears their defence, and votes: guilty or innocent. Hang every member of the Family and the town wins. If the Family ever equal the town, Bombay is theirs.',
+      text: `Each morning the paper names the dead. Then the town argues, names a suspect, hears their defence, and votes: guilty or innocent. Hang every member of the Family and the town wins. If the Family ever equal the town, ${arc.theirs}`,
     },
   ]
 }
@@ -428,7 +436,7 @@ function enterDeal(state: Mafia, ctx: Ctx) {
   state.phase = 'deal'
   state.step += 1
   state.next = []
-  setNarration(state, 'intro', 'deal', {}, state.options.rematch ? REMATCH_INTRO : state.options.story ? STORY_DEAL : INTRO)
+  setNarration(state, 'intro', 'deal', {}, state.options.rematch ? ARCS[state.arc].rematch : state.options.story ? STORY_DEAL : ARCS[state.arc].intro)
   schedule(state, ctx, state.options.rematch ? REMATCH_DEAL_MS : DEAL_MS)
   return state
 }
@@ -447,7 +455,8 @@ function enterNight(state: Mafia, ctx: Ctx) {
   state.judgement = {}
   state.verdict = null
   state.thinking = []
-  const line = NIGHTFALL[(state.round - 1) % NIGHTFALL.length]!
+  const nightfall = ARCS[state.arc].nightfall
+  const line = nightfall[(state.round - 1) % nightfall.length]!
   setNarration(state, 'nightfall', 'night', { round: state.round }, line)
   schedule(state, ctx, state.options.nightSeconds * 1000 + NIGHTFALL_LEAD_MS)
   planBots(state, ctx)
@@ -523,12 +532,9 @@ function resolveNight(state: Mafia, ctx: Ctx) {
     saved,
     alive: living(state).length,
   }
-  const fallback = victim
-    ? `${first(victim.name)} is dead. They found the body at Dock 9 before sunrise, and the Family left no fingerprints.`
-    : saved
-      ? 'Nobody died. Somebody came for a soul last night — and somebody else got there first.'
-      : 'Nobody died. A strange, quiet night. The Family is patient.'
-  const headline = victim ? `${first(victim.name).toUpperCase()} FOUND DEAD AT DOCK 9` : saved ? 'MIRACLE ON MALABAR HILL' : 'A NIGHT WITHOUT BLOOD'
+  const arc = ARCS[state.arc]
+  const fallback = victim ? arc.found(first(victim.name)) : saved ? arc.saved : arc.quiet
+  const headline = victim ? arc.headline.dead(first(victim.name).toUpperCase()) : saved ? arc.headline.saved : arc.headline.quiet
   state.phase = 'hush'
   state.step += 1
   state.after = 'dawn'
@@ -604,7 +610,7 @@ function resolveNomination(state: Mafia, ctx: Ctx) {
   state.history.push({ round: state.round, kind: 'spared' })
   state.phase = 'hush'
   state.after = 'verdict'
-  setNarration(state, 'spared', 'verdict', { round: state.round }, SPARED[(state.round - 1) % SPARED.length]!)
+  setNarration(state, 'spared', 'verdict', { round: state.round }, ARCS[state.arc].spared[(state.round - 1) % ARCS[state.arc].spared.length]!)
   schedule(state, ctx, HUSH_MAX_MS)
   state.deadline = ctx.now() + HUSH_MIN_MS
   return state
@@ -698,51 +704,15 @@ function enterOver(state: Mafia, winner: Winner | null, ctx: Ctx) {
     'epilogue',
     'over',
     { round: state.round, winner, familyNames: family, survivors: living(state).map((p) => p.name) },
-    winner === 'town'
-      ? 'The Family is finished. The rain eases over Bombay, and for one night, the city sleeps without fear.'
-      : winner === 'family'
-        ? 'By morning the city belongs to the Family. Nobody saw anything. Nobody ever does.'
-        : winner === 'jester'
-          ? 'They hanged a fool, and the fool won. Bombay will be laughing about this one for years.'
-          : 'The case is closed before it is solved. Some files stay open forever.',
+    ARCS[state.arc].epilogue[winner ?? 'none'],
   )
   return state
 }
 
 /* ── authored lines ────────────────────────────────────────────────────── */
 
-const NIGHTFALL = [
-  'Night falls on Bombay. The rain comes down on Marine Drive, the jazz dies in the clubs of Colaba — and somewhere in the dark, the Family wakes. Close your eyes, citizens.',
-  'The street lamps flicker. The last tram rattles home. Lock your doors, Bombay — the Family is out tonight.',
-  'Another night. Another storm off the Arabian Sea. Somebody in this town will not see the morning.',
-  'Midnight. The docks are quiet, the Irani cafés are shut, and the Family is choosing. Sleep, if you can.',
-]
-
-const SPARED = [
-  'No one stands accused. The town argues itself hoarse, and somewhere in the rain, a killer smiles.',
-  'The town cannot agree on a name. Everyone goes home. Not everyone will wake up.',
-]
-
-const INTRO =
-  'Bombay, nineteen fifty-six. The monsoon has not stopped for a week, and neither have the killings. Among you sits the Family. Look at your card. Tell no one.'
-const REMATCH_INTRO = 'Another hand, another night in Bombay. New cards. Trust nobody.'
+/* Every story's own lines live in mafia.arcs.ts; this one is the same in all of them. */
 const STORY_DEAL = 'The cards come round the table, face down. Turn yours over — and tell no one what it says.'
-
-/** Who the people at the table are in the story; the AIs bring their own. */
-const COVERS = [
-  'a young lawyer from the High Court',
-  'a schoolteacher from Girgaum',
-  'a stranger just off the Frontier Mail',
-  'a clerk at the Port Trust',
-  'a nurse at J.J. Hospital',
-  'a sailor on shore leave',
-  'a typist at the Times of India',
-  'a college student mad about cricket',
-  'a music teacher from Dadar',
-  'a photographer for the film magazines',
-  'a bank cashier from Fort',
-  'a young doctor’s assistant from Byculla',
-]
 
 /* ── the game ──────────────────────────────────────────────────────────── */
 
@@ -798,21 +768,24 @@ export const mafia: GameDef<Mafia, Options> = {
       /* A first game opens with the story; a rematch goes straight to the cards. */
       story: body.story !== false && body.rematch !== true,
       bots: Number.isInteger(body.bots) ? Math.min(MAX_PLAYERS - 1, Math.max(0, body.bots as number)) : 0,
+      arc: isArc(body.arc) ? body.arc : 'surprise',
     }
   },
 
   start(people, options, ctx) {
-    /* The AI regulars take the empty chairs. */
-    const cast = shuffle(PERSONAS.map((_, i) => i), ctx).slice(0, Math.max(0, Math.min(options.bots, MAX_PLAYERS - people.length)))
-    const covers = shuffle(COVERS, ctx)
+    const arc = ARCS[pickArc(options.arc, ctx.seen, ctx.random)]
+    /* The story's regulars take the empty chairs. */
+    const cast = shuffle(arc.personas.map((_, i) => i), ctx).slice(0, Math.max(0, Math.min(options.bots, MAX_PLAYERS - people.length)))
+    const covers = shuffle(arc.covers, ctx)
     const players: (Player & { bot?: number; cover: string })[] = [
       ...people.map((p, i) => ({ ...p, cover: covers[i % covers.length]! })),
-      ...cast.map((persona, i) => ({ id: `ai-${i + 1}`, name: PERSONAS[persona]!.name, bot: persona, cover: PERSONAS[persona]!.blurb })),
+      ...cast.map((persona, i) => ({ id: `ai-${i + 1}`, name: arc.personas[persona]!.name, bot: persona, cover: arc.personas[persona]!.blurb })),
     ]
     /* Random, but the cards move around the room: who just held one is less likely to again. */
     const roles = dealFairly(players.map((p) => p.id), roleSet(players.length, options), ctx.seen, ctx.random)
     const state: Mafia = {
       game: `${ctx.now().toString(36)}${ctx.random(1_000_000).toString(36)}`,
+      arc: arc.id,
       phase: 'deal',
       step: 1,
       round: 0,
@@ -1185,7 +1158,8 @@ export const mafia: GameDef<Mafia, Options> = {
     }
     const n = state.narration
     if (n && !n.ready && once(n.id)) {
-      work.push(services.narrate(n.kind, n.facts, n.text, n.headline).then((line) => ({ action: 'narrate', payload: { id: n.id, ...line } })))
+      const arc = ARCS[state.arc]
+      work.push(services.narrate(n.kind, n.facts, n.text, n.headline, { world: arc.world, paper: arc.paper }).then((line) => ({ action: 'narrate', payload: { id: n.id, ...line } })))
     }
     /* Every AI thinks for itself, at the same time as the others. */
     for (const thought of state.thinking) {
@@ -1221,7 +1195,7 @@ export const mafia: GameDef<Mafia, Options> = {
         cover: p.cover,
         died: p.died ?? null,
         role: known ? p.role : null,
-        bot: isBot(p) ? PERSONAS[p.bot!]!.blurb : null,
+        bot: isBot(p) ? ARCS[state.arc].personas[p.bot!]!.blurb : null,
       }
     })
     const n = state.narration
@@ -1230,6 +1204,7 @@ export const mafia: GameDef<Mafia, Options> = {
     const publicVotes = state.phase === 'vote' || state.phase === 'defence' || state.phase === 'judgement' || state.phase === 'verdict' || state.phase === 'hush'
     return {
       game: state.game,
+      arc: state.arc,
       phase: state.phase,
       step: state.step,
       round: state.round,
@@ -1243,7 +1218,7 @@ export const mafia: GameDef<Mafia, Options> = {
             id: me.id,
             role: me.role,
             alive: me.alive,
-            title: ROLE_INFO[me.role].title,
+            title: me.role === 'villager' ? ARCS[state.arc].citizen : ROLE_INFO[me.role].title,
             line: ROLE_INFO[me.role].line,
             seen: state.seen.includes(viewer),
             pick: state.picks[viewer] ?? null,
@@ -1316,7 +1291,8 @@ export const mafia: GameDef<Mafia, Options> = {
     const state: Mafia = structuredClone(prev)
     const chairs = state.players.filter(isBot)
     const used = new Set(state.players.map((p) => p.cover))
-    const cover = COVERS.find((c) => !used.has(c)) ?? COVERS[0]!
+    const covers = ARCS[state.arc].covers
+    const cover = covers.find((c) => !used.has(c)) ?? covers[0]!
     if (chairs.length) {
       const chair = chairs[ctx.random(chairs.length)]!
       const from = chair.id
@@ -1346,9 +1322,9 @@ export const mafia: GameDef<Mafia, Options> = {
     return state
   },
 
-  /* Who held what, so the room's next deal moves the cards around. People only — the AI chairs change hands every game. */
+  /* Who held what, so the room's next deal moves the cards around (people only — the AI chairs change hands every game) — and which story this was. */
   used(state) {
-    return state.players.filter((p) => !isBot(p)).map((p) => dealKey(state.game, p.id, p.role))
+    return [...state.players.filter((p) => !isBot(p)).map((p) => dealKey(state.game, p.id, p.role)), arcKey(state.arc)]
   },
 
   over(state) {

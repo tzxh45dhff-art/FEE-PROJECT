@@ -9,7 +9,8 @@ import { describe, it } from 'node:test'
 import type { Ctx, Player } from '../src/games/engine.js'
 import { familyChoice, mafia, services, sightFor, storyPages, tally, winnerOf, type Mafia, type Options } from '../src/games/mafia.js'
 import { briefing, composeMs, judgeByRules, lineByRules, nightPick, texture, voteByRules } from '../src/games/mafia.bots.js'
-import { dealCounts, dealFairly, dealKey, maxFamily, roleSet, type Role } from '../src/games/mafia.roles.js'
+import { ARCS, ARC_IDS, pickArc } from '../src/games/mafia.arcs.js'
+import { dealCounts, dealFairly, dealKey, first, maxFamily, roleSet, type Role } from '../src/games/mafia.roles.js'
 
 let clock = 0
 let timers: { at: number; action: string; payload: Record<string, unknown> }[] = []
@@ -935,7 +936,42 @@ describe('mafia — a fair deal across games', () => {
     timers = []
     const state = mafia.start(people(2), options({ bots: 3 }), ctx())
     const keys = mafia.used!(state)
-    assert.equal(keys.length, 2)
-    assert.ok(keys.every((k) => k.startsWith(`deal:${state.game}:`) && !k.includes(':ai-')))
+    const deals = keys.filter((k) => k.startsWith('deal:'))
+    assert.equal(deals.length, 2)
+    assert.ok(deals.every((k) => k.startsWith(`deal:${state.game}:`) && !k.includes(':ai-')))
+    assert.deepEqual(keys.filter((k) => !k.startsWith('deal:')), [`arc:${state.arc}`], 'and which story it was')
+  })
+})
+
+describe('mafia — the stories', () => {
+  it('a surprise is a story the room has not played; once they have had them all, the one played longest ago', () => {
+    assert.equal(pickArc('goa', ['arc:goa'], () => 0), 'goa', 'the host’s pick stands')
+    const fresh = new Set<string>()
+    for (let i = 0; i < 20; i++) fresh.add(pickArc('surprise', ['arc:bombay', 'arc:neo', 'deal:x:aditi:family'], (n) => i % n))
+    assert.deepEqual([...fresh].sort(), ['goa', 'jaisalmer', 'shimla'])
+    assert.equal(pickArc('surprise', ['arc:neo', 'arc:goa', 'arc:bombay', 'arc:jaisalmer', 'arc:shimla'], () => 0), 'neo')
+  })
+
+  it('every story is complete, and a game is told in its story from the first page to the last', () => {
+    for (const id of ARC_IDS) {
+      const arc = ARCS[id]
+      assert.equal(arc.personas.length, 11, `${id}: an AI for every empty chair`)
+      assert.equal(arc.covers.length, 12, `${id}: a cover for every seat`)
+      assert.equal(new Set(arc.personas.map((p) => first(p.name))).size, 11, `${id}: no two AIs answer to the same name`)
+      assert.ok(arc.nightfall.length >= 2 && arc.spared.length >= 2)
+      assert.ok(arc.headline.dead('MEERA').length <= 42, `${id}: the headline fits the paper`)
+    }
+    clock = 0
+    timers = []
+    let state = mafia.start(people(4), options({ arc: 'shimla', story: true, bots: 2 }), ctx())
+    assert.equal(state.arc, 'shimla')
+    assert.equal(state.narration!.text, ARCS.shimla.city)
+    assert.ok(state.players.filter((p) => p.bot !== undefined).every((p) => ARCS.shimla.personas.some((x) => x.name === p.name)))
+    assert.ok(state.players.filter((p) => p.bot === undefined).every((p) => ARCS.shimla.covers.includes(p.cover)))
+    assert.equal((view(state, 'aditi') as unknown as { arc: string }).arc, 'shimla', 'screens dress for the story')
+    state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager', 'villager'] as Role[])[i]!))
+    assert.equal((view(state, 'aditi') as unknown as { me: { title: string } }).me.title, ARCS.shimla.citizen)
+    assert.equal(sightFor(state, 'ai-1', null).world!.venue, ARCS.shimla.venue)
+    assert.equal(options({ arc: 'atlantis' as never }).arc, 'surprise', 'an unknown story is a surprise')
   })
 })

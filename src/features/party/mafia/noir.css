@@ -1,27 +1,327 @@
 /*
- * Bombay Noir, 1956 — everything the Mafia screens share.
+ * Mafia's look — everything the Mafia screens share, in every story.
  * Scoped under .noir so none of it leaks into the rest of Huddle.
+ *
+ * The components never name a colour: they use these tokens, and each story
+ * (`data-arc` on the .noir root) redefines them — Bombay's sepia and brass,
+ * the hotel's frost and silver, the carnival's neon, the city's cyan glow,
+ * the fort's sandstone gold. Same screens, a different world.
+ *
  * Motion is transform and opacity only; nothing here blurs.
  */
 .noir {
+  /* Surfaces */
   --noir-ink: #0c0a08;
   --noir-smoke: #16120e;
   --noir-wood: #2a1d14;
+  --noir-panel: #14100c;
+  --noir-panel-hi: #221a12;
+  --noir-panel-lo: #0d0a07;
+  --noir-felt: #163024;
+  --noir-felt-hi: #2f5a44;
+  /* Paper and the ink on it, darkest first */
   --noir-paper: #efe3c8;
   --noir-paper-dim: #c9b994;
+  --noir-paper-1: #f1e6cb;
+  --noir-paper-2: #e4d4ad;
+  --noir-paper-stain: rgba(120, 80, 30, 0.22);
+  --noir-paper-line: rgba(60, 40, 15, 0.25);
+  --noir-ink-1: #1c140b;
+  --noir-ink-2: #2a2015;
+  --noir-ink-3: #3a2c1c;
+  --noir-ink-4: #4a3a26;
+  --noir-ink-5: #5a4a35;
+  --noir-ink-6: #6a5638;
   --noir-sepia: #8a6a3d;
+  /* The accent: brass frames, the clock, the buttons */
   --noir-brass: #c8a45e;
   --noir-brass-dim: #8f7440;
+  --noir-brass-1: #e8cc8a;
+  --noir-brass-2: #b8913f;
+  --noir-brass-3: #7d5e25;
+  --noir-frame-1: rgba(232, 204, 138, 0.55);
+  --noir-frame-2: rgba(200, 164, 94, 0.35);
+  /* Sides */
   --noir-blood: #a3201c;
   --noir-blood-bright: #d43a2f;
+  --noir-blood-soft: #f0a49c;
+  --noir-town: #1f5a3a;
+  --noir-town-mid: #3f8a5f;
+  --noir-town-soft: #8fd0a8;
+  --noir-jester: #6b3fa0;
+  --noir-on-accent: #f7ead0;
+  --noir-card-1: #5a1210;
+  --noir-card-2: #3d0c0a;
+  --noir-card-3: #2a0807;
+  /* The room by day and by night, and the sky over the city */
+  --noir-lamp: rgba(255, 214, 150, 0.22);
+  --noir-room-1: #1a140f;
+  --noir-room-2: #0d0a07;
+  --noir-night-glow: rgba(170, 200, 255, 0.12);
+  --noir-night-1: #0b1424;
+  --noir-night-2: #05080f;
   --noir-night: #0a1322;
-  --noir-felt: #1d3a2c;
+  --noir-moon: #9fb4d8;
+  --noir-moon-disc: #e9dcc0;
+  --noir-moon-glow: rgba(233, 220, 192, 0.25);
+  --noir-sky-1: #0b1424;
+  --noir-sky-2: #05080f;
+  --noir-skyline: #020409;
+  --noir-window: #e9c77a;
+  --noir-tint-1: rgba(112, 74, 30, 0.22);
+  --noir-tint-2: rgba(40, 20, 5, 0.32);
+  --noir-weather-1: rgba(180, 205, 255, 0.11);
+  --noir-weather-2: rgba(200, 220, 255, 0.07);
+  /* Lettering */
   --font-deco: 'Limelight', 'Playfair Display', serif;
   --font-type: 'Special Elite', 'Courier New', monospace;
   --font-old: 'Playfair Display', Georgia, serif;
   background: var(--noir-ink);
   color: var(--noir-paper);
 }
+
+/* Simla, 1922 — a hotel snowed in: frost, silver, firelight in the windows. */
+.noir[data-arc='shimla'] {
+  --noir-ink: #090c11;
+  --noir-smoke: #111720;
+  --noir-wood: #1f2a36;
+  --noir-panel: #0f141b;
+  --noir-panel-hi: #19212c;
+  --noir-panel-lo: #0a0e13;
+  --noir-felt: #18304a;
+  --noir-felt-hi: #2c5274;
+  --noir-paper: #eef3f7;
+  --noir-paper-dim: #b4c2cf;
+  --noir-paper-1: #f5f8fb;
+  --noir-paper-2: #dbe4ec;
+  --noir-paper-stain: rgba(70, 100, 140, 0.16);
+  --noir-paper-line: rgba(30, 50, 80, 0.22);
+  --noir-ink-1: #0f1720;
+  --noir-ink-2: #1c2836;
+  --noir-ink-3: #2a3848;
+  --noir-ink-4: #384859;
+  --noir-ink-5: #4a5a6c;
+  --noir-ink-6: #5a6b7e;
+  --noir-sepia: #6c8299;
+  --noir-brass: #c6d3df;
+  --noir-brass-dim: #8295a8;
+  --noir-brass-1: #f4f8fb;
+  --noir-brass-2: #b5c4d2;
+  --noir-brass-3: #6b7d90;
+  --noir-frame-1: rgba(230, 240, 250, 0.55);
+  --noir-frame-2: rgba(180, 200, 220, 0.35);
+  --noir-blood: #9b1b2a;
+  --noir-blood-bright: #d23446;
+  --noir-blood-soft: #f2a3ad;
+  --noir-card-1: #18304a;
+  --noir-card-2: #0e1e30;
+  --noir-card-3: #08121d;
+  --noir-on-accent: #f5f8fb;
+  --noir-lamp: rgba(255, 196, 130, 0.2);
+  --noir-room-1: #141b24;
+  --noir-room-2: #080b10;
+  --noir-night-glow: rgba(200, 225, 255, 0.16);
+  --noir-night-1: #142235;
+  --noir-night-2: #070c14;
+  --noir-moon: #b8cde4;
+  --noir-moon-disc: #f4f8fc;
+  --noir-moon-glow: rgba(240, 248, 255, 0.3);
+  --noir-sky-1: #1b2c42;
+  --noir-sky-2: #0a111b;
+  --noir-skyline: #04070c;
+  --noir-window: #ffd49a;
+  --noir-tint-1: rgba(60, 90, 130, 0.2);
+  --noir-tint-2: rgba(10, 20, 40, 0.3);
+  --noir-weather-1: rgba(255, 255, 255, 0.85);
+  --noir-weather-2: rgba(230, 240, 255, 0.6);
+  --font-deco: 'Cinzel', 'Playfair Display', serif;
+}
+
+/* Goa, 1984 — carnival week: sunset pink, mango, teal, coloured bulbs. */
+.noir[data-arc='goa'] {
+  --noir-ink: #12091a;
+  --noir-smoke: #1d0f26;
+  --noir-wood: #3a1636;
+  --noir-panel: #1a0c22;
+  --noir-panel-hi: #2a1434;
+  --noir-panel-lo: #120818;
+  --noir-felt: #0d4a48;
+  --noir-felt-hi: #16807a;
+  --noir-paper: #fff1e2;
+  --noir-paper-dim: #f2c6a6;
+  --noir-paper-1: #fff6ea;
+  --noir-paper-2: #ffdfc4;
+  --noir-paper-stain: rgba(255, 110, 150, 0.16);
+  --noir-paper-line: rgba(120, 30, 70, 0.2);
+  --noir-ink-1: #2a0d1e;
+  --noir-ink-2: #3b1529;
+  --noir-ink-3: #4d1e36;
+  --noir-ink-4: #602944;
+  --noir-ink-5: #733552;
+  --noir-ink-6: #874461;
+  --noir-sepia: #c0592f;
+  --noir-brass: #ffb547;
+  --noir-brass-dim: #c9792a;
+  --noir-brass-1: #ffd98a;
+  --noir-brass-2: #ff9d3c;
+  --noir-brass-3: #d4561d;
+  --noir-frame-1: rgba(255, 200, 120, 0.6);
+  --noir-frame-2: rgba(255, 90, 150, 0.4);
+  --noir-blood: #c2185b;
+  --noir-blood-bright: #ff3d7f;
+  --noir-blood-soft: #ffb0cb;
+  --noir-town: #0f7a6e;
+  --noir-town-mid: #23b3a0;
+  --noir-town-soft: #8ff0df;
+  --noir-jester: #7b3fd0;
+  --noir-card-1: #c2185b;
+  --noir-card-2: #7a0f3c;
+  --noir-card-3: #3d0820;
+  --noir-on-accent: #fff6ea;
+  --noir-lamp: rgba(255, 120, 180, 0.24);
+  --noir-room-1: #2a1030;
+  --noir-room-2: #110715;
+  --noir-night-glow: rgba(255, 150, 90, 0.16);
+  --noir-night-1: #2b1150;
+  --noir-night-2: #0b0620;
+  --noir-moon: #ffb0d6;
+  --noir-moon-disc: #ffd27a;
+  --noir-moon-glow: rgba(255, 170, 90, 0.35);
+  --noir-sky-1: #ff7a59;
+  --noir-sky-2: #3a1460;
+  --noir-skyline: #12061c;
+  --noir-window: #ffd166;
+  --noir-tint-1: rgba(255, 90, 140, 0.16);
+  --noir-tint-2: rgba(60, 10, 50, 0.28);
+  --noir-weather-1: #ff5fa2;
+  --noir-weather-2: #3fe0c8;
+  --font-deco: 'Shrikhand', 'Playfair Display', serif;
+}
+
+/* Neo-Bombay, 2089 — neon on wet glass: cyan, magenta, deep violet. */
+.noir[data-arc='neo'] {
+  --noir-ink: #05060c;
+  --noir-smoke: #0b0e1a;
+  --noir-wood: #161b30;
+  --noir-panel: #0a0d1a;
+  --noir-panel-hi: #141a2e;
+  --noir-panel-lo: #06080f;
+  --noir-felt: #0d2238;
+  --noir-felt-hi: #164f6e;
+  --noir-paper: #e6fbff;
+  --noir-paper-dim: #8cb9cb;
+  --noir-paper-1: #effcff;
+  --noir-paper-2: #cbeaf4;
+  --noir-paper-stain: rgba(0, 200, 255, 0.14);
+  --noir-paper-line: rgba(0, 90, 130, 0.25);
+  --noir-ink-1: #04121c;
+  --noir-ink-2: #0b2130;
+  --noir-ink-3: #14303f;
+  --noir-ink-4: #1e3f4f;
+  --noir-ink-5: #2a4f60;
+  --noir-ink-6: #386272;
+  --noir-sepia: #3f7f99;
+  --noir-brass: #3ee6ff;
+  --noir-brass-dim: #1f97b0;
+  --noir-brass-1: #a8f6ff;
+  --noir-brass-2: #2ccbe8;
+  --noir-brass-3: #0b6f8a;
+  --noir-frame-1: rgba(62, 230, 255, 0.6);
+  --noir-frame-2: rgba(255, 46, 147, 0.4);
+  --noir-blood: #c80065;
+  --noir-blood-bright: #ff2e93;
+  --noir-blood-soft: #ff9ccc;
+  --noir-town: #0b7f6a;
+  --noir-town-mid: #19c29f;
+  --noir-town-soft: #7dffd9;
+  --noir-jester: #8a4dff;
+  --noir-card-1: #2a0b4a;
+  --noir-card-2: #150630;
+  --noir-card-3: #0a031a;
+  --noir-on-accent: #f0fdff;
+  --noir-lamp: rgba(255, 46, 147, 0.2);
+  --noir-room-1: #0e1024;
+  --noir-room-2: #04050b;
+  --noir-night-glow: rgba(62, 230, 255, 0.16);
+  --noir-night-1: #0a0b2a;
+  --noir-night-2: #030312;
+  --noir-moon: #7deeff;
+  --noir-moon-disc: #ff6fb5;
+  --noir-moon-glow: rgba(255, 46, 147, 0.35);
+  --noir-sky-1: #1a0b3a;
+  --noir-sky-2: #04030f;
+  --noir-skyline: #020208;
+  --noir-window: #3ee6ff;
+  --noir-tint-1: rgba(40, 0, 90, 0.2);
+  --noir-tint-2: rgba(0, 20, 40, 0.3);
+  --noir-weather-1: rgba(255, 90, 180, 0.16);
+  --noir-weather-2: rgba(90, 230, 255, 0.1);
+  --font-deco: 'Orbitron', 'Exo 2', sans-serif;
+  --font-type: 'Share Tech Mono', 'Courier New', monospace;
+  --font-old: 'Exo 2', 'Playfair Display', sans-serif;
+}
+
+/* Jaisalmer, 1890 — the Golden Fort: sandstone, gold leaf, indigo nights. */
+.noir[data-arc='jaisalmer'] {
+  --noir-ink: #120b06;
+  --noir-smoke: #1e130a;
+  --noir-wood: #3e260f;
+  --noir-panel: #1a1109;
+  --noir-panel-hi: #2b1c0e;
+  --noir-panel-lo: #110a05;
+  --noir-felt: #3b1f4a;
+  --noir-felt-hi: #6a3a80;
+  --noir-paper: #f8e9cd;
+  --noir-paper-dim: #dcbf8f;
+  --noir-paper-1: #fcf0d8;
+  --noir-paper-2: #ebcf9c;
+  --noir-paper-stain: rgba(170, 100, 30, 0.24);
+  --noir-paper-line: rgba(110, 60, 15, 0.26);
+  --noir-ink-1: #2a1606;
+  --noir-ink-2: #3a210d;
+  --noir-ink-3: #4a2e16;
+  --noir-ink-4: #5b3b1f;
+  --noir-ink-5: #6b4a29;
+  --noir-ink-6: #7c5933;
+  --noir-sepia: #a8682a;
+  --noir-brass: #e6b04a;
+  --noir-brass-dim: #a7782c;
+  --noir-brass-1: #ffdc8f;
+  --noir-brass-2: #d99a32;
+  --noir-brass-3: #8f5a18;
+  --noir-frame-1: rgba(255, 210, 120, 0.6);
+  --noir-frame-2: rgba(220, 150, 60, 0.4);
+  --noir-blood: #9e1f1f;
+  --noir-blood-bright: #d63c2a;
+  --noir-blood-soft: #f4ab95;
+  --noir-town: #22604a;
+  --noir-town-mid: #3c9474;
+  --noir-town-soft: #9fdcbd;
+  --noir-jester: #7a3a9e;
+  --noir-card-1: #2c1a5a;
+  --noir-card-2: #180e36;
+  --noir-card-3: #0d0820;
+  --noir-on-accent: #fff4dc;
+  --noir-lamp: rgba(255, 190, 110, 0.26);
+  --noir-room-1: #2a190b;
+  --noir-room-2: #120b05;
+  --noir-night-glow: rgba(160, 150, 255, 0.14);
+  --noir-night-1: #1a1438;
+  --noir-night-2: #08061a;
+  --noir-moon: #b9b0ff;
+  --noir-moon-disc: #fff1d0;
+  --noir-moon-glow: rgba(255, 240, 200, 0.28);
+  --noir-sky-1: #2a1d52;
+  --noir-sky-2: #0c0820;
+  --noir-skyline: #0a0612;
+  --noir-window: #ffcf6b;
+  --noir-tint-1: rgba(150, 90, 20, 0.22);
+  --noir-tint-2: rgba(50, 25, 5, 0.3);
+  --noir-weather-1: rgba(240, 200, 140, 0.55);
+  --noir-weather-2: rgba(220, 170, 110, 0.35);
+  --font-deco: 'Rozha One', 'Playfair Display', serif;
+}
+
 .noir .font-deco { font-family: var(--font-deco); letter-spacing: 0.04em; }
 .noir .font-type { font-family: var(--font-type); }
 .noir .font-old { font-family: var(--font-old); }
@@ -29,16 +329,16 @@
 /* The room: a hanging lamp over the table, the dark beyond it. */
 .noir-room {
   background:
-    radial-gradient(ellipse 60% 55% at 50% -5%, rgba(255, 214, 150, 0.22), transparent 70%),
+    radial-gradient(ellipse 60% 55% at 50% -5%, var(--noir-lamp), transparent 70%),
     radial-gradient(ellipse 120% 90% at 50% 120%, rgba(0, 0, 0, 0.85), transparent 60%),
-    linear-gradient(180deg, #1a140f 0%, #0d0a07 100%);
+    linear-gradient(180deg, var(--noir-room-1) 0%, var(--noir-room-2) 100%);
   transition: background 1.6s ease;
 }
 .noir-room[data-mood='night'] {
   background:
-    radial-gradient(ellipse 50% 40% at 78% 12%, rgba(170, 200, 255, 0.12), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 78% 12%, var(--noir-night-glow), transparent 70%),
     radial-gradient(ellipse 120% 90% at 50% 120%, rgba(0, 0, 0, 0.9), transparent 60%),
-    linear-gradient(180deg, #0b1424 0%, #05080f 100%);
+    linear-gradient(180deg, var(--noir-night-1) 0%, var(--noir-night-2) 100%);
 }
 
 /*
@@ -63,11 +363,16 @@
   100% { background-position: 11px 37px; }
 }
 
-/* Rain: two layers of streaks sliding down at different speeds. */
+/*
+ * The weather: rain by default, snow at the hotel, confetti at the carnival,
+ * blown sand at the fort. Two layers at different speeds; each moves exactly
+ * one tile per loop, so it never jumps.
+ */
 .noir-rain {
   pointer-events: none;
   position: absolute;
   inset: -20% 0 0 0;
+  overflow: hidden;
   opacity: 0;
   transition: opacity 1.4s ease;
 }
@@ -77,11 +382,11 @@
   content: '';
   position: absolute;
   inset: 0;
-  background-image: repeating-linear-gradient(104deg, transparent 0 22px, rgba(180, 205, 255, 0.11) 22px 23px, transparent 23px 47px);
+  background-image: repeating-linear-gradient(104deg, transparent 0 22px, var(--noir-weather-1) 22px 23px, transparent 23px 47px);
   animation: noir-rain 0.55s linear infinite;
 }
 .noir-rain::after {
-  background-image: repeating-linear-gradient(101deg, transparent 0 37px, rgba(200, 220, 255, 0.07) 37px 38px, transparent 38px 71px);
+  background-image: repeating-linear-gradient(101deg, transparent 0 37px, var(--noir-weather-2) 37px 38px, transparent 38px 71px);
   animation-duration: 0.9s;
 }
 @keyframes noir-rain {
@@ -89,24 +394,101 @@
   to { transform: translate3d(-14px, 0, 0); }
 }
 
+/* Falling things — snow and confetti — tile at --tile and drift down one tile a loop. */
+.noir[data-arc='shimla'] .noir-rain::before,
+.noir[data-arc='shimla'] .noir-rain::after,
+.noir[data-arc='goa'] .noir-rain::before,
+.noir[data-arc='goa'] .noir-rain::after {
+  inset: -240px 0 0 0;
+  background-size: var(--tile) var(--tile);
+  animation: noir-fall var(--fall) linear infinite;
+}
+@keyframes noir-fall {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(calc(var(--tile) / 6), var(--tile), 0); }
+}
+.noir[data-arc='shimla'] .noir-rain::before {
+  --tile: 180px;
+  --fall: 7s;
+  background-image:
+    radial-gradient(circle at 20px 30px, var(--noir-weather-1) 0 2px, transparent 2.6px),
+    radial-gradient(circle at 110px 80px, var(--noir-weather-1) 0 1.6px, transparent 2.2px),
+    radial-gradient(circle at 60px 150px, var(--noir-weather-1) 0 2.4px, transparent 3px),
+    radial-gradient(circle at 150px 20px, var(--noir-weather-1) 0 1.4px, transparent 2px);
+}
+.noir[data-arc='shimla'] .noir-rain::after {
+  --tile: 240px;
+  --fall: 12s;
+  background-image:
+    radial-gradient(circle at 40px 200px, var(--noir-weather-2) 0 1.2px, transparent 1.8px),
+    radial-gradient(circle at 190px 110px, var(--noir-weather-2) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 120px 40px, var(--noir-weather-2) 0 1.4px, transparent 2px);
+}
+.noir[data-arc='goa'] .noir-rain::before {
+  --tile: 220px;
+  --fall: 9s;
+  opacity: 0.7;
+  background-image:
+    radial-gradient(circle at 30px 40px, var(--noir-weather-1) 0 2.5px, transparent 3px),
+    radial-gradient(circle at 150px 110px, var(--noir-weather-2) 0 2px, transparent 2.6px),
+    radial-gradient(circle at 90px 190px, var(--noir-brass) 0 2.4px, transparent 3px),
+    radial-gradient(circle at 190px 30px, var(--noir-weather-2) 0 1.8px, transparent 2.4px);
+}
+.noir[data-arc='goa'] .noir-rain::after {
+  --tile: 300px;
+  --fall: 14s;
+  opacity: 0.5;
+  background-image:
+    radial-gradient(circle at 70px 250px, var(--noir-brass) 0 1.8px, transparent 2.4px),
+    radial-gradient(circle at 240px 140px, var(--noir-weather-1) 0 1.6px, transparent 2.2px),
+    radial-gradient(circle at 180px 50px, var(--noir-weather-2) 0 2px, transparent 2.6px);
+}
+
+/* Sand: specks blown sideways along the walls of the fort. */
+.noir[data-arc='jaisalmer'] .noir-rain::before,
+.noir[data-arc='jaisalmer'] .noir-rain::after {
+  inset: 0 -280px 0 0;
+  background-size: var(--tile) calc(var(--tile) * 0.6);
+  animation: noir-blow var(--fall) linear infinite;
+}
+@keyframes noir-blow {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(calc(var(--tile) * -1), calc(var(--tile) * 0.08), 0); }
+}
+.noir[data-arc='jaisalmer'] .noir-rain::before {
+  --tile: 200px;
+  --fall: 3.5s;
+  background-image:
+    radial-gradient(ellipse 4px 1.2px at 30px 20px, var(--noir-weather-1) 0 60%, transparent 100%),
+    radial-gradient(ellipse 5px 1.2px at 120px 70px, var(--noir-weather-1) 0 60%, transparent 100%),
+    radial-gradient(ellipse 3px 1px at 170px 100px, var(--noir-weather-1) 0 60%, transparent 100%);
+}
+.noir[data-arc='jaisalmer'] .noir-rain::after {
+  --tile: 280px;
+  --fall: 6s;
+  background-image:
+    radial-gradient(ellipse 6px 1.4px at 60px 120px, var(--noir-weather-2) 0 60%, transparent 100%),
+    radial-gradient(ellipse 4px 1px at 220px 40px, var(--noir-weather-2) 0 60%, transparent 100%);
+}
+
 /* Paper, for dossiers, contracts and the morning edition. */
 .noir-paper {
-  color: #231a10;
+  color: var(--noir-ink-1);
   background:
     radial-gradient(ellipse at 20% 0%, rgba(255, 255, 255, 0.35), transparent 60%),
-    radial-gradient(ellipse at 100% 100%, rgba(120, 80, 30, 0.22), transparent 55%),
-    linear-gradient(180deg, #f1e6cb, #e4d4ad);
+    radial-gradient(ellipse at 100% 100%, var(--noir-paper-stain), transparent 55%),
+    linear-gradient(180deg, var(--noir-paper-1), var(--noir-paper-2));
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset, 0 24px 60px -24px rgba(0, 0, 0, 0.9);
 }
-.noir-paper-edge { box-shadow: 0 0 0 1px rgba(60, 40, 15, 0.25) inset, 0 0 0 5px rgba(60, 40, 15, 0.06) inset; }
+.noir-paper-edge { box-shadow: 0 0 0 1px var(--noir-paper-line) inset, 0 0 0 5px rgba(0, 0, 0, 0.04) inset; }
 
 /* Brass: the frames, the clock, the buttons. */
 .noir-brass {
-  background: linear-gradient(160deg, #e8cc8a 0%, #b8913f 45%, #7d5e25 100%);
-  color: #1d1408;
+  background: linear-gradient(160deg, var(--noir-brass-1) 0%, var(--noir-brass-2) 45%, var(--noir-brass-3) 100%);
+  color: var(--noir-ink-1);
 }
 .noir-frame {
-  box-shadow: 0 0 0 1px rgba(232, 204, 138, 0.55), 0 0 0 4px rgba(0, 0, 0, 0.6), 0 0 0 5px rgba(200, 164, 94, 0.35), 0 18px 40px -18px rgba(0, 0, 0, 0.9);
+  box-shadow: 0 0 0 1px var(--noir-frame-1), 0 0 0 4px rgba(0, 0, 0, 0.6), 0 0 0 5px var(--noir-frame-2), 0 18px 40px -18px rgba(0, 0, 0, 0.9);
 }
 
 /* A rubber stamp, slightly crooked, slightly faded. */
@@ -130,13 +512,13 @@
 }
 .noir-flicker { animation: noir-flicker 5.5s infinite; }
 
-/* A sepia wash over live video — an overlay, never a filter on the video itself. */
+/* A wash over live video in the story's colours — an overlay, never a filter on the video itself. */
 .noir-sepia::after {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(112, 74, 30, 0.22), rgba(40, 20, 5, 0.32));
+  background: linear-gradient(180deg, var(--noir-tint-1), var(--noir-tint-2));
   mix-blend-mode: multiply;
 }
 

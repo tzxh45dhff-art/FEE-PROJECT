@@ -17,7 +17,7 @@ export function Portrait({ name, character, className }: { name: string; charact
     .slice(0, 2)
     .toUpperCase()
   return (
-    <div className={cn('relative grid place-items-center overflow-hidden bg-[radial-gradient(ellipse_at_50%_30%,#4a3a26,#1a120a)] noir-sepia', className)}>
+    <div className={cn('relative grid place-items-center overflow-hidden bg-[radial-gradient(ellipse_at_50%_30%,var(--noir-ink-4),var(--noir-panel-lo))] noir-sepia', className)}>
       {src ? (
         /* A full-body cutout is cropped to head and shoulders; a rendered still already is one. */
         <img
@@ -107,7 +107,7 @@ export function Seat({
         selected && 'ring-2 ring-[var(--noir-blood-bright)] ring-offset-2 ring-offset-black',
         speaking && 'shadow-[0_0_0_2px_var(--noir-brass),0_0_28px_-4px_rgba(200,164,94,.7)]',
         (dim || !seat.alive) && 'opacity-60',
-        spotlight && 'z-10 shadow-[0_0_0_2px_#f3d9a0,0_0_80px_10px_rgba(255,220,150,.35)]',
+        spotlight && 'z-10 shadow-[0_0_0_2px_var(--noir-paper),0_0_80px_10px_rgba(255,220,150,.35)]',
       )}
     >
       <div className="relative aspect-[4/3] w-full overflow-hidden">
@@ -122,15 +122,15 @@ export function Seat({
 
         {/* Night: everyone's eyes are closed. */}
         {mood === 'night' && seat.alive && (
-          <div className="absolute inset-0 grid place-items-center bg-[#050912]/70">
-            <span className="font-type text-[0.7rem] uppercase tracking-[0.3em] text-[#9fb4d8]/80">asleep</span>
+          <div className="absolute inset-0 grid place-items-center bg-[var(--noir-sky-2)]/70">
+            <span className="font-type text-[0.7rem] uppercase tracking-[0.3em] text-[var(--noir-moon)]/80">asleep</span>
           </div>
         )}
 
         {/* The dead: a chalk outline and the date of death. */}
         {!seat.alive && (
           <div className="absolute inset-0 grid place-items-center bg-black/55">
-            <span className="noir-stamp rounded-sm px-3 py-1 text-[0.95rem] text-[#e6d9bd]">{seat.died?.how === 'voted' ? 'HANGED' : 'R.I.P.'}</span>
+            <span className="noir-stamp rounded-sm px-3 py-1 text-[0.95rem] text-[var(--noir-paper)]">{seat.died?.how === 'voted' ? 'HANGED' : 'R.I.P.'}</span>
           </div>
         )}
 
@@ -140,7 +140,7 @@ export function Seat({
           </span>
         )}
         {seat.bot && (
-          <span title={`AI player · ${seat.bot}`} className="font-type absolute right-1.5 top-1.5 rounded-sm bg-[var(--noir-brass)] px-1.5 py-0.5 text-[0.66rem] font-bold uppercase tracking-wider text-[#1c140b]">
+          <span title={`AI player · ${seat.bot}`} className="font-type absolute right-1.5 top-1.5 rounded-sm bg-[var(--noir-brass)] px-1.5 py-0.5 text-[0.66rem] font-bold uppercase tracking-wider text-[var(--noir-ink-1)]">
             AI
           </span>
         )}
@@ -178,7 +178,7 @@ export function Seat({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
               className={cn(
-                'font-type pointer-events-none absolute inset-x-1 bottom-1 z-10 max-h-[calc(100%-0.5rem)] overflow-hidden rounded-sm bg-[#efe3c8]/95 px-1.5 py-1 text-[0.7rem] leading-snug text-[#1c140b] shadow-[0_6px_16px_-6px_rgba(0,0,0,.9)] sm:px-2 sm:text-[0.78rem]',
+                'font-type pointer-events-none absolute inset-x-1 bottom-1 z-10 max-h-[calc(100%-0.5rem)] overflow-hidden rounded-sm bg-[var(--noir-paper)]/95 px-1.5 py-1 text-[0.7rem] leading-snug text-[var(--noir-ink-1)] shadow-[0_6px_16px_-6px_rgba(0,0,0,.9)] sm:px-2 sm:text-[0.78rem]',
                 bubble.text ? 'line-clamp-3 sm:line-clamp-4' : 'w-fit',
               )}
               aria-live="polite"
@@ -190,7 +190,7 @@ export function Seat({
       </div>
 
       {/* The name, typed on a card under the photograph. */}
-      <div className="flex flex-col gap-0 border-t border-[var(--noir-brass)]/25 bg-[linear-gradient(180deg,#221a12,#15100b)] px-2 py-1.5 sm:px-2.5">
+      <div className="flex flex-col gap-0 border-t border-[var(--noir-brass)]/25 bg-[linear-gradient(180deg,var(--noir-panel-hi),var(--noir-panel-lo))] px-2 py-1.5 sm:px-2.5">
         <span className="font-type min-w-0 truncate text-[0.86rem] text-[var(--noir-paper)]">
           {/* A small card has room for what the table calls you; a big one for the full name. */}
           <span className="sm:hidden">{callName(seat.name)}</span>
@@ -211,7 +211,7 @@ export function Seat({
 function Dot({ delay = 0 }: { delay?: number }) {
   return (
     <motion.span
-      className="size-1.5 rounded-full bg-[#1c140b]"
+      className="size-1.5 rounded-full bg-[var(--noir-ink-1)]"
       animate={{ opacity: [0.25, 1, 0.25] }}
       transition={{ repeat: Infinity, duration: 0.9, delay }}
     />

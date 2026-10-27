@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 
 import { cn } from '@/lib/utils'
 import { Emblem } from './art'
+import { storyDate, useArc } from './arcs'
 import { callName } from './helpers'
 import { ROLE_TITLE, isFamily, type CaseEvent, type MafiaView, type Role, type Winner } from './types'
 
@@ -32,6 +33,7 @@ export function RoleCard({
 }) {
   const [turned, setTurned] = useState(false)
   const shown = forced ?? turned
+  const arc = useArc()
   const red = isFamily(role)
   const reported = useRef(false)
   const reveal = (on: boolean) => {
@@ -67,12 +69,12 @@ export function RoleCard({
             animate={{ scaleX: 1 }}
             exit={{ scaleX: 0 }}
             transition={{ duration: 0.16, ease: 'easeIn' }}
-            className="absolute inset-0 grid place-items-center rounded-xl border border-[var(--noir-brass)]/60 bg-[repeating-linear-gradient(45deg,#5a1210_0_10px,#3d0c0a_10px_20px)] noir-frame"
+            className="absolute inset-0 grid place-items-center rounded-xl border border-[var(--noir-brass)]/60 bg-[repeating-linear-gradient(45deg,var(--noir-card-1)_0_10px,var(--noir-card-2)_10px_20px)] noir-frame"
           >
-            <div className="grid size-[84%] place-items-center rounded-lg border-2 border-double border-[var(--noir-brass)]/80 bg-[#2a0807]/60">
+            <div className="grid size-[84%] place-items-center rounded-lg border-2 border-double border-[var(--noir-brass)]/80 bg-[var(--noir-card-3)]/60">
               <div className="text-center">
-                <p className="font-deco text-[clamp(1rem,11cqw,1.6rem)] text-[var(--noir-brass)]">BOMBAY</p>
-                <p className="font-type mt-1 text-[0.7rem] uppercase tracking-[0.4em] text-[var(--noir-paper-dim)]">1956</p>
+                <p className="font-deco text-[clamp(1rem,11cqw,1.6rem)] text-[var(--noir-brass)]">{arc.card[0]}</p>
+                <p className="font-type mt-1 text-[0.7rem] uppercase tracking-[0.4em] text-[var(--noir-paper-dim)]">{arc.card[1]}</p>
                 <p className="font-type mt-[8cqw] text-[0.72rem] text-[var(--noir-paper-dim)]/80">{hold ? 'hold to look' : 'tap to turn'}</p>
               </div>
             </div>
@@ -86,16 +88,16 @@ export function RoleCard({
             transition={{ duration: 0.18, ease: 'easeOut' }}
             className="absolute inset-0 flex flex-col items-center justify-between rounded-xl px-[8cqw] py-[6cqw] noir-paper noir-paper-edge"
           >
-            <div className="flex w-full justify-between font-deco text-[clamp(0.75rem,6.5cqw,1rem)]" style={{ color: red ? 'var(--noir-blood)' : '#2b2015' }}>
+            <div className="flex w-full justify-between font-deco text-[clamp(0.75rem,6.5cqw,1rem)]" style={{ color: red ? 'var(--noir-blood)' : 'var(--noir-ink-2)' }}>
               <span>{ROLE_TITLE[role][0]}</span>
               <span>{ROLE_TITLE[role][0]}</span>
             </div>
-            <Emblem role={role} className={cn('min-h-0 w-[62%] shrink', line && 'w-[50%]', red ? 'text-[var(--noir-blood)]' : 'text-[#2b2015]')} />
+            <Emblem role={role} className={cn('min-h-0 w-[62%] shrink', line && 'w-[50%]', red ? 'text-[var(--noir-blood)]' : 'text-[var(--noir-ink-2)]')} />
             <div className="text-center">
-              <p className="font-deco text-[clamp(0.85rem,9.5cqw,1.5rem)] leading-tight" style={{ color: red ? 'var(--noir-blood)' : '#2b2015' }}>
+              <p className="font-deco text-[clamp(0.85rem,9.5cqw,1.5rem)] leading-tight" style={{ color: red ? 'var(--noir-blood)' : 'var(--noir-ink-2)' }}>
                 {title}
               </p>
-              {line && <p className="font-type mt-[3cqw] text-[clamp(0.58rem,5.2cqw,0.8rem)] leading-snug text-[#3a2c1c]">{line}</p>}
+              {line && <p className="font-type mt-[3cqw] text-[clamp(0.58rem,5.2cqw,0.8rem)] leading-snug text-[var(--noir-ink-3)]">{line}</p>}
             </div>
           </motion.div>
         )}
@@ -106,13 +108,9 @@ export function RoleCard({
 
 /* ── the morning edition ──────────────────────────────────────────────── */
 
-const DATE = (round: number) => {
-  const d = new Date(1956, 6, 11 + round)
-  return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-}
-
-/** The Bombay Herald, spun onto the screen like an old film's front page. */
+/** The story's morning paper, spun onto the screen like an old film's front page. */
 export function Newspaper({ round, headline, fact, story, photo }: { round: number; headline: string; fact?: string; story: string; photo?: React.ReactNode }) {
+  const arc = useArc()
   return (
     <motion.article
       initial={{ rotate: -360, scale: 0.2, opacity: 0 }}
@@ -121,18 +119,18 @@ export function Newspaper({ round, headline, fact, story, photo }: { round: numb
       transition={{ type: 'spring', stiffness: 150, damping: 17 }}
       className="noir-paper noir-paper-edge mx-auto w-[calc(100%-0.5rem)] max-w-[34rem] rounded-sm px-5 py-4 sm:px-7 sm:py-6"
     >
-      <header className="border-b-[3px] border-double border-[#2a2015] pb-2 text-center">
-        <p className="font-old text-[2rem] font-black leading-none tracking-tight text-[#1c140b] sm:text-[2.6rem]">The Bombay Herald</p>
-        <div className="font-type mt-2 flex justify-between text-[0.7rem] uppercase tracking-wider text-[#4a3a26]">
-          <span>{DATE(round)}</span>
-          <span>Extra · Two annas</span>
+      <header className="border-b-[3px] border-double border-[var(--noir-ink-2)] pb-2 text-center">
+        <p className="font-old text-[2rem] font-black leading-none tracking-tight text-[var(--noir-ink-1)] sm:text-[2.6rem]">{arc.paper}</p>
+        <div className="font-type mt-2 flex justify-between text-[0.7rem] uppercase tracking-wider text-[var(--noir-ink-4)]">
+          <span>{storyDate(arc, round)}</span>
+          <span>{arc.price}</span>
         </div>
       </header>
-      <h2 className="font-old mt-3 text-center text-[1.55rem] font-black uppercase leading-[1.05] text-[#1c140b] sm:text-[2rem]">{headline}</h2>
+      <h2 className="font-old mt-3 text-center text-[1.55rem] font-black uppercase leading-[1.05] text-[var(--noir-ink-1)] sm:text-[2rem]">{headline}</h2>
       {fact && <p className="font-type mt-2 text-center text-[1rem] text-[var(--noir-blood)]">{fact}</p>}
       <div className="mt-3 flex gap-4">
         {photo && <div className="hidden w-28 shrink-0 sm:block">{photo}</div>}
-        <p className="font-old text-[1rem] italic leading-relaxed text-[#2b2015] first-letter:float-left first-letter:mr-1.5 first-letter:font-deco first-letter:text-[2.6rem] first-letter:leading-[0.8]">
+        <p className="font-old text-[1rem] italic leading-relaxed text-[var(--noir-ink-2)] first-letter:float-left first-letter:mr-1.5 first-letter:font-deco first-letter:text-[2.6rem] first-letter:leading-[0.8]">
           {story}
         </p>
       </div>
@@ -156,10 +154,10 @@ export function Clock({ left, total, paused, onTick }: { left: number; total: nu
     <div className="relative grid size-14 shrink-0 place-items-center rounded-full noir-brass shadow-[0_6px_18px_-6px_rgba(0,0,0,.8)] sm:size-16 [@media(max-height:520px)]:size-11" role="timer" aria-label={paused ? 'Paused' : `${seconds} seconds left`}>
       <div
         className="absolute inset-[3px] rounded-full"
-        style={{ background: `conic-gradient(${seconds <= 10 ? '#a3201c' : '#2a1d10'} ${share * 360}deg, #120d07 0deg)` }}
+        style={{ background: `conic-gradient(${seconds <= 10 ? 'var(--noir-blood)' : 'var(--noir-panel-hi)'} ${share * 360}deg, var(--noir-panel-lo) 0deg)` }}
       />
-      <div className="absolute inset-[7px] rounded-full bg-[#efe3c8] shadow-[inset_0_2px_6px_rgba(0,0,0,.45)]" />
-      <span className={cn('font-deco relative text-[0.95rem] tracking-normal text-[#1c140b] sm:text-[1.15rem] [@media(max-height:520px)]:text-[0.78rem]', seconds <= 10 && !paused && 'text-[var(--noir-blood)]')}>
+      <div className="absolute inset-[7px] rounded-full bg-[var(--noir-paper)] shadow-[inset_0_2px_6px_rgba(0,0,0,.45)]" />
+      <span className={cn('font-deco relative text-[0.95rem] tracking-normal text-[var(--noir-ink-1)] sm:text-[1.15rem] [@media(max-height:520px)]:text-[0.78rem]', seconds <= 10 && !paused && 'text-[var(--noir-blood)]')}>
         {paused ? '❚❚' : label}
       </span>
     </div>
@@ -199,10 +197,10 @@ export function Subtitles({ id, text }: { id: string | null; text: string | null
 /* ── the case file ────────────────────────────────────────────────────── */
 
 const VERDICT: Record<Winner | 'none', { stamp: string; line: string; color: string }> = {
-  town: { stamp: 'CASE CLOSED', line: 'The town wins. The Family is finished.', color: '#1f5a3a' },
-  family: { stamp: 'UNSOLVED', line: 'The Family wins. Bombay belongs to them now.', color: 'var(--noir-blood)' },
-  jester: { stamp: 'A FOOL WINS', line: 'The Jester wins — they wanted the rope all along.', color: '#6b3fa0' },
-  none: { stamp: 'ABANDONED', line: 'The case was dropped before it was solved.', color: '#5a4a35' },
+  town: { stamp: 'CASE CLOSED', line: 'The town wins. The Family is finished.', color: 'var(--noir-town)' },
+  family: { stamp: 'UNSOLVED', line: 'The Family wins.', color: 'var(--noir-blood)' },
+  jester: { stamp: 'A FOOL WINS', line: 'The Jester wins — they wanted the rope all along.', color: 'var(--noir-jester)' },
+  none: { stamp: 'ABANDONED', line: 'The case was dropped before it was solved.', color: 'var(--noir-ink-5)' },
 }
 
 const WINNER_NAME: Record<Winner, string> = { town: 'the town', family: 'the Family', jester: 'the Jester' }
@@ -223,7 +221,9 @@ export function CaseFile({
   onLeave: () => void
   onBluff: (target: string) => void
 }) {
+  const arc = useArc()
   const v = VERDICT[view.winner ?? 'none']
+  const verdictLine = view.winner === 'family' ? `${v.line} ${arc.takeover}` : v.line
   const seat = (id: string | null | undefined) => view.players.find((p) => p.id === id)
   const name = (id: string | null | undefined) => {
     const s = seat(id)
@@ -264,11 +264,11 @@ export function CaseFile({
 
   return (
     <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} className="noir-paper noir-paper-edge relative mx-auto w-full max-w-[46rem] rounded-sm px-5 pb-6 pt-5 sm:px-8">
-      <div className="absolute -top-3 left-6 rounded-t-md bg-[#d9c79c] px-4 py-1 font-type text-[0.74rem] uppercase tracking-[0.22em] text-[#4a3a26]">Case file · Bombay police</div>
+      <div className="absolute -top-3 left-6 rounded-t-md bg-[var(--noir-paper-dim)] px-4 py-1 font-type text-[0.74rem] uppercase tracking-[0.22em] text-[var(--noir-ink-4)]">{arc.caseFile}</div>
       <div className="flex flex-col-reverse items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
         <div>
-          <p className="font-deco text-[1.6rem] leading-tight text-[#1c140b] sm:text-[2.2rem]">The {view.round === 1 ? 'one-night' : `${view.round}-night`} affair</p>
-          <p className="font-type mt-1 text-[0.92rem] text-[#3a2c1c]">{v.line}</p>
+          <p className="font-deco text-[1.6rem] leading-tight text-[var(--noir-ink-1)] sm:text-[2.2rem]">The {view.round === 1 ? 'one-night' : `${view.round}-night`} affair</p>
+          <p className="font-type mt-1 text-[0.92rem] text-[var(--noir-ink-3)]">{verdictLine}</p>
         </div>
         <span className="noir-stamp shrink-0 rounded-sm px-3 py-1.5 text-[1rem] sm:text-[1.2rem]" style={{ color: v.color }}>
           {v.stamp}
@@ -278,9 +278,9 @@ export function CaseFile({
       <Heading>The cast</Heading>
       <ul className="mt-2 grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 sm:grid-cols-3">
         {view.players.map((p) => (
-          <li key={p.id} className="flex items-center justify-between gap-2 rounded-sm border border-[#2a2015]/20 bg-white/30 px-2.5 py-1.5">
-            <span className={cn('font-type truncate text-[0.88rem]', !p.alive && 'line-through decoration-[#2a2015]/50')}>{callName(p.name)}</span>
-            <span className="font-type shrink-0 text-[0.7rem] uppercase tracking-wider" style={{ color: isFamily(p.role) ? 'var(--noir-blood)' : '#4a3a26' }}>
+          <li key={p.id} className="flex items-center justify-between gap-2 rounded-sm border border-[var(--noir-ink-2)]/20 bg-white/30 px-2.5 py-1.5">
+            <span className={cn('font-type truncate text-[0.88rem]', !p.alive && 'line-through decoration-[var(--noir-ink-2)]/50')}>{callName(p.name)}</span>
+            <span className="font-type shrink-0 text-[0.7rem] uppercase tracking-wider" style={{ color: isFamily(p.role) ? 'var(--noir-blood)' : 'var(--noir-ink-4)' }}>
               {p.role ? ROLE_TITLE[p.role] : '—'}
             </span>
           </li>
@@ -291,8 +291,8 @@ export function CaseFile({
       <ol className="mt-2 space-y-2">
         {[...rounds.entries()].map(([round, events]) => (
           <li key={round} className="flex gap-3">
-            <span className="font-deco w-8 shrink-0 text-[1.1rem] text-[#6a5638]">{round}</span>
-            <p className="font-type text-[0.88rem] leading-relaxed text-[#2b2015]">
+            <span className="font-deco w-8 shrink-0 text-[1.1rem] text-[var(--noir-ink-6)]">{round}</span>
+            <p className="font-type text-[0.88rem] leading-relaxed text-[var(--noir-ink-2)]">
               {events
                 .map((e) =>
                   e.kind === 'kill'
@@ -318,7 +318,7 @@ export function CaseFile({
       {(swings.length > 0 || saves.length > 0 || firstRight || fickle) && (
         <>
           <Heading>Turning points</Heading>
-          <ul className="font-type mt-2 space-y-1 text-[0.88rem] leading-relaxed text-[#2b2015]">
+          <ul className="font-type mt-2 space-y-1 text-[0.88rem] leading-relaxed text-[var(--noir-ink-2)]">
             {swings.map(({ d, guilty, innocent }) => (
               <li key={`swing-${d.round}`}>
                 · Day {d.round}: {name(d.accused)} {d.outcome === 'hanged' ? `hanged by a single vote (${guilty}–${innocent})` : guilty === innocent ? `walked free on a tie (${guilty}–${innocent})` : `walked free by a single vote (${innocent}–${guilty})`}
@@ -360,8 +360,8 @@ export function CaseFile({
 
       <Heading>Best bluff · the table votes</Heading>
       {bluffLeader && (
-        <p className="font-deco mt-1 text-[1.25rem] text-[#1c140b]">
-          {name(bluffLeader[0])} <span className="font-type text-[0.86rem] text-[#5a4a35]">· {bluffLeader[1]} vote{bluffLeader[1] === 1 ? '' : 's'}</span>
+        <p className="font-deco mt-1 text-[1.25rem] text-[var(--noir-ink-1)]">
+          {name(bluffLeader[0])} <span className="font-type text-[0.86rem] text-[var(--noir-ink-5)]">· {bluffLeader[1]} vote{bluffLeader[1] === 1 ? '' : 's'}</span>
         </p>
       )}
       {playing ? (
@@ -375,8 +375,8 @@ export function CaseFile({
                 onClick={() => onBluff(p.id)}
                 aria-pressed={myBluff === p.id}
                 className={cn(
-                  'font-type min-h-10 rounded-sm border px-3 text-[0.86rem] outline-none focus-visible:ring-2 focus-visible:ring-[#2a2015]',
-                  myBluff === p.id ? 'border-[#2a2015] bg-[#2a2015] text-[#efe3c8]' : 'border-[#2a2015]/30 text-[#2b2015] hover:bg-black/5',
+                  'font-type min-h-10 rounded-sm border px-3 text-[0.86rem] outline-none focus-visible:ring-2 focus-visible:ring-[var(--noir-ink-2)]',
+                  myBluff === p.id ? 'border-[var(--noir-ink-2)] bg-[var(--noir-ink-2)] text-[var(--noir-paper)]' : 'border-[var(--noir-ink-2)]/30 text-[var(--noir-ink-2)] hover:bg-black/5',
                 )}
               >
                 {callName(p.name)}
@@ -385,15 +385,15 @@ export function CaseFile({
             ))}
         </div>
       ) : (
-        !bluffLeader && <p className="font-type mt-1 text-[0.86rem] text-[#5a4a35]">The players are voting.</p>
+        !bluffLeader && <p className="font-type mt-1 text-[0.86rem] text-[var(--noir-ink-5)]">The players are voting.</p>
       )}
 
       <div className="mt-6 flex flex-wrap justify-end gap-2">
-        <button type="button" onClick={onLeave} className="font-type min-h-11 rounded-sm border border-[#2a2015]/40 px-4 text-[0.9rem] text-[#2b2015] outline-none hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-[#2a2015]">
+        <button type="button" onClick={onLeave} className="font-type min-h-11 rounded-sm border border-[var(--noir-ink-2)]/40 px-4 text-[0.9rem] text-[var(--noir-ink-2)] outline-none hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-[var(--noir-ink-2)]">
           Back to games
         </button>
         {isHost && (
-          <button type="button" onClick={onPlayAgain} className="font-type min-h-11 rounded-sm bg-[var(--noir-blood)] px-5 text-[0.95rem] font-semibold tracking-wide text-[#f7ead0] shadow-[0_6px_18px_-6px_rgba(120,20,15,.8)] outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#2a2015]">
+          <button type="button" onClick={onPlayAgain} className="font-type min-h-11 rounded-sm bg-[var(--noir-blood)] px-5 text-[0.95rem] font-semibold tracking-wide text-[var(--noir-on-accent)] shadow-[0_6px_18px_-6px_rgba(120,20,15,.8)] outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--noir-ink-2)]">
             Deal again
           </button>
         )}
@@ -403,15 +403,15 @@ export function CaseFile({
 }
 
 function Heading({ children }: { children: React.ReactNode }) {
-  return <h3 className="font-type mt-5 text-[0.76rem] uppercase tracking-[0.22em] text-[#6a5638]">{children}</h3>
+  return <h3 className="font-type mt-5 text-[0.76rem] uppercase tracking-[0.22em] text-[var(--noir-ink-6)]">{children}</h3>
 }
 
 function Honour({ title, who, note }: { title: string; who: string; note: string }) {
   return (
-    <div className="rounded-sm border border-[#2a2015]/25 bg-white/25 px-3 py-2">
-      <p className="font-type text-[0.72rem] uppercase tracking-[0.18em] text-[#6a5638]">{title}</p>
-      <p className="font-deco text-[1.15rem] text-[#1c140b]">{who}</p>
-      <p className="font-type text-[0.78rem] text-[#4a3a26]">{note}</p>
+    <div className="rounded-sm border border-[var(--noir-ink-2)]/25 bg-white/25 px-3 py-2">
+      <p className="font-type text-[0.72rem] uppercase tracking-[0.18em] text-[var(--noir-ink-6)]">{title}</p>
+      <p className="font-deco text-[1.15rem] text-[var(--noir-ink-1)]">{who}</p>
+      <p className="font-type text-[0.78rem] text-[var(--noir-ink-4)]">{note}</p>
     </div>
   )
 }
