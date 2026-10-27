@@ -78,7 +78,6 @@ export type MafiaView = {
     judged: boolean | null
     prediction: Winner | null
     bluff: string | null
-    endVote: boolean
   } | null
   night: { chosen: number; of: number; family: { id: string; pick: string | null }[] | null } | null
   dawn: { victim: string | null; saved: boolean } | null
@@ -101,7 +100,6 @@ export type MafiaView = {
   narration: { id: string; kind: string; text: string; headline: string | null; audio: string | null; ready: boolean } | null
   winner: Winner | null
   ledger: Ledger[]
-  endVotes: number
   talk: { by: string; text: string; at: number; kind: 'say' | 'heard' | 'bot'; round?: number }[]
   thinking: string[]
   history: CaseEvent[] | null

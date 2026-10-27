@@ -228,7 +228,7 @@ export const geoGame: GameDef<GeoState, GeoOptions> = {
     }
     if (action === 'end') {
       if (!isCurrent(s, p)) return { error: 'That game has changed' }
-      if (!by || by.id !== s.host) return { error: 'Only the host can end this game' }
+      if (!by || !s.players.some((x) => x.id === by.id)) return { error: 'Only the players can end this game' }
       ctx.clearSchedule()
       return { ...s, phase: 'over', deadline: null, endedEarly: true }
     }

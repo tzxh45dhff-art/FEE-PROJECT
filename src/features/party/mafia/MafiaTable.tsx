@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Armchair, BookOpen, CircleHelp, Flag, FolderLock, Mic, MicOff, MonitorSpeaker, MoreHorizontal, Pause, Play, Send, Video, Volume2, VolumeX, Wifi } from 'lucide-react'
+import { Armchair, BookOpen, CircleHelp, FolderLock, Mic, MicOff, MonitorSpeaker, MoreHorizontal, Pause, Play, Send, Video, Volume2, VolumeX, Wifi } from 'lucide-react'
 
 import { remaining, type PartyState } from '@/features/party/useParty'
 import type { useMeshCall } from '@/features/room-panel/useMeshCall'
@@ -704,7 +704,6 @@ export function MafiaTable({
   /* A first game explains each part of the round the first time it comes up; a rematch trusts you. */
   const guide = view.options.story && !!me?.alive && layout !== 'square' && !guided.has(phase) && ['night', 'dawn', 'day', 'vote', 'defence', 'judgement'].includes(phase)
   const aside = movePanel || chat || prediction || talkFeed
-  const endsNeeded = Math.floor(view.players.length / 2) + 1
 
   return (
     <div className="noir noir-room relative isolate flex h-full min-h-0 w-full flex-col overflow-clip" data-mood={mood}>
@@ -787,11 +786,6 @@ export function MafiaTable({
                           Join the room call
                         </MenuItem>
                       )}
-                      {full.me && !isHost && (
-                        <MenuItem icon={Flag} onClick={() => act('end')} disabled={full.me.endVote}>
-                          {full.me.endVote ? `Asked to end · ${view.endVotes} of ${endsNeeded}` : `Ask to end the game${view.endVotes ? ` · ${view.endVotes} of ${endsNeeded}` : ''}`}
-                        </MenuItem>
-                      )}
                     </motion.div>
                   </>
                 )}
@@ -817,9 +811,9 @@ export function MafiaTable({
         </div>
       )}
 
-      {(view.paused !== null || (view.endVotes > 0 && phase !== 'over')) && (
+      {view.paused !== null && (
         <div className="font-type relative z-10 mx-auto mb-2 rounded-sm bg-black/70 px-4 py-1.5 text-center text-[0.86rem] text-[var(--noir-brass)]">
-          {view.paused !== null ? 'The host has paused the game. Nothing can be chosen until it resumes.' : `${view.endVotes} of ${endsNeeded} want to end the game.`}
+          The host has paused the game. Nothing can be chosen until it resumes.
         </div>
       )}
 

@@ -168,11 +168,8 @@ export function GamesStage({
               connected={connected}
               allowed={
                 !!selfId &&
-                !!partyView?.players?.some((player) => player.id === selfId) &&
-                /* Mafia: the host ends it; anyone else asks the table, from the game's own menu. */
-                (party.party!.game !== 'mafia' || (partyView as { host?: string } | null)?.host === selfId) &&
-                (party.party!.game !== 'geo' || (partyView as { host?: string } | null)?.host === selfId ||
-                  (!members.some(m => m.id === (partyView as { host?: string }).host) && partyView?.players?.find(p => members.some(m => m.id === p.id))?.id === selfId))
+                /* Anyone playing can end it. */
+                !!partyView?.players?.some((player) => player.id === selfId)
               }
               onEnd={() => party.party?.game === 'geo'
                 ? party.act('end', { token: (party.party.view as GeoView).token, round: (party.party.view as GeoView).round, attempt: (party.party.view as GeoView).attempt }, 5000)

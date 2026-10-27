@@ -477,19 +477,11 @@ describe('mafia — endings, ghosts and the host', () => {
     assert.equal(state.picks.aditi, 'meera')
   })
 
-  it('only the host ends the game outright; anyone else asks, and a majority ends it', () => {
-    let state = toNight(table(['mafia', 'doctor', 'detective', 'villager', 'villager']))
-    state = act(state, 'rohan', 'end')
-    assert.equal(state.phase, 'night')
-    assert.equal((view(state, 'kabir') as unknown as { endVotes: number }).endVotes, 1)
-    state = act(state, 'rohan', 'end')
-    assert.equal(state.endVotes.length, 1, 'asking twice counts once')
-    state = act(state, 'khushi', 'end')
-    assert.equal(state.phase, 'night')
-    state = act(state, 'kabir', 'end')
-    assert.equal(state.phase, 'over', 'three of five')
-    const hosted = act(toNight(table(['mafia', 'doctor', 'detective', 'villager', 'villager'])), 'aditi', 'end')
-    assert.equal(hosted.phase, 'over')
+  it('anyone playing can end the game outright; someone watching cannot', () => {
+    const state = toNight(table(['mafia', 'doctor', 'detective', 'villager', 'villager']))
+    assert.equal(act(state, 'rohan', 'end').phase, 'over')
+    const refused = mafia.act(state, { id: 'stranger', name: 'Stranger' }, 'end', {}, ctx())
+    assert.ok('error' in refused)
   })
 
   it('when the host leaves the room, whoever is still here can run the clock', () => {
@@ -864,16 +856,6 @@ describe('mafia — AI players', () => {
     assert.ok(rough > 100 && rough < 700, `without Luna too, a few lines come out human (${rough} of 2000)`)
   })
 
-  it('only people count towards asking to end', () => {
-    clock = 0
-    timers = []
-    let state = mafia.start(people(3), options({ bots: 3 }), ctx())
-    state = tick(state)
-    state = act(state, 'rohan', 'end')
-    assert.equal(state.phase, 'night', 'one of three people is not enough')
-    state = act(state, 'khushi', 'end')
-    assert.equal(state.phase, 'over', 'two of three people is — the AIs are not counted')
-  })
 })
 
 describe('mafia — a fair deal across games', () => {

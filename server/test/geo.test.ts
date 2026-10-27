@@ -232,7 +232,6 @@ describe('Somewhere geography rules', () => {
     assert.ok(joined)
     g.setState(joined!)
     assert.throws(() => g.act(c, 'guess', { point: { lat: 0, lng: 0 } }), /missed/)
-    assert.throws(() => g.act(b, 'end'), /host/)
     g.setPresent(['b', 'c'])
     g.act(b, 'take-host')
     assert.equal(g.s.host, b.id)

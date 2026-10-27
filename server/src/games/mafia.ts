@@ -138,8 +138,6 @@ export type Mafia = {
   predictions: Record<string, Winner>
   /** "Best bluff", voted by the table once the case is closed. */
   bluff: Record<string, string>
-  /** Players asking to end the game, when the host isn't the one ending it. */
-  endVotes: string[]
   speaker: string | null
   narration: Narration | null
   /** What has been said at the table, every day of the game — screens show today's; the AIs remember it all. */
@@ -826,7 +824,6 @@ export const mafia: GameDef<Mafia, Options> = {
       ghosts: [],
       predictions: {},
       bluff: {},
-      endVotes: [],
       speaker: null,
       narration: null,
       talk: [],
@@ -977,13 +974,9 @@ export const mafia: GameDef<Mafia, Options> = {
 
     switch (action) {
       case 'end': {
-        const state: Mafia = structuredClone(prev)
-        state.host = hostFor(state, by.id, ctx)
-        if (by.id === state.host) return enterOver(state, null, ctx)
-        /* Anyone else is asking: when most of the people (not the AIs) agree, the case is dropped. */
-        if (!state.endVotes.includes(by.id)) state.endVotes.push(by.id)
-        if (state.endVotes.length > state.players.filter((p) => !isBot(p)).length / 2) return enterOver(state, null, ctx)
-        return state
+        /* Anyone playing can call it — friends on a call don't need a vote to stop. */
+        if (!seat(prev, by.id)) return { error: 'Only the players can end the game' }
+        return enterOver(structuredClone(prev), null, ctx)
       }
 
       case 'pause': {
@@ -1236,7 +1229,6 @@ export const mafia: GameDef<Mafia, Options> = {
             judged: state.judgement[viewer] ?? null,
             prediction: state.predictions[viewer] ?? null,
             bluff: state.bluff[viewer] ?? null,
-            endVote: state.endVotes.includes(viewer),
           }
         : null,
       night:
@@ -1274,7 +1266,6 @@ export const mafia: GameDef<Mafia, Options> = {
       ledger: state.ledger,
       whispers: family || ghost || over ? state.whispers : [],
       ghosts: ghost || over ? state.ghosts : [],
-      endVotes: state.endVotes.length,
       /* What's said at the table is public; so is an AI pausing to think. */
       talk: state.talk.filter((t) => t.round === state.round),
       thinking: [...new Set(state.thinking.map((t) => t.id))],
