@@ -344,7 +344,12 @@ export function DashboardPage() {
 
   const scene = findScene(preferences.sceneId)
 
-  const party = useMemo<HubMember[]>(() => {
+  /*
+   * Everyone in the room, you included. Only the hub's scene is capped at
+   * MAX_ON_STAGE — games, and anything else that needs the real headcount,
+   * read this. Capping it here once left a sixth friend out of every game.
+   */
+  const everyone = useMemo<HubMember[]>(() => {
     if (!user) return []
 
     const you: HubMember = {
@@ -362,7 +367,6 @@ export function DashboardPage() {
        what they are to the room. */
     const others = (roster[activeRoom.id] ?? [])
       .filter((person) => person.userId !== user.id)
-      .slice(0, MAX_ON_STAGE - 1)
       .map<HubMember>((person) => ({
         id: person.userId,
         name: person.name,
@@ -374,11 +378,18 @@ export function DashboardPage() {
         character: characterFor(person.userId, person.characterId),
       }))
 
-    /* You stand in the middle of your own party rather than at one end. */
-    const line = [...others]
+    return [you, ...others]
+  }, [user, activeRoom, roster, preferences.characterId])
+
+  /* Who stands in the scene: the first few, with you in the middle of your
+     own party rather than at one end. */
+  const party = useMemo<HubMember[]>(() => {
+    const [you, ...others] = everyone
+    if (!you) return []
+    const line = others.slice(0, MAX_ON_STAGE - 1)
     line.splice(Math.floor(line.length / 2), 0, you)
     return line
-  }, [user, activeRoom, roster, preferences.characterId])
+  }, [everyone])
 
   /* Watching is a room event, not a private toggle — the hub has to know a
      session is live so it can badge the button and offer the way in. */
@@ -772,7 +783,7 @@ export function DashboardPage() {
             <GamesStage
               roomId={activeRoom.id}
               selfId={user?.id}
-              members={party.map((member) => ({
+              members={everyone.map((member) => ({
                 id: member.id,
                 name: member.name,
                 you: member.you,
