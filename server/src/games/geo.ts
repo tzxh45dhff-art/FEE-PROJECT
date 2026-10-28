@@ -66,10 +66,10 @@ export function distanceKm(a: Point, b: Point): number {
   return 6371.0088 * 2 * Math.asin(Math.sqrt(Math.max(0, Math.min(1, h))))
 }
 
-/** Huddle's own distance curve: 25m perfect radius; India is a tighter map. */
+/** Huddle's own distance curve: 25km perfect radius; India is a tighter map. */
 export function geoPoints(distance: number, map: GeoOptions['map']): number {
   if (!Number.isFinite(distance) || distance < 0) return 0
-  if (distance <= 0.025) return 5000
+  if (distance <= 25) return 5000
   return Math.min(4999, Math.round(5000 * Math.exp(-distance / (map === 'india' ? 400 : 2000))))
 }
 
@@ -347,15 +347,15 @@ export const geoGame: GameDef<GeoState, GeoOptions> = {
   over(s) {
     return s.phase === 'over'
       ? {
-          summary: {
-            players: s.players,
-            scores: s.scores,
-            health: s.health,
-            mode: s.options.mode,
-            rounds: s.history.length,
-            endedEarly: s.endedEarly,
-          },
-        }
+        summary: {
+          players: s.players,
+          scores: s.scores,
+          health: s.health,
+          mode: s.options.mode,
+          rounds: s.history.length,
+          endedEarly: s.endedEarly,
+        },
+      }
       : null
   },
   used(s) {
