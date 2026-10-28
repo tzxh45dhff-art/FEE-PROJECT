@@ -106,9 +106,9 @@ describe('Somewhere geography rules', () => {
     ])
       assert.equal(validPoint(p), false)
   })
-  it('scores monotonically with a tighter India curve and a 25m perfect radius', () => {
-    assert.equal(geoPoints(0.025, 'world'), 5000)
-    assert.ok(geoPoints(0.026, 'world') < 5000)
+  it('scores monotonically with a tighter India curve and a 25km perfect radius', () => {
+    assert.equal(geoPoints(25, 'world'), 5000)
+    assert.ok(geoPoints(25.001, 'world') < 5000)
     assert.ok(geoPoints(1000, 'india') < geoPoints(1000, 'world'))
     assert.equal(geoPoints(NaN, 'india'), 0)
     assert.equal(geoPoints(-1, 'india'), 0)
