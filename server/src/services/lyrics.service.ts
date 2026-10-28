@@ -155,15 +155,35 @@ function toResult(record: LrcRecord | undefined): LyricsResult {
   return { kind: 'none' }
 }
 
-async function ask(url: string): Promise<unknown> {
+/*
+ * A normal answer takes about half a second; a stalled connection never
+ * answers. Better to give up on a stall quickly and try once more — a fresh
+ * connection usually gets through — than to wait six seconds for nothing.
+ */
+const ASK_MS = 3000
+
+async function once(url: string): Promise<unknown> {
   const response = await fetch(url, {
     headers: { 'User-Agent': AGENT, accept: 'application/json' },
-    signal: AbortSignal.timeout(6000),
+    signal: AbortSignal.timeout(ASK_MS),
   })
   if (response.status === 404) return null
   if (!response.ok) throw new Error(`lrclib ${response.status}`)
   return response.json()
 }
+
+/** One question, with one retry for a stall or a blip. A real answer — including "not found" — is never retried. */
+async function ask(url: string): Promise<unknown> {
+  try {
+    return await once(url)
+  } catch {
+    return once(url)
+  }
+}
+
+/** The answer, or a note that there wasn't one — so one source failing leaves the others standing. */
+type Asked = { ok: true; value: unknown } | { ok: false }
+const tried = (url: string): Promise<Asked> => ask(url).then((value) => ({ ok: true as const, value }), () => ({ ok: false as const }))
 
 /**
  * Cached in memory, by the cleaned query.
@@ -178,6 +198,8 @@ type Found = { result: LyricsResult; gap: number }
 
 const cache = new Map<string, { at: number; value: Found }>()
 const TTL_MS = 1000 * 60 * 60 * 6
+/** How long "couldn't ask" is remembered: long enough that a room doesn't hammer a struggling service, short enough to try again soon. */
+const FAILED_MS = 1000 * 20
 const MAX_ENTRIES = 500
 
 type Query = {
@@ -212,7 +234,19 @@ export async function lyricsFor(input: Query & { videoId?: string | null }): Pro
   return result
 }
 
-async function lookup(input: Query, loose: boolean): Promise<Found> {
+/** The same track asked for twice at once — a room of six — is looked up once. */
+const inflight = new Map<string, Promise<Found>>()
+
+function lookup(input: Query, loose: boolean): Promise<Found> {
+  const key = `${titleCandidates(input.title, cleanArtist(input.artist)).join('|').toLowerCase()}::${cleanArtist(input.artist).toLowerCase()}::${Math.round(input.duration ?? 0)}::${loose ? 'loose' : 'strict'}`
+  const running = inflight.get(key)
+  if (running) return running
+  const work = lookupNow(input, loose).finally(() => inflight.delete(key))
+  inflight.set(key, work)
+  return work
+}
+
+async function lookupNow(input: Query, loose: boolean): Promise<Found> {
   const artist = cleanArtist(input.artist)
   const candidates = titleCandidates(input.title, artist)
   if (candidates.length === 0) return { result: { kind: 'none' }, gap: 0 }
@@ -235,69 +269,87 @@ async function lookup(input: Query, loose: boolean): Promise<Found> {
 
   const wanted = input.duration ?? 0
 
-  try {
-    /* Anything with timings beats anything without, whichever reading of the
-       title found it — so a plain hit on the first candidate is held rather
-       than returned, in case the second turns up a synced one. */
-    let fallback: LyricsResult = { kind: 'none' }
-
-    for (const title of candidates) {
-      /*
-       * The exact endpoint first: it is the only one that takes a duration,
-       * and a duration is what separates a cover, a live take and a remix
-       * from the recording actually playing.
-       */
+  /*
+   * Every question, at once: the exact match and the search for each reading
+   * of the title. They used to go one after another — two or four round trips
+   * of half a second each — when none depends on another's answer. The
+   * ordering below is unchanged; only the waiting is.
+   */
+  const asked = await Promise.all(
+    candidates.map(async (title) => {
+      let exactUrl: string | null = null
       if (artist) {
         const exact = new URL(ENDPOINT)
         exact.searchParams.set('track_name', title)
         exact.searchParams.set('artist_name', artist)
         if (input.album) exact.searchParams.set('album_name', input.album)
         if (input.duration) exact.searchParams.set('duration', String(Math.round(input.duration)))
-
-        const record = (await ask(exact.toString())) as LrcRecord | null
-        const result = toResult(record ?? undefined)
-        if (result.kind === 'synced') return remember(result)
-        if (result.kind === 'plain' && fallback.kind === 'none') fallback = result
+        exactUrl = exact.toString()
       }
-
-      /* Then search, which is fuzzy and unordered by length, so the closest
-         duration wins rather than the first row returned. */
       const search = new URL(SEARCH)
       search.searchParams.set('track_name', title)
       if (artist) search.searchParams.set('artist_name', artist)
+      const [exact, rows] = await Promise.all([exactUrl ? tried(exactUrl) : Promise.resolve<Asked>({ ok: true, value: null }), tried(search.toString())])
+      return { title, exact, rows }
+    }),
+  )
 
-      const rows = ((await ask(search.toString())) ?? []) as (LrcRecord & { duration?: number })[]
-      if (!Array.isArray(rows) || rows.length === 0) continue
+  /* Anything with timings beats anything without, whichever reading of the
+     title found it — so a plain hit on the first candidate is held rather
+     than returned, in case the second turns up a synced one. */
+  let fallback: LyricsResult = { kind: 'none' }
+  /* Whether anything at all went wrong: a "no" that is really "couldn't ask" must not be remembered. */
+  let failed = false
 
-      const ranked = [...rows].sort((a, b) => {
-        const synced = Number(Boolean(b.syncedLyrics)) - Number(Boolean(a.syncedLyrics))
-        if (synced !== 0) return synced
-        if (!wanted) return 0
-        return Math.abs((a.duration ?? 0) - wanted) - Math.abs((b.duration ?? 0) - wanted)
-      })
-
-      const best = ranked[0]
-      const gap = wanted && best?.duration ? Math.abs(best.duration - wanted) : 0
-      /* A match more than fifteen seconds out is a different recording, and
-         its timings would run further adrift with every line. Its words may
-         still be right, so it is kept as plain rather than thrown away —
-         unless the caller can check the timings against the video itself. */
-      if (!loose && gap > 15) {
-        const plain = ranked.find((row) => row.plainLyrics)?.plainLyrics
-        if (plain && fallback.kind === 'none') fallback = { kind: 'plain', plain }
-        continue
-      }
-
-      const result = toResult(best)
-      if (result.kind === 'synced') return remember(result, gap)
+  for (const { exact, rows: searched } of asked) {
+    /* The exact endpoint first: it is the only one that takes a duration,
+       and a duration is what separates a cover, a live take and a remix
+       from the recording actually playing. */
+    if (!exact.ok) failed = true
+    else {
+      const result = toResult((exact.value as LrcRecord | null) ?? undefined)
+      if (result.kind === 'synced') return remember(result)
       if (result.kind === 'plain' && fallback.kind === 'none') fallback = result
     }
 
-    return remember(fallback)
-  } catch {
-    /* Timeout, offline, or the service having a bad day. Not an error worth
-       showing — the view simply says it has nothing, and a later track will
-       try again. Deliberately not cached, so it is not a lasting "no". */
-    return { result: { kind: 'none' }, gap: 0 }
+    /* Then search, which is fuzzy and unordered by length, so the closest
+       duration wins rather than the first row returned. */
+    if (!searched.ok) {
+      failed = true
+      continue
+    }
+    const rows = (searched.value ?? []) as (LrcRecord & { duration?: number })[]
+    if (!Array.isArray(rows) || rows.length === 0) continue
+
+    const ranked = [...rows].sort((a, b) => {
+      const synced = Number(Boolean(b.syncedLyrics)) - Number(Boolean(a.syncedLyrics))
+      if (synced !== 0) return synced
+      if (!wanted) return 0
+      return Math.abs((a.duration ?? 0) - wanted) - Math.abs((b.duration ?? 0) - wanted)
+    })
+
+    const best = ranked[0]
+    const gap = wanted && best?.duration ? Math.abs(best.duration - wanted) : 0
+    /* A match more than fifteen seconds out is a different recording, and
+       its timings would run further adrift with every line. Its words may
+       still be right, so it is kept as plain rather than thrown away —
+       unless the caller can check the timings against the video itself. */
+    if (!loose && gap > 15) {
+      const plain = ranked.find((row) => row.plainLyrics)?.plainLyrics
+      if (plain && fallback.kind === 'none') fallback = { kind: 'plain', plain }
+      continue
+    }
+
+    const result = toResult(best)
+    if (result.kind === 'synced') return remember(result, gap)
+    if (result.kind === 'plain' && fallback.kind === 'none') fallback = result
   }
+
+  /* Found nothing *and* couldn't ask everyone: say so, but only for a moment, so the next ask tries again. */
+  if (failed && fallback.kind === 'none') {
+    const value = { result: { kind: 'none' } as LyricsResult, gap: 0 }
+    cache.set(key, { at: Date.now() - TTL_MS + FAILED_MS, value })
+    return value
+  }
+  return remember(fallback)
 }

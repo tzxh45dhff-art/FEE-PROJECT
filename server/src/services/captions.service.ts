@@ -64,14 +64,14 @@ async function fetchWords(videoId: string): Promise<TimedWord[] | null> {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'user-agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip' },
     body: JSON.stringify({ context: { client: CLIENT }, videoId }),
-    signal: AbortSignal.timeout(6000),
+    signal: AbortSignal.timeout(3500),
   })
   if (!player.ok) return null
   const data = (await player.json()) as { captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: Track[] } } }
   const track = pick(data.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [])
   if (!track?.baseUrl) return null
 
-  const file = await fetch(track.baseUrl.replace(/&fmt=[^&]*/, ''), { signal: AbortSignal.timeout(6000) })
+  const file = await fetch(track.baseUrl.replace(/&fmt=[^&]*/, ''), { signal: AbortSignal.timeout(3500) })
   if (!file.ok) return null
   const stream = wordStream(parseCaptionXml(await file.text()))
   return stream.length > 0 ? stream : null
