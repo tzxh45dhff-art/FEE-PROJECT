@@ -265,7 +265,7 @@ export function GeoSetup({
             </label>
           </div>
           <p>
-            Classic: up to 5,000 points per round. A pin within 25 metres is perfect. Unconfirmed pins submit when time
+            Classic: up to 5,000 points per round. A pin within 25 km is perfect. Unconfirmed pins submit when time
             runs out.
           </p>
         </details>
