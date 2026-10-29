@@ -8,7 +8,7 @@ import { describe, it } from 'node:test'
 
 import type { Ctx, Player } from '../src/games/engine.js'
 import { familyChoice, mafia, namedIn, services, sightFor, storyPages, tally, winnerOf, type Mafia, type Options } from '../src/games/mafia.js'
-import { briefing, composeMs, judgeByRules, lineByRules, nightPick, texture, voteByRules } from '../src/games/mafia.bots.js'
+import { briefing, composeMs, decide, judgeByRules, lineByRules, nightPick, texture, voteByRules } from '../src/games/mafia.bots.js'
 import { ARCS, ARC_IDS, pickArc } from '../src/games/mafia.arcs.js'
 import { dealCounts, dealFairly, dealKey, first, maxFamily, roleSet, type Role } from '../src/games/mafia.roles.js'
 
@@ -681,7 +681,7 @@ describe('mafia — AI players', () => {
     assert.equal(state.thinking.length, 3)
     assert.equal(act(state, null, 'bot', { step: state.step, id: 'ai-1', job: 'vote' }), state, 'already thinking: a second turn does nothing')
     for (const t of [...state.thinking]) state = act(state, null, 'botDone', { key: t.key, target: 'aditi', say: 'Them.' })
-    assert.ok(state.deadline! - clock <= 4_000, 'everyone is in: the vote closes in moments')
+    assert.ok(state.deadline! - clock <= 12_000, 'everyone is in: a bounded window remains to read and answer the final vote')
     state = tick(state)
     assert.equal(state.phase, 'defence')
   })
@@ -877,25 +877,115 @@ describe('mafia — AI players', () => {
     assert.equal(mafia.join!(state, { id: 'late', name: 'Latecomer' }, ctx()), null, 'cards already seen, no AI chair: the next game')
   })
 
-  it('the AIs have tells: a liar slips now and then, an honest player gets rattled less often — a hint, never proof', () => {
+  it('speaking style does not encode a secret role or force liars to make mistakes', () => {
     clock = 0
     timers = []
     const state = mafia.start(people(1), options({ bots: 5 }), ctx())
     state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager', 'villager'] as Role[])[i]!))
-    const random = (n: number) => Math.floor(Math.random() * n)
-    const rate = (id: string) => {
-      let slips = 0
-      for (let i = 0; i < 4000; i++) if (/This time/.test(texture('talk', sightFor(state, id, null), random))) slips++
-      return slips / 4000
+    for (let roll = 0; roll < 100; roll++) {
+      const random = (n: number) => roll % n
+      assert.equal(texture('talk', sightFor(state, 'ai-1', null), random), texture('talk', sightFor(state, 'ai-5', null), random))
     }
-    const liar = rate('ai-1')
-    const honest = rate('ai-5')
-    assert.ok(liar > honest * 1.5, `the Family slip more (${liar.toFixed(2)} vs ${honest.toFixed(2)})`)
-    assert.ok(honest > 0.04, 'the honest get rattled too, so a shaky line is not proof')
-    assert.ok(liar < 0.3, 'and it stays rare — most lines are clean')
-    let rough = 0
-    for (let i = 0; i < 2000; i++) if (/^(Look|Hm|I mean|Okay|Honestly)|(…|Anyway\.|I think\.|Yes\.)$/.test(lineByRules('talk', sightFor(state, 'ai-1', null), random))) rough++
-    assert.ok(rough > 100 && rough < 700, `without Luna too, a few lines come out human (${rough} of 2000)`)
+  })
+
+  it('an Inspector names a positive check even when the model is unavailable', async () => {
+    const state = mafia.start(people(1), options({ bots: 5 }), ctx())
+    state.players[1]!.role = 'detective'
+    state.files = [{ round: 1, target: 'aditi', family: true }]
+    const sight = sightFor(state, 'ai-1', null)
+    for (const job of ['talk', 'vote', 'defence'] as const) {
+      assert.match(lineByRules(job, sight, () => 0), /I'm the Inspector.*Aditi.*night 1.*Family/)
+    }
+    const decision = await decide('talk', sight, () => 0, { configured: () => false, request: async () => { throw new Error('must not call a model') } })
+    assert.match(decision.say!, /Inspector.*Aditi/)
+    assert.match(briefing(sight), /USE your files/)
+  })
+
+  it('keeps private plans per seat and out of every public view', () => {
+    let state = mafia.start(people(1), options({ bots: 5 }), ctx())
+    state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager', 'villager'] as Role[])[i]!))
+    state = tick(tick(tick(tick(state))))
+    state = act(state, null, 'bot', { step: state.step, id: 'ai-1', job: 'talk' })
+    state = act(state, null, 'botDone', { key: state.thinking.at(-1)!.key, say: 'Aditi, who are you voting for?', plan: 'Counterclaim Inspector if Aditi reveals a check on me.' })
+    assert.match(briefing(sightFor(state, 'ai-1', null)), /Counterclaim Inspector/)
+    assert.doesNotMatch(briefing(sightFor(state, 'ai-2', null)), /Counterclaim Inspector/)
+    for (const player of state.players) assert.ok(!JSON.stringify(mafia.view(state, player.id)).includes('Counterclaim Inspector'))
+    assert.ok(!JSON.stringify(mafia.view(state, 'spectator')).includes('Counterclaim Inspector'))
+  })
+
+  it('schedules conversation during nominations and answers names in vote explanations', () => {
+    let state = mafia.start(people(1), options({ bots: 4 }), ctx())
+    state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager'] as Role[])[i]!))
+    state = tick(tick(tick(tick(tick(state)))))
+    assert.equal(state.phase, 'vote')
+    assert.ok(timers.some(t => t.payload.job === 'talk' && t.payload.step === state.step))
+    clock += 5000
+    state = act(state, null, 'bot', { step: state.step, id: 'ai-1', job: 'vote' })
+    const named = state.players.find(p => p.id === 'ai-3')!.name
+    state = act(state, null, 'botDone', { key: state.thinking.at(-1)!.key, target: 'ai-3', say: `${named}, why should I believe that claim?` })
+    assert.ok(timers.some(t => t.payload.job === 'talk' && t.payload.id === 'ai-3' && t.payload.replyTo === 'ai-1'))
+  })
+
+  it('never turns a silent or invalid model vote into a silent or contradictory action', async () => {
+    const state = mafia.start(people(1), options({ bots: 4 }), ctx())
+    const sight = sightFor(state, 'ai-1', null)
+    const answer = await decide('vote', sight, () => 0, { configured: () => true, request: async () => ({ target: 'aditi', say: null, plan: 'Get Aditi to answer the role question.' }) })
+    assert.equal(answer.target, 'aditi')
+    assert.match(answer.say!, /Aditi/)
+    assert.equal(answer.plan, 'Get Aditi to answer the role question.')
+    const invalid = await decide('vote', sight, () => 0, { configured: () => true, request: async () => ({ target: 'nonexistent', say: 'I vote for a nonexistent player.' }) })
+    assert.ok(!invalid.say!.includes('nonexistent'))
+  })
+
+  it('can revise a nomination after new evidence, but ordinary chat keeps the existing vote', () => {
+    let state = mafia.start(people(1), options({ bots: 4 }), ctx())
+    state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager'] as Role[])[i]!))
+    state = tick(tick(tick(tick(tick(state)))))
+    state = act(state, 'ai-1', 'vote', { target: 'aditi' })
+    for (const payload of [{ say: 'I have changed my mind after that check.', target: 'ai-3' }, { say: 'Aditi, answer the role question.' }]) {
+      state = act(state, null, 'bot', { step: state.step, id: 'ai-1', job: 'talk' })
+      state = act(state, null, 'botDone', { key: state.thinking.at(-1)!.key, ...payload })
+      assert.equal(state.votes['ai-1'], 'ai-3')
+    }
+  })
+
+  it('does not run two competing decisions for one seat at once', () => {
+    let state = mafia.start(people(1), options({ bots: 4 }), ctx())
+    state.players.forEach((p, i) => (p.role = (['villager', 'mafia', 'doctor', 'detective', 'villager'] as Role[])[i]!))
+    state = tick(tick(tick(tick(tick(state)))))
+    state = act(state, null, 'bot', { step: state.step, id: 'ai-1', job: 'talk' })
+    state = act(state, null, 'bot', { step: state.step, id: 'ai-1', job: 'vote' })
+    assert.equal(state.thinking.filter(t => t.id === 'ai-1').length, 1)
+    assert.ok(timers.some(t => t.payload.id === 'ai-1' && t.payload.job === 'vote' && t.at === clock + 800))
+  })
+
+  it('accepts direct role claims and explicit vote changes without requiring filler', async () => {
+    const state = mafia.start(people(1), options({ bots: 4 }), ctx())
+    const sight = { ...sightFor(state, 'ai-1', null), phase: 'vote' }
+    const claim = "I'm the Doctor. I'm keeping tonight's patient private."
+    const answer = await decide('talk', sight, () => 0, { configured: () => true, request: async () => ({ say: claim }) })
+    assert.equal(answer.say, claim)
+    assert.equal(answer.target, undefined, 'role claims do not silently abstain')
+    const changed = await decide('talk', sight, () => 0, { configured: () => true, request: async () => ({ say: 'Aditi, that check changes my read. I nominate you.', target: 'aditi' }) })
+    assert.equal(changed.target, 'aditi')
+  })
+
+  it('cancels a slow model request in time for the fallback vote to count', async () => {
+    const state = mafia.start(people(1), options({ bots: 4 }), ctx())
+    const sight = { ...sightFor(state, 'ai-1', null), msLeft: 800 }
+    let signal: AbortSignal | undefined
+    const answer = await decide('vote', sight, () => 0, {
+      configured: () => true,
+      request: (_messages, requestSignal) => {
+        signal = requestSignal
+        return new Promise<never>(() => {})
+      },
+    })
+    assert.ok(signal?.aborted, 'the timed-out transport is cancelled, not left calling in the background')
+    assert.ok(answer.say)
+    assert.ok(answer.target === null || sight.players.some(p => p.id === answer.target && p.alive && p.id !== sight.me.id))
+    const rushed = await decide('vote', { ...sight, msLeft: 500 }, () => 0, { configured: () => true, request: async () => { throw new Error('no time for another request') } })
+    assert.ok(rushed.say)
   })
 
 })

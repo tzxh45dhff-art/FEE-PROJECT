@@ -74,19 +74,21 @@ const RETRY_DELAY_MS = 1200
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-async function post(target: string, body: unknown, timeoutMs: number, apiKey = env.azure.apiKey): Promise<unknown> {
+async function post(target: string, body: unknown, timeoutMs: number, apiKey = env.azure.apiKey, signal?: AbortSignal): Promise<unknown> {
   let lastError: unknown = null
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    signal?.throwIfAborted()
     let response: Response
     try {
       response = await fetch(target, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'api-key': apiKey },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
       })
     } catch (cause) {
+      if (signal?.aborted) throw cause
       /* No route to the host will not become one in a second and a half, and
          retrying past it costs the wait and then blames the connection for a
          problem that is the machine's own. */
@@ -193,7 +195,7 @@ export type ChatReply = {
  */
 export async function chat(
   messages: ChatMessage[],
-  options: { json?: boolean; tools?: ToolSpec[]; temperature?: number; maxTokens?: number } = {},
+  options: { json?: boolean; tools?: ToolSpec[]; temperature?: number; maxTokens?: number; signal?: AbortSignal } = {},
 ): Promise<ChatReply> {
   requireConfigured()
 
@@ -215,6 +217,8 @@ export async function chat(
     url(env.azure.chatDeployment, 'chat/completions'),
     body,
     CHAT_TIMEOUT_MS,
+    env.azure.apiKey,
+    options.signal,
   )) as {
     choices?: { message?: { content?: string | null; tool_calls?: ToolCall[] } }[]
   }
@@ -235,7 +239,7 @@ export async function chat(
  */
 export async function chatJson<T>(
   messages: ChatMessage[],
-  options: { temperature?: number; maxTokens?: number } = {},
+  options: { temperature?: number; maxTokens?: number; signal?: AbortSignal } = {},
 ): Promise<T> {
   const reply = await chat(messages, { ...options, json: true })
   const text = (reply.content ?? '').trim()
