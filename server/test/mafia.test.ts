@@ -594,6 +594,10 @@ describe('mafia — AI players', () => {
     state = await play(state, 600, (s) => {
       talked = Math.max(talked, s.talk.filter((t) => t.kind === 'bot').length)
       if (s.phase === 'deal' && !s.seen.includes('aditi')) return act(s, 'aditi', 'seen')
+      if (s.phase === 'night' && s.players[0]!.alive && !s.picks.aditi) {
+        const target = nightPick(sightFor(s, 'aditi', null), (n) => Math.floor(Math.random() * n))
+        if (target) return act(s, 'aditi', 'pick', { target })
+      }
       return s
     })
     assert.equal(state.phase, 'over', 'the game reaches an end')
@@ -602,7 +606,7 @@ describe('mafia — AI players', () => {
     assert.ok(Object.keys(state.ledger[0]!.nominations).some((id) => id.startsWith('ai-')), 'the AIs voted')
   })
 
-  it('the AIs in the Family follow a person’s call at night', () => {
+  it('a person’s night choice does not silently overwrite every Family AI’s choice', () => {
     clock = 0
     timers = []
     let state = mafia.start(people(1), options({ bots: 6 }), ctx())
@@ -610,7 +614,11 @@ describe('mafia — AI players', () => {
     state.players.forEach((p, i) => (p.role = roles[i]!))
     state = tick(state)
     state = act(state, 'aditi', 'pick', { target: 'ai-3' })
-    assert.equal(state.picks['ai-1'], 'ai-3')
+    assert.equal(state.picks['ai-1'], undefined)
+    assert.equal(sightFor(state, 'ai-1', null).familyPicks.aditi, 'ai-3', 'the teammate can consider the call privately')
+    state = act(state, null, 'bot', { step: state.step, id: 'ai-1', job: 'pick' })
+    assert.ok(state.picks['ai-1'])
+    assert.equal(state.picks.aditi, 'ai-3')
   })
 
   it('table talk: by day only, the living only — and a named AI answers', () => {
@@ -661,7 +669,8 @@ describe('mafia — AI players', () => {
     state = tick(tick(tick(tick(state))))
     assert.equal(state.phase, 'day')
     const talk = timers.filter((t) => t.action === 'bot' && t.payload.job === 'talk').map((t) => t.at).sort((a, b) => a - b)
-    assert.equal(talk.length, 10)
+    assert.ok(talk.length >= 5 && talk.length <= 15, 'everyone speaks; different personalities can take different numbers of turns')
+    for (const bot of state.players.filter((p) => p.bot !== undefined)) assert.ok(timers.some((t) => t.payload.id === bot.id && t.payload.job === 'talk'))
     for (let i = 1; i < talk.length; i++) assert.ok(talk[i]! - talk[i - 1]! >= 2_000, 'at least a couple of seconds between lines')
   })
 

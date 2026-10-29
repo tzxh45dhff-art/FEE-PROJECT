@@ -2,7 +2,8 @@ import { randomInt } from 'node:crypto'
 
 import { isError, shuffle, type Ctx, type GameDef, type Later, type Player } from './engine.js'
 import { ARCS, arcKey, isArc, pickArc, type ArcChoice, type ArcId } from './mafia.arcs.js'
-import { nightPick, think, type Job, type Sight } from './mafia.bots.js'
+import { nightPick, think, type Job, type Read, type Sight } from './mafia.bots.js'
+import { personalityOf } from './mafia.personalities.js'
 import { MAX_PLAYERS, MIN_PLAYERS, ROLE_INFO, TITLES, dealCounts, dealRange, rollDeal, sayRange, dealFairly, dealKey, first, roleSet, teamOf, type Role } from './mafia.roles.js'
 import { narrate, type NarrationFacts, type NarrationKind } from '../services/mafiaNarration.service.js'
 
@@ -157,6 +158,8 @@ export type Mafia = {
   thinking: Thinking[]
   /** Per-seat intentions. Never included in any viewer's state. */
   botPlans: Record<string, string>
+  botReads: Record<string, Read[]>
+  botTokens: Record<string, string>
   lastReplyAt: number
   /** AIs answering AIs today — capped, so the table never talks itself in circles. */
   replies: number
@@ -234,9 +237,12 @@ function planBots(state: Mafia, ctx: Ctx) {
    * lines landing together, never a burst and then silence.
    */
   if (state.phase === 'day') {
-    const order = shuffle([...bots, ...bots], ctx)
+    const firstPass = shuffle(bots, ctx)
+    const extras = shuffle(bots.flatMap((bot) => Array.from({ length: personalityOf(ARCS[state.arc].personas[bot.bot!]!).turns - 1 }, () => bot)), ctx)
+    const budget = Math.max(bots.length, Math.floor(span * 0.75 / 6_500))
+    const order = [...firstPass, ...extras.slice(0, Math.max(0, budget - firstPass.length))]
     const from = 4_000
-    const gap = Math.max(4_000, (span * 0.75 - from) / order.length)
+    const gap = Math.max(3_000, (span * 0.75 - from) / order.length)
     order.forEach((bot, i) => plan(from + i * gap + between(0, gap * 0.4), bot.id, 'talk'))
   }
   if (state.phase === 'vote') {
@@ -308,6 +314,8 @@ export function sightFor(state: Mafia, id: string, replyTo: string | null, now =
   const left = state.deadline !== null ? state.deadline - now : state.paused
   return {
     plan: state.botPlans?.[id],
+    reads: state.botReads?.[id] ?? [],
+    tokens: state.botTokens,
     world: { tone: ARCS[state.arc].tone, venue: ARCS[state.arc].venue },
     me: { id, role: v.me.role, persona: ARCS[state.arc].personas[me.bot ?? 0]!, files: v.me.files, lastProtected: v.me.lastProtected, selfSaveUsed: v.me.selfSaveUsed },
     phase: state.phase,
@@ -857,6 +865,8 @@ export const mafia: GameDef<Mafia, Options> = {
       nightLog: [],
       thinking: [],
       botPlans: {},
+      botReads: {},
+      botTokens: Object.fromEntries(shuffle(players, ctx).map((player, i) => [player.id, `seat_${i + 1}`])),
       lastReplyAt: 0,
       replies: 0,
     }
@@ -925,6 +935,12 @@ export const mafia: GameDef<Mafia, Options> = {
         if (job === 'vote' && (prev.phase !== 'vote' || prev.votes[bot.id] !== undefined)) return prev
         if (job === 'judge' && (prev.phase !== 'judgement' || prev.judgement[bot.id] !== undefined)) return prev
         if (prev.thinking.some((t) => t.id === bot.id && t.job === job)) return prev
+        if (job === 'talk' && prev.thinking.some((t) => t.job === 'talk')) {
+          // Ordinary remarks take turns so the next speaker hears the line
+          // that just landed. Votes and jury decisions keep their own clocks.
+          if (prev.deadline !== null && prev.deadline - ctx.now() > 2_000) ctx.schedule(1_000, 'bot', { ...payload, step: prev.step })
+          return prev
+        }
         if (prev.thinking.some((t) => t.id === bot.id)) {
           // A seat must not produce a vote and an argument from two different
           // snapshots at once. Other seats still think concurrently.
@@ -948,6 +964,17 @@ export const mafia: GameDef<Mafia, Options> = {
         if (typeof payload.plan === 'string' && payload.plan.trim()) {
           state.botPlans ??= {}
           state.botPlans[bot.id] = payload.plan.replace(/\s+/g, ' ').trim().slice(0, 140)
+        }
+        if (Array.isArray(payload.reads)) {
+          const updates: Read[] = payload.reads.flatMap((raw: unknown) => {
+            if (!raw || typeof raw !== 'object') return []
+            const read = raw as Record<string, unknown>
+            if (typeof read.id !== 'string' || read.id === bot.id || !seat(state, read.id)?.alive || typeof read.suspicion !== 'number' || !Number.isFinite(read.suspicion) || typeof read.reason !== 'string') return []
+            return [{ id: read.id, suspicion: Math.max(-2, Math.min(2, read.suspicion)), reason: read.reason.replace(/\s+/g, ' ').trim().slice(0, 90) }]
+          }).slice(0, 3)
+          state.botReads ??= {}
+          const changed = new Set(updates.map((read) => read.id))
+          state.botReads[bot.id] = [...(state.botReads[bot.id] ?? []).filter((read) => !changed.has(read.id)), ...updates].slice(-6)
         }
         const as = { id: bot.id, name: bot.name }
         if (thought.job === 'vote' || (thought.job === 'talk' && state.phase === 'vote' && Object.hasOwn(payload, 'target'))) {
@@ -1112,8 +1139,6 @@ export const mafia: GameDef<Mafia, Options> = {
         }
         const state: Mafia = structuredClone(prev)
         state.picks[by.id] = target.id
-        /* The AIs in the Family follow a person's call. */
-        if (isFamily(me.role) && !isBot(me)) for (const p of living(state)) if (isBot(p) && isFamily(p.role)) state.picks[p.id] = target.id
         const everyone = expected(state, ctx).every((p) => state.picks[p.id])
         const family = living(state).filter((p) => isFamily(p.role))
         const agreed = family.some((p) => p.role === 'godfather') || new Set(family.map((p) => state.picks[p.id])).size === 1
@@ -1213,7 +1238,7 @@ export const mafia: GameDef<Mafia, Options> = {
       work.push(
         services.think(thought.job, sight, (max) => (max <= 1 ? 0 : randomInt(max))).then((answer) => ({
           action: 'botDone',
-          payload: { key: thought.key, say: answer.say, ...(answer.target !== undefined ? { target: answer.target } : {}), guilty: answer.guilty, plan: answer.plan },
+          payload: { key: thought.key, say: answer.say, ...(answer.target !== undefined ? { target: answer.target } : {}), guilty: answer.guilty, plan: answer.plan, reads: answer.reads },
         })),
       )
     }
@@ -1354,8 +1379,13 @@ export const mafia: GameDef<Mafia, Options> = {
         delete state.picks[from]
       }
       state.thinking = state.thinking.filter((t) => t.id !== from)
+      state.botTokens[player.id] = state.botTokens[from] ?? `seat_${state.players.length}`
+      delete state.botTokens[from]
+      delete state.botPlans[from]
+      delete state.botReads[from]
     } else {
       state.players.push({ ...player, role: 'villager', alive: true, presence: state.options.together ? 'table' : 'online', cover })
+      state.botTokens[player.id] = `seat_${state.players.length}`
       state.counts = secretDeal(state.options, state.players.length, ctx)
       const roles = shuffle(dealt(state, state.players.length), ctx)
       state.players.forEach((p, i) => (p.role = roles[i]!))
