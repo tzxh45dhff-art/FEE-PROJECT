@@ -31,6 +31,9 @@ export type QuizItem = {
   media?: Record<string, unknown>
   /** Shown only once it is revealed — the song's cover and artist. */
   reveal?: Record<string, unknown>
+  /** Stable content identities, independent of upload IDs or presentation. Server only. */
+  repeatKeys?: string[]
+  attribution?: { label: string; url: string; license: string; licenseUrl: string }
 }
 
 /** A skip is recorded as a pick of -1: answered, scores nothing, keeps the streak. */
@@ -308,6 +311,7 @@ export function quizGame<O extends QuizOptions>(def: {
               tag: item.tag,
               category: item.category ?? null,
               difficulty: item.difficulty ?? null,
+              attribution: item.attribution ?? null,
               /* The options stay hidden through "get ready": reading time is for the question. */
               options: state.phase === 'ready' && !item.media ? [] : item.options,
               answer: revealed ? item.answer : null,
@@ -332,8 +336,11 @@ export function quizGame<O extends QuizOptions>(def: {
     },
 
     used(state) {
-      const played = state.phase === 'over' ? state.round : state.round + 1
-      return state.items.slice(0, played).map((item) => (item.media?.ref ? String(item.media.ref) : item.prompt))
+      const played = Math.min(state.items.length, state.round + 1)
+      return state.items.slice(0, played).flatMap((item) => [
+        item.media?.ref ? String(item.media.ref) : item.prompt,
+        ...(item.repeatKeys ?? []),
+      ])
     },
 
     over(state) {

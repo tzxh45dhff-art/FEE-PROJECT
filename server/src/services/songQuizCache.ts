@@ -1,8 +1,9 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { gameCacheDirectory } from '../config/gameCache.js'
 
 // Generated public metadata and video IDs only; no accounts, keys or audio.
-const directory = path.resolve(import.meta.dirname, '../../.cache')
+const directory = gameCacheDirectory()
 const file = path.join(directory, 'song-quiz-v4.json')
 type Entry = { until: number; value: unknown }
 let entries: Record<string, Entry> = {}

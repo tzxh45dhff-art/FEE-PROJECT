@@ -4,7 +4,7 @@ import { excluded, officialTier, rankSongs } from './musicRank.js'
 import { searchViaPiped, searchYouTube, type SearchResult } from './sources.service.js'
 import { catalogueCacheGet, catalogueCacheSet } from './songQuizCache.js'
 import { discoverSongs } from './songMetadata.service.js'
-import { normaliseSongText, type SongCategory, type SongIdentity } from './songQuizPacks.js'
+import { heardSong, normaliseSongText, songIdentityKey, type SongCategory, type SongIdentity } from './songQuizPacks.js'
 
 export { SONG_CATEGORIES, type SongCategory } from './songQuizPacks.js'
 export type CatalogSong = {
@@ -38,7 +38,7 @@ function shuffled<T>(values: T[], random: (max: number) => number) {
 function artistBalanced(songs: SongIdentity[], random: (max: number) => number) {
   const artists = shuffled([...new Set(songs.map((song) => song.artist))], random)
   // Difficulty should test recognition, not turn the game into deep-cut roulette.
-  const piles = artists.map((artist) => shuffled(songs.filter((song) => song.artist === artist && (song.rank ?? 1) <= 12), random))
+  const piles = artists.map((artist) => shuffled(songs.filter((song) => song.artist === artist && (song.rank ?? 1) <= 40), random))
   const out: SongIdentity[] = []
   while (piles.some((pile) => pile.length)) for (const pile of piles) {
     const song = pile.pop()
@@ -138,8 +138,10 @@ export async function freshSongPool(categories: SongCategory[], dependencies: Po
    * has more to choose from. Searches here are the free instances, so growing
    * the catalogue costs no quota.
    */
-  const unheard = cached.filter((song) => !avoid.has(song.ref))
-  const heard = cached.filter((song) => avoid.has(song.ref))
+  const unheard = cached.filter((song) => !heardSong(song, avoid))
+  const heard = cached.filter((song) => heardSong(song, avoid))
+  // Match unheard identities before spending the search budget on another upload of an old song.
+  unresolved.sort((a, b) => Number(avoid.has(songIdentityKey(a))) - Number(avoid.has(songIdentityKey(b))))
   const needed = Math.max(0, limit - unheard.length)
   const budget = needed === 0 ? 0 : Math.min(24, needed * 2 + 4)
   const refs = new Set(cached.map((song) => song.ref))
@@ -169,7 +171,7 @@ export async function freshSongPool(categories: SongCategory[], dependencies: Po
         if (!resolved) continue
         refs.add(resolved.ref)
         /* Matched now but heard before (an earlier match that expired): a filler, not a lead. */
-        if (avoid.has(resolved.ref)) heard.push(resolved)
+        if (heardSong(resolved, avoid)) heard.push(resolved)
         else found.push(resolved)
       }
     }

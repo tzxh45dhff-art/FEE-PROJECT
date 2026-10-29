@@ -132,5 +132,9 @@ export function byFreshness<T>(list: readonly T[], key: (item: T) => string, ctx
   const mixed = shuffle(list, ctx)
   const seen = ctx.seen
   if (!seen?.size) return mixed
-  return [...mixed.filter((item) => !seen.has(key(item))), ...mixed.filter((item) => seen.has(key(item)))]
+  const age = new Map([...seen].map((id, i) => [id, i]))
+  return [
+    ...mixed.filter((item) => !seen.has(key(item))),
+    ...mixed.filter((item) => seen.has(key(item))).sort((a, b) => age.get(key(a))! - age.get(key(b))!),
+  ]
 }

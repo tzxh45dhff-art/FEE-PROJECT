@@ -1,3 +1,5 @@
+import { EXTRA_BANK } from './trivia.extra.js'
+
 /**
  * Live trivia — the question bank.
  *
@@ -20,9 +22,10 @@ export const CATEGORIES = {
 
 export type Category = keyof typeof CATEGORIES
 
-type Entry = [Category, string, string, string, string, string]
+export type Entry = [Category, string, string, string, string, string]
 
 export const BANK: Entry[] = [
+  ...EXTRA_BANK,
   /* Bollywood */
   ['bollywood', 'Which film has the villain Gabbar Singh?', 'Sholay', 'Deewaar', 'Don', 'Zanjeer'],
   ['bollywood', 'What is Shah Rukh Khan’s character called in DDLJ?', 'Raj', 'Rahul', 'Aman', 'Prem'],
@@ -62,7 +65,7 @@ export const BANK: Entry[] = [
   ['cricket', 'Who captained India to the 2011 World Cup win?', 'MS Dhoni', 'Virat Kohli', 'Sachin Tendulkar', 'Gautam Gambhir'],
   ['cricket', 'In which year did India first win the World Cup?', '1983', '1987', '1975', '1992'],
   ['cricket', 'Who scored the first double century in men’s ODIs?', 'Sachin Tendulkar', 'Virender Sehwag', 'Rohit Sharma', 'Chris Gayle'],
-  ['cricket', 'Who holds the highest individual score in ODIs (264)?', 'Rohit Sharma', 'Martin Guptill', 'Virender Sehwag', 'Chris Gayle'],
+  ['cricket', 'Who scored 264 in an ODI against Sri Lanka in 2014?', 'Rohit Sharma', 'Martin Guptill', 'Virender Sehwag', 'Chris Gayle'],
   ['cricket', 'How many legal balls are there in an over?', '6', '5', '8', '10'],
   ['cricket', 'Which city does Chennai Super Kings play for?', 'Chennai', 'Bengaluru', 'Hyderabad', 'Pune'],
   ['cricket', 'How many international centuries did Sachin Tendulkar score?', '100', '99', '101', '98'],
@@ -88,7 +91,7 @@ export const BANK: Entry[] = [
   ['cricket', 'Who is nicknamed “Hitman”?', 'Rohit Sharma', 'Virat Kohli', 'Hardik Pandya', 'Suryakumar Yadav'],
   ['cricket', 'Who is called “Dada” in Indian cricket?', 'Sourav Ganguly', 'Rahul Dravid', 'Anil Kumble', 'Harbhajan Singh'],
   ['cricket', 'Who took a hat-trick for India against Afghanistan at the 2019 World Cup?', 'Mohammed Shami', 'Jasprit Bumrah', 'Bhuvneshwar Kumar', 'Kuldeep Yadav'],
-  ['cricket', 'A maiden over is one where the bowler gives away…', 'No runs', 'No wides', 'Exactly one run', 'A boundary'],
+  ['cricket', 'In a maiden over, how many runs are charged to the bowler?', 'Zero', 'One', 'Two', 'Four'],
   ['cricket', 'Shane Warne played for which country?', 'Australia', 'England', 'South Africa', 'New Zealand'],
   ['cricket', 'How many runs is a ball hit over the boundary without bouncing?', '6', '4', '5', '8'],
 

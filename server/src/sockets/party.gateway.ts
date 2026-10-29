@@ -290,10 +290,10 @@ export function attachPartyGateway(io: Server) {
         return ack({ error: `${game.label} needs at least ${needed} ${needed === 1 ? 'person' : 'people'} in the room` })
       }
 
-      const options = game.prepare ? await game.prepare(roomId, parsed) : parsed
-      if (isError(options)) return ack(options)
       /* The last game here goes on the record before this one reads it — one dropped before its first night was never recorded when it ended. */
       if (running?.game.used) await markSeen(roomId, running.game.id, running.game.used(running.state)).catch(() => undefined)
+      const options = game.prepare ? await game.prepare(roomId, parsed) : parsed
+      if (isError(options)) return ack(options)
       const seen = game.used ? await seenFor(roomId, game.id) : undefined
       /* Someone else may have started a game while this one was preparing. */
       const raced = sessions.get(roomId)

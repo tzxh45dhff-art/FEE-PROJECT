@@ -1,3 +1,5 @@
+import { EXTRA_CARDS } from './truthdare.extra.js'
+
 /**
  * Truth or dare, the cards.
  *
@@ -252,3 +254,6 @@ export const CARDS: Record<Deck, Record<Kind, string[]>> = {
     ],
   },
 }
+
+// Append so saved card IDs keep referring to the same original card.
+for (const deck of DECKS) for (const kind of ['truth', 'dare'] as const) CARDS[deck][kind].push(...EXTRA_CARDS[deck][kind])

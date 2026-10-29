@@ -1,6 +1,7 @@
 import { CARDS, DECKS, type Deck, type Kind } from './truthdare.cards.js'
 import { shuffle, text, type Ctx, type GameDef, type Player } from './engine.js'
 import { freshCards, keepSpares, recentlyUsed, takeSpares, type FreshCard } from './truthdare.fresh.js'
+import { seenFor } from '../services/seen.service.js'
 
 /**
  * Truth or dare, the way it goes in a room of friends on a call.
@@ -62,18 +63,24 @@ function draw(state: TruthDare, kind: Kind, ctx: Ctx, avoid: string[] = []): Car
     CARDS[deck][kind].map((t, i) => ({ id: `${deck}:${kind}:${i}`, deck, kind, text: t, custom: false })),
   )
   const fresh = state.fresh.filter((c) => c.kind === kind)
-  const open = (c: Card) => !state.used.includes(c.id) && !avoid.includes(c.id)
-  let pool = [...bank, ...fresh].filter(open)
-  /* A long evening runs a deck dry. Start it over rather than offering
-     nothing — by then nobody remembers card forty from two hours ago. */
-  if (pool.length < OFFER) {
-    state.used = state.used.filter((id) => !id.includes(`:${kind}:`))
-    pool = [...bank, ...fresh].filter((c) => !avoid.includes(c.id))
-  }
+  const available = [...bank, ...fresh].filter((c) => !avoid.includes(c.id))
+  const pool = available.filter((c) => !state.used.includes(c.id))
   /* New cards first: up to two of the three on offer, while they last. */
   const newOnes = shuffle(pool.filter((c) => c.fresh), ctx).slice(0, 2)
   const rest = shuffle(pool.filter((c) => !newOnes.includes(c)), ctx).slice(0, OFFER - newOnes.length)
-  return shuffle([...newOnes, ...rest], ctx)
+  const selected = [...newOnes, ...rest]
+  // Keep the last unseen cards in the offer; only fill remaining slots with
+  // the oldest seen cards instead of resetting the whole deck early.
+  if (selected.length < OFFER) {
+    const age = new Map(state.used.map((id, i) => [id, i]))
+    const oldest = available.filter((c) => age.has(c.id)).sort((a, b) => age.get(a.id)! - age.get(b.id)!)
+    selected.push(...oldest.slice(0, OFFER - selected.length))
+  }
+  const offered = shuffle(selected, ctx)
+  // The asker has seen all three, even if they shuffle instead of choosing one.
+  const shown = new Set(offered.map((card) => card.id))
+  state.used = [...state.used.filter((id) => !shown.has(id)), ...shown]
+  return offered
 }
 
 /** Back to the bottle, with nothing of the last turn left on the table. */
@@ -114,7 +121,8 @@ export const truthDare: GameDef<TruthDare, Options> = {
    */
   async prepare(roomId, options) {
     try {
-      const recent = await recentlyUsed(roomId)
+      const [recent, seen] = await Promise.all([recentlyUsed(roomId), seenFor(roomId, 'truthdare')])
+      recent.ids = [...new Set([...seen, ...recent.ids])]
       return { ...options, recent: recent.ids, seen: recent.texts, fresh: takeSpares(roomId, options.decks, recent.ids) }
     } catch {
       return options
@@ -221,7 +229,7 @@ export const truthDare: GameDef<TruthDare, Options> = {
           const card = state.offered[Number(payload.index)]
           if (!card) return { error: 'Pick one of the cards' }
           state.card = card
-          state.used.push(card.id)
+          if (!state.used.includes(card.id)) state.used.push(card.id)
         } else if (action === 'custom') {
           const t = text(payload.text, 200)
           if (t.length < 3) return { error: 'Write a little more than that' }
@@ -313,6 +321,8 @@ export const truthDare: GameDef<TruthDare, Options> = {
       tally: { ...state.tally, [player.id]: { truths: 0, dares: 0, chickens: 0 } },
     }
   },
+
+  used: (state) => state.used,
 
   over(state) {
     if (state.phase !== 'over' || state.log.length === 0) return null

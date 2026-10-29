@@ -2,6 +2,8 @@ import * as azure from '../services/azure.service.js'
 import { BANK, CATEGORIES, type Category } from './trivia.questions.js'
 import { byFreshness, shuffle } from './engine.js'
 import { quizGame, type QuizOptions } from './quiz.js'
+import { questionKey, triviaCatalog, type TriviaQuestion } from '../services/triviaCatalog.service.js'
+import { seenFor } from '../services/seen.service.js'
 
 /**
  * Live trivia: everyone gets the same question at the same moment, fastest
@@ -9,7 +11,7 @@ import { quizGame, type QuizOptions } from './quiz.js'
  * drawn from those, mixed, without repeats inside a game.
  */
 
-type Options = QuizOptions & { categories: Category[] }
+type Options = QuizOptions & { categories: Category[]; bank?: TriviaQuestion[] }
 
 const ALL = Object.keys(CATEGORIES) as Category[]
 
@@ -27,19 +29,26 @@ export const trivia = quizGame<Options>({
     return { rounds, seconds, categories: picked, lateJoin: body.lateJoin !== false }
   },
 
-  items({ rounds, categories }, ctx) {
+  async prepare(roomId, options) {
+    return { ...options, bank: await triviaCatalog(options.categories, await seenFor(roomId, 'trivia'), options.rounds) }
+  },
+
+  items({ rounds, categories, bank = BANK.map((entry) => ({ entry })) }, ctx) {
     /* Round-robin across the chosen categories so a mixed game stays mixed. */
     /* Popped from the end, so the questions this room hasn't had go last. */
-    const piles = categories.map((c) => byFreshness(BANK.filter((e) => e[0] === c), (e) => e[1], ctx).reverse())
-    const drawn: (typeof BANK)[number][] = []
+    const seen = new Set([...(ctx.seen ?? [])].map(questionKey))
+    const piles = shuffle(categories, ctx).map((c) => byFreshness(bank.filter(({ entry }) => entry[0] === c), ({ entry }) => questionKey(entry[1]), { ...ctx, seen }).reverse())
+    const drawn: TriviaQuestion[] = []
     for (let i = 0; drawn.length < rounds && piles.some((p) => p.length > 0); i++) {
       const pile = piles[i % piles.length]!
+      const freshRemain = piles.some((p) => p.length && !seen.has(questionKey(p.at(-1)!.entry[1])))
+      if (freshRemain && pile.length && seen.has(questionKey(pile.at(-1)!.entry[1]))) continue
       const next = pile.pop()
       if (next) drawn.push(next)
     }
-    return shuffle(drawn, ctx).map(([category, prompt, right, ...wrong]) => {
+    return shuffle(drawn, ctx).map(({ entry: [category, prompt, right, ...wrong], attribution }) => {
       const options = shuffle([right, ...wrong], ctx)
-      return { prompt, tag: CATEGORIES[category].label, category, options, answer: options.indexOf(right) }
+      return { prompt, tag: CATEGORIES[category].label, category, options, answer: options.indexOf(right), attribution }
     })
   },
 

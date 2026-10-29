@@ -1,6 +1,7 @@
 import { env } from '../config/env.js'
 import { catalogueCacheGet, catalogueCacheSet } from './songQuizCache.js'
 import { SONG_CATEGORIES, isQuizSong, normaliseSongText, songTitle, type SongCategory, type SongIdentity } from './songQuizPacks.js'
+import { seedSongs } from './songQuizSeeds.js'
 
 type AppleTrack = { kind?: string; trackName?: string; artistName?: string; trackTimeMillis?: number; releaseDate?: string; primaryGenreName?: string }
 type LastTrack = { name?: string; artist?: { name?: string }; duration?: string; '@attr'?: { rank?: string } }
@@ -36,11 +37,11 @@ async function appleArtist(artist: string, category: SongCategory) {
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, nextAppleRequest - Date.now())))
     nextAppleRequest = Date.now() + 3_100
     const url = new URL('https://itunes.apple.com/search')
-    for (const [key, value] of Object.entries({ term: artist, country: SONG_CATEGORIES[category].country, media: 'music', entity: 'song', attribute: 'artistTerm', limit: '40' })) url.searchParams.set(key, value)
+    for (const [key, value] of Object.entries({ term: artist, country: SONG_CATEGORIES[category].country, media: 'music', entity: 'song', attribute: 'artistTerm', limit: '100' })) url.searchParams.set(key, value)
     const response = await fetch(url, { signal: AbortSignal.timeout(8_000) })
     if (!response.ok) throw new Error('Song catalogue temporarily unavailable')
     const body = await response.json() as { results?: AppleTrack[] }
-    return appleSongs(body.results ?? [], artist, category).slice(0, 15)
+    return appleSongs(body.results ?? [], artist, category).slice(0, 30)
   })
   appleQueue = request.then(() => undefined, () => undefined)
   return request
@@ -58,7 +59,7 @@ async function artistSongs(artist: string, category: SongCategory) {
     if (env.lastfmApiKey && category !== 'throwbacks') {
       try {
         const url = new URL('https://ws.audioscrobbler.com/2.0/')
-        for (const [key, value] of Object.entries({ method: 'artist.gettoptracks', artist, api_key: env.lastfmApiKey, format: 'json', limit: '25', autocorrect: '1' })) url.searchParams.set(key, value)
+        for (const [key, value] of Object.entries({ method: 'artist.gettoptracks', artist, api_key: env.lastfmApiKey, format: 'json', limit: '40', autocorrect: '1' })) url.searchParams.set(key, value)
         const response = await fetch(url, { signal: AbortSignal.timeout(6_000) })
         if (response.ok) {
           const body = await response.json() as { toptracks?: { track?: LastTrack[] } }
@@ -79,13 +80,16 @@ async function artistSongs(artist: string, category: SongCategory) {
 }
 
 /** Rotate artists as the catalogue grows; reuse all already discovered songs. */
-export async function discoverSongs(category: SongCategory): Promise<SongIdentity[]> {
+async function discoverLibrary(category: SongCategory): Promise<SongIdentity[]> {
   const artists = SONG_CATEGORIES[category].artists
-  const cursor = cursors.get(category) ?? Math.floor(Date.now() / 86_400_000) % artists.length
+  const cursorKey = `discovery-cursor:${category}`
+  const saved = await catalogueCacheGet<number>(cursorKey)
+  const cursor = (cursors.get(category) ?? saved ?? Math.floor(Math.random() * artists.length)) % artists.length
   cursors.set(category, (cursor + 2) % artists.length)
+  await catalogueCacheSet(cursorKey, (cursor + 2) % artists.length, 365 * 86_400_000)
   const selected = [artists[cursor]!, artists[(cursor + 1) % artists.length]!]
   const existing = await Promise.all(artists.map((artist) => catalogueCacheGet<SongIdentity[]>(`artist:${env.lastfmApiKey ? 'lastfm' : 'apple'}:${category}:${artist}`)))
-  const cached = existing.flatMap((songs) => songs?.map((song, index) => ({ ...song, rank: song.rank ?? index + 1 })) ?? [])
+  const cached = [...seedSongs(category), ...existing.flatMap((songs) => songs?.map((song, index) => ({ ...song, rank: song.rank ?? index + 1 })) ?? [])]
   const discovery = Promise.allSettled(selected.map((artist) => artistSongs(artist, category)))
   // Already playable: grow the catalogue in the background instead of making
   // each rematch wait on another metadata provider request.
@@ -95,4 +99,14 @@ export async function discoverSongs(category: SongCategory): Promise<SongIdentit
     unique.set(`${normaliseSongText(song.title)}:${normaliseSongText(song.artist)}`, song)
   }
   return [...unique.values()]
+}
+
+/** Concurrent starts share discovery; the saved cursor survives an API restart. */
+export function discoverSongs(category: SongCategory): Promise<SongIdentity[]> {
+  const key = `discovery:${category}`
+  const existing = pending.get(key)
+  if (existing) return existing
+  const job = discoverLibrary(category).finally(() => pending.delete(key))
+  pending.set(key, job)
+  return job
 }

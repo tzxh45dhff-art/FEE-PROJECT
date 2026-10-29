@@ -47,6 +47,7 @@ export type QuizView = {
     tag: string
     category?: string | null
     difficulty?: string | null
+    attribution?: { label: string; url: string; license: string; licenseUrl: string } | null
     options: string[]
     answer: number | null
     media: ClipMedia | null
@@ -647,6 +648,12 @@ export function QuizTable({
                     )}
                   </AnimatePresence>
                   {revealed && !playing && view.fact && <p className="mt-4 max-w-xl text-center text-[0.95rem] text-white/80">{view.fact}</p>}
+                  {revealed && item.attribution && (
+                    <p className="mt-3 text-center text-[0.65rem] text-white/45">
+                      Question: <a className="underline underline-offset-2 hover:text-white focus-visible:outline-2" href={item.attribution.url} target="_blank" rel="noreferrer">{item.attribution.label}</a>
+                      {' · '}<a className="underline underline-offset-2 hover:text-white focus-visible:outline-2" href={item.attribution.licenseUrl} target="_blank" rel="noreferrer">{item.attribution.license}</a>
+                    </p>
+                  )}
 
                   {view.phase === 'question' && (
                     <p className="mt-4 text-[0.8rem] text-white/50">

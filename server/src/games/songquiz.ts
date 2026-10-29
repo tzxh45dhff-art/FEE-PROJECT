@@ -8,7 +8,7 @@ import { shuffle, type Ctx, type GameDef } from './engine.js'
 import { quizGame, type Quiz, type QuizItem, type QuizOptions } from './quiz.js'
 import { discoverSongs } from '../services/songMetadata.service.js'
 import { seenFor } from '../services/seen.service.js'
-import { normaliseSongText, songLanguage, type SongIdentity } from '../services/songQuizPacks.js'
+import { heardSong, normaliseSongText, songIdentityKey, songLanguage, type SongIdentity } from '../services/songQuizPacks.js'
 
 /**
  * Guess the Song, from a fresh game-only YouTube catalogue.
@@ -91,8 +91,12 @@ function balancedOrder(pool: Song[], rounds: number, ctx: Ctx) {
     const pile = piles.get(categories[i % categories.length]!)!
     // Avoid a run of the same voice when the pack has other artists ready.
     const previous = drawn.at(-1)?.artist
-    const index = pile.findIndex((song) => song.artist !== previous)
-    const next = pile.splice(index < 0 ? 0 : index, 1)[0]
+    const hasFresh = [...piles.values()].some((songs) => songs.some((song) => !heardSong(song, ctx.seen)))
+    const allowed = (song: Song) => !hasFresh || !heardSong(song, ctx.seen)
+    let index = pile.findIndex((song) => allowed(song) && song.artist !== previous)
+    if (index < 0) index = pile.findIndex(allowed)
+    if (index < 0) continue
+    const next = pile.splice(index, 1)[0]
     if (next) drawn.push(next)
   }
   return drawn
@@ -138,6 +142,7 @@ export function songItems(pool: Song[], rounds: number, difficulty: Difficulty, 
       seconds: LEVEL[level].seconds,
       options,
       answer: options.indexOf(song.title),
+      repeatKeys: [songIdentityKey(song)],
       media: { source: song.source, ref: song.ref, start: clipStart(song, level, ctx) },
       reveal: { title: song.title, artist: song.artist, artwork: song.artwork },
     }

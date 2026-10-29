@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomInt } from 'node:crypto'
 
 import { prisma } from '../models/prisma.js'
 import * as azure from '../services/azure.service.js'
@@ -52,12 +52,26 @@ const VOICE: Record<Deck, string> = {
   spicy: 'flirty and bold for consenting adults — attraction, crushes, tension, cheeky dares; suggestive at most, never explicit or graphic',
 }
 
+const ANGLES = [
+  'tiny daily rituals', 'unexpected skills', 'childhood logic', 'food opinions', 'travel mishaps',
+  'friendship milestones', 'imaginary jobs', 'music memories', 'alternate timelines', 'unpopular harmless opinions',
+  'a favourite ordinary moment', 'being a terrible detective', 'a household object with a secret life',
+  'an absurd award ceremony', 'comfort versus adventure', 'a promise to your future self',
+  'a fictional sporting event', 'an unusually specific compliment', 'a two-line scene with a plot twist',
+  'a small thing you changed your mind about', 'the soundtrack of your day', 'a made-up local legend',
+]
+
 const idFor = (deck: Deck, kind: Kind, text: string) => `ai:${deck}:${kind}:${createHash('sha1').update(text.toLowerCase()).digest('hex').slice(0, 10)}`
 
 /** New cards for these decks from one request, or none. Never throws. */
 async function askFor(decks: Deck[], avoid: string[]): Promise<FreshCard[]> {
   if (!azure.configured() || decks.length === 0) return []
   const wanted = decks.slice(0, 4)
+  const angles = [...ANGLES]
+  for (let i = angles.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1)
+    ;[angles[i], angles[j]] = [angles[j]!, angles[i]!]
+  }
   const known = new Set(
     wanted
       .flatMap((d) => [...CARDS[d].truth, ...CARDS[d].dare])
@@ -69,6 +83,7 @@ async function askFor(decks: Deck[], avoid: string[]): Promise<FreshCard[]> {
     `Write new truth-or-dare cards for a game played by friends, couples and groups in India, often on a video call from different places.`,
     `For each deck below write exactly ${PER_KIND} truths and ${PER_KIND} dares.`,
     ...wanted.map((d) => `- ${d} (${DECK_LABELS[d]}): ${VOICE[d]}`),
+    `Explore these starting points this time, in the deck's voice: ${angles.slice(0, 4).join('; ')}. Use a different situation for every card.`,
     ``,
     `Rules for every card:`,
     `- One sentence, 8 to 22 words, spoken to the player ("you"). Natural, specific, surprising — not generic filler.`,

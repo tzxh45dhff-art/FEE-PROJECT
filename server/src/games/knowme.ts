@@ -32,6 +32,7 @@ export type KnowMe = {
   deadline: number | null
   answerSeconds: number
   deck: number[]
+  asked: string[]
 }
 
 type Options = { perPerson: number; answerSeconds: number }
@@ -42,8 +43,9 @@ const REVEAL_MS = 6500
 const deckOf = (ctx: Ctx) => byFreshness(QUESTIONS.map((_, i) => i), (i) => QUESTIONS[i]!.q, ctx).reverse()
 
 function ask(state: KnowMe, ctx: Ctx) {
-  if (state.deck.length === 0) state.deck = deckOf(ctx)
+  if (state.deck.length === 0) state.deck = deckOf({ ...ctx, seen: new Set([...(ctx.seen ?? []), ...state.asked]) })
   state.question = QUESTIONS[state.deck.pop()!]!
+  state.asked.push(state.question.q)
   state.truth = null
   state.guesses = {}
   state.phase = 'answer'
@@ -101,6 +103,7 @@ export const knowMe: GameDef<KnowMe, Options> = {
       deadline: null,
       answerSeconds,
       deck: deckOf(ctx),
+      asked: [],
     }
     ask(state, ctx)
     return state
@@ -153,7 +156,7 @@ export const knowMe: GameDef<KnowMe, Options> = {
   },
 
   view(state, viewer) {
-    const { deck: _deck, guesses, truth, ...rest } = state
+    const { deck: _deck, asked: _asked, guesses, truth, ...rest } = state
     const revealed = state.phase !== 'answer'
     return {
       ...rest,
@@ -172,7 +175,7 @@ export const knowMe: GameDef<KnowMe, Options> = {
     return { ...state, players: [...state.players, player], scores: { ...state.scores, [player.id]: 0 } }
   },
 
-  used: (state) => QUESTIONS.filter((_, i) => !state.deck.includes(i)).map((question) => question.q),
+  used: (state) => state.asked,
 
   over(state) {
     if (state.phase !== 'over' || state.turn === 0) return null
