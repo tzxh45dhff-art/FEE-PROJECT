@@ -78,6 +78,15 @@ const schedule = (s: GeoState, ctx: Ctx, ms: number, action: string) => ctx.sche
 const isCurrent = (s: GeoState, p: Record<string, unknown>) =>
   p.token === s.token && p.round === s.round && p.attempt === s.attempt
 
+/** A one-shot timer can wake just before the wall-clock deadline. Keep the transition alive. */
+function atDeadline(s: GeoState, ctx: Ctx, action: string): boolean {
+  const remaining = s.deadline! - ctx.now()
+  if (remaining <= 0) return true
+  ctx.clearSchedule()
+  schedule(s, ctx, remaining, action)
+  return false
+}
+
 function loading(s: GeoState, ctx: Ctx): GeoState {
   ctx.clearSchedule()
   const next: GeoState = {
@@ -239,6 +248,7 @@ export const geoGame: GameDef<GeoState, GeoOptions> = {
       return s.phase === 'loading' && next.players.every((x) => next.ready.includes(x.id)) ? countdown(next, ctx) : next
     }
     if (action === 'load-timeout' && !by && s.phase === 'loading') {
+      if (!atDeadline(s, ctx, action)) return s
       if (s.ready.length && (s.options.mode !== 'duel' || s.ready.length === 2)) return countdown(s, ctx)
       return {
         ...s,
@@ -261,7 +271,8 @@ export const geoGame: GameDef<GeoState, GeoOptions> = {
       locations.splice(s.options.rounds, 1)
       return loading({ ...s, locations, attempt: s.attempt + 1 }, ctx)
     }
-    if (action === 'open' && !by && s.phase === 'countdown' && ctx.now() >= s.deadline!) {
+    if (action === 'open' && !by && s.phase === 'countdown') {
+      if (!atDeadline(s, ctx, action)) return s
       const next: GeoState = {
         ...s,
         phase: 'playing',
@@ -292,17 +303,22 @@ export const geoGame: GameDef<GeoState, GeoOptions> = {
       if (s.eligible.every((id) => !!next.locked[id])) return reveal(next, ctx)
       if (s.options.mode === 'duel' && Object.keys(s.locked).length === 0) {
         next.deadline = Math.min(s.deadline!, ctx.now() + 15_000)
+        ctx.clearSchedule()
         schedule(next, ctx, next.deadline - ctx.now(), 'timeup')
       }
       return next
     }
-    if (action === 'timeup' && !by && s.phase === 'playing' && ctx.now() >= s.deadline!) return reveal(s, ctx)
+    if (action === 'timeup' && !by && s.phase === 'playing') {
+      return atDeadline(s, ctx, action) ? reveal(s, ctx) : s
+    }
     if (action === 'next' && by && s.phase === 'reveal') {
       const next = { ...s, nextReady: [...new Set([...s.nextReady, by.id])] }
       const here = s.players.filter((x) => !present || present.includes(x.id))
       return here.length && here.every((x) => next.nextReady.includes(x.id)) ? advance(next, ctx) : next
     }
-    if (action === 'advance' && !by && s.phase === 'reveal' && ctx.now() >= s.deadline!) return advance(s, ctx)
+    if (action === 'advance' && !by && s.phase === 'reveal') {
+      return atDeadline(s, ctx, action) ? advance(s, ctx) : s
+    }
     return by ? { error: 'That action is not available right now' } : s
   },
   view(s, viewer) {

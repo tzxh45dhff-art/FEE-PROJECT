@@ -20,11 +20,11 @@ const locations: GeoLocation[] = Array.from({ length: 12 }, (_, i) => ({
 function game(extra: Partial<GeoOptions> = {}, players = [a, b]) {
   let now = 1000
   let present = players.map((p) => p.id)
-  const timers: { ms: number; action: string; payload?: Record<string, unknown> }[] = []
+  const timers: { at: number; ms: number; action: string; payload?: Record<string, unknown> }[] = []
   const ctx: Ctx = {
     now: () => now,
     random: () => 0,
-    schedule: (ms, action, payload) => timers.push({ ms, action, payload }),
+    schedule: (ms, action, payload) => timers.push({ at: now + ms, ms, action, payload }),
     clearSchedule: () => {
       timers.length = 0
     },
@@ -58,6 +58,13 @@ function game(extra: Partial<GeoOptions> = {}, players = [a, b]) {
     act,
     open,
     timers,
+    fireNext: (earlyMs = 0) => {
+      timers.sort((a, b) => a.at - b.at)
+      const timer = timers.shift()
+      assert.ok(timer, `No timer remains in ${state.phase}, round ${state.round + 1}`)
+      now = timer.at - earlyMs
+      return act(null, timer.action, timer.payload)
+    },
     setTime: (t: number) => {
       now = t
     },
@@ -152,6 +159,65 @@ describe('Somewhere geography rules', () => {
     g.act(null, 'open')
     assert.equal(g.s.deadline, 34000)
   })
+  it('finishes ten multiplayer rounds even when one-shot timers arrive just before their deadlines', () => {
+    const players = Array.from({ length: 12 }, (_, i) => ({ id: `player-${i}`, name: `Player ${i + 1}` }))
+    const g = game({ rounds: 10 }, players)
+    for (let round = 0; round < 10; round++) {
+      assert.equal(g.s.round, round)
+      assert.equal(g.s.phase, 'loading')
+      for (const player of players) g.act(player, 'ready')
+      assert.equal(g.s.phase, 'countdown')
+
+      // A timer is removed before dispatch, just as liveCtx does in production.
+      // The remaining millisecond must retain a path out of this phase.
+      for (const phase of ['countdown', 'playing', 'reveal'] as const) {
+        const deadline = g.s.deadline
+        g.fireNext(1)
+        assert.equal(g.s.phase, phase, 'never close or start a round early')
+        assert.equal(g.s.deadline, deadline)
+        assert.equal(g.timers.length, 1, `must re-arm the ${phase} transition`)
+        assert.equal(g.timers[0]!.at, deadline)
+        g.fireNext()
+
+        if (g.s.phase === 'playing') {
+          for (const player of players) g.act(player, 'draft', { point: locations[round]!, revision: 1 })
+          // Some people lock in; others let their saved pin submit at time-up.
+          g.act(players[0]!, 'guess', { point: locations[round]! })
+        } else if (g.s.phase === 'reveal') {
+          // Partial readiness must not interfere with automatic progression.
+          g.act(players[0]!, 'next')
+          assert.equal(g.s.history.length, round + 1)
+        }
+      }
+    }
+    assert.equal(g.s.phase, 'over')
+    assert.equal(g.s.history.length, 10)
+    assert.ok(Object.values(g.s.scores).every((score) => score === 50_000))
+    assert.equal(g.timers.length, 0)
+  })
+  it('does not pause loading early and discards a re-armed timer after the players advance', () => {
+    const g = game()
+    g.fireNext(1)
+    assert.equal(g.s.phase, 'loading')
+    assert.equal(g.timers.length, 1)
+    g.act(a, 'ready')
+    g.fireNext()
+    assert.equal(g.s.phase, 'countdown')
+    g.fireNext()
+    g.act(a, 'guess', { point: locations[0]! })
+    assert.equal(g.s.phase, 'reveal')
+    g.fireNext(1)
+    const stale = g.timers[0]!
+    g.act(a, 'next')
+    g.act(b, 'next')
+    assert.equal(g.s.phase, 'loading')
+    assert.equal(g.s.round, 1)
+    g.act(null, stale.action, stale.payload)
+    assert.equal(g.s.phase, 'loading')
+    assert.equal(g.s.round, 1)
+    assert.equal(g.timers.length, 1)
+    assert.equal(g.timers[0]!.action, 'load-timeout')
+  })
   it('only exposes the current panorama, own pin and completed reveals', () => {
     const g = game()
     g.open()
@@ -245,6 +311,11 @@ describe('Somewhere geography rules', () => {
     g.setTime(5000)
     g.act(a, 'guess', { point: { lat: 0, lng: 0 } })
     assert.equal(g.s.deadline, 20000)
+    assert.equal(g.timers.length, 1, 'replace the original time-up rather than leaving competing timers')
+    g.fireNext(1)
+    assert.equal(g.s.phase, 'playing')
+    assert.equal(g.timers.length, 1)
+    assert.equal(g.timers[0]!.at, 20000)
     g.setTime(20000)
     g.act(null, 'timeup')
     assert.equal(g.s.health.b, 1000)
