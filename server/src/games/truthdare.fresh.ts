@@ -2,7 +2,7 @@ import { createHash, randomInt } from 'node:crypto'
 
 import { prisma } from '../models/prisma.js'
 import * as azure from '../services/azure.service.js'
-import { CARDS, DECK_LABELS, type Deck, type Kind } from './truthdare.cards.js'
+import { cardTextKey, CARDS, DECKS, DECK_LABELS, type Deck, type Kind } from './truthdare.cards.js'
 
 /**
  * Keeping truth or dare new.
@@ -44,93 +44,94 @@ export async function recentlyUsed(roomId: string): Promise<{ ids: string[]; tex
   return { ids: [...ids], texts: [...texts].slice(0, 60) }
 }
 
-const VOICE: Record<Deck, string> = {
-  funny: 'silly, light, laugh-out-loud; embarrassing-but-harmless stories and goofy on-camera dares',
-  friends: 'about the friendship itself — memories, opinions of each other, loyalty tests, inside jokes',
-  couples: 'for two people who are together — sweet, curious, a little teasing, about each other and the relationship',
-  deep: 'honest and reflective — values, fears, regrets, what someone has never said out loud; never cruel',
-  spicy: 'flirty and bold for consenting adults — attraction, crushes, tension, cheeky dares; suggestive at most, never explicit or graphic',
+type Editorial = { voice: string; topics: string[] }
+const EDITORIAL: Record<Deck, Editorial> = {
+  funny: {
+    voice: 'Messy, blunt, self-aware group-chat humour. Petty confessions, cringe flirting, vanity, gross-but-ordinary habits and bad decisions. The player should laugh because they recognise themselves. Occasional mild swearing fits; do not make swearing the whole joke.',
+    topics: ['trying too hard to look cool', 'petty grudges', 'fake confidence', 'flirting that went badly', 'gross everyday shortcuts', 'being caught bluffing', 'online image versus reality', 'dramatic overreactions', 'excuses nobody believes', 'childhood lies that got out of hand', 'unearned confidence', 'money spent on a delusion'],
+  },
+  friends: {
+    voice: 'Close friends with history, not strangers at an icebreaker. Friendly call-outs, specific impressions, jealousy, loyalty, inside jokes and the affectionate truth behind the roast. Mix exposing moments with actual warmth. Nobody ranks bodies, exposes private messages or attacks an identity.',
+    topics: ['the friend who cannot take their own jokes', 'who really keeps the group together', 'feeling left out but acting busy', 'a first impression that was wrong', 'unspoken competition', 'dodgy advice', 'the group trying to organise anything', 'an apology hidden behind a joke', 'being taken for granted', 'a compliment nobody says seriously', 'the friend who sees through excuses', 'who knows the real you'],
+  },
+  couples: {
+    voice: 'Two people who are into each other, with chemistry and shared history. Make it intimate, teasing and specific: wanting attention, pride, reassurance, jealousy and moments of feeling wanted. Mix attraction and laughter with a little vulnerability. Do not turn the deck into a relationship assessment or make every card about conflict.',
+    topics: ['wanting attention while pretending otherwise', 'small details that are unexpectedly attractive', 'playing it cool at the beginning', 'what affection you wish they initiated', 'a compliment you still replay', 'pride getting in the way', 'jealousy you tried to hide', 'the moment chemistry became obvious', 'things you miss from early dates', 'what you say as a joke but mean', 'a tiny gesture that made you feel wanted', 'a very specific romantic weakness'],
+  },
+  deep: {
+    voice: 'Personal, uncomfortable-in-a-useful-way honesty. Ego, envy, approval, belonging, avoidance and the gap between the person you perform and the person you are. Use plain language and a specific hook. No therapy jargon, diagnosis, motivational affirmations or pressure to disclose trauma. Include questions about pride, trust and being understood, not only pain.',
+    topics: ['whose approval still matters', 'performing independence', 'envy disguised as criticism', 'being useful versus being loved', 'an excuse hiding the real reason', 'a dream you stopped admitting', 'family expectations', 'being funny instead of honest', 'an apology you have rehearsed', 'being seen without being impressive', 'the support you do not ask for', 'a part of yourself you underestimate'],
+  },
+  spicy: {
+    voice: 'Adults only; the room has confirmed 18+. Bold, cheeky, direct, sometimes a little crude, with real attraction and sexual confidence rather than cute fictional romance. Turn-ons, crushes, kissing, desire, mixed signals, flirty voice notes and romantic ego are fair game. Keep it non-graphic: no descriptions of sex acts, nudity or sexual performances. Tension comes from admitting something real and taking a social risk.',
+    topics: ['a turn-on you normally keep to yourself', 'pretending a kiss meant nothing', 'being horny and making an embarrassing decision', 'enjoying the attention more than the person', 'chemistry overriding your usual type', 'being caught looking', 'the risky message you never sent', 'a confident invitation you wish you received', 'flirting versus being desperate', 'a dating experience you exaggerated', 'wanting to kiss someone but playing it cool', 'the compliment that ruins your composure'],
+  },
 }
 
-const ANGLES = [
-  'tiny daily rituals', 'unexpected skills', 'childhood logic', 'food opinions', 'travel mishaps',
-  'friendship milestones', 'imaginary jobs', 'music memories', 'alternate timelines', 'unpopular harmless opinions',
-  'a favourite ordinary moment', 'being a terrible detective', 'a household object with a secret life',
-  'an absurd award ceremony', 'comfort versus adventure', 'a promise to your future self',
-  'a fictional sporting event', 'an unusually specific compliment', 'a two-line scene with a plot twist',
-  'a small thing you changed your mind about', 'the soundtrack of your day', 'a made-up local legend',
-]
-
-const idFor = (deck: Deck, kind: Kind, text: string) => `ai:${deck}:${kind}:${createHash('sha1').update(text.toLowerCase()).digest('hex').slice(0, 10)}`
-
-/** New cards for these decks from one request, or none. Never throws. */
-async function askFor(decks: Deck[], avoid: string[]): Promise<FreshCard[]> {
-  if (!azure.configured() || decks.length === 0) return []
-  const wanted = decks.slice(0, 4)
-  const angles = [...ANGLES]
-  for (let i = angles.length - 1; i > 0; i--) {
-    const j = randomInt(i + 1)
-    ;[angles[i], angles[j]] = [angles[j]!, angles[i]!]
+export function cardPrompt(deck: Deck, avoid: string[], random: (max: number) => number = randomInt): string {
+  const brief = EDITORIAL[deck]
+  const topics = [...brief.topics]
+  for (let i = topics.length - 1; i > 0; i--) {
+    const j = random(i + 1)
+    ;[topics[i], topics[j]] = [topics[j]!, topics[i]!]
   }
-  const known = new Set(
-    wanted
-      .flatMap((d) => [...CARDS[d].truth, ...CARDS[d].dare])
-      .concat(avoid)
-      .map((t) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()),
-  )
-
-  const prompt = [
-    `Write new truth-or-dare cards for a game played by friends, couples and groups in India, often on a video call from different places.`,
-    `For each deck below write exactly ${PER_KIND} truths and ${PER_KIND} dares.`,
-    ...wanted.map((d) => `- ${d} (${DECK_LABELS[d]}): ${VOICE[d]}`),
-    `Explore these starting points this time, in the deck's voice: ${angles.slice(0, 4).join('; ')}. Use a different situation for every card.`,
-    ``,
-    `Rules for every card:`,
-    `- One sentence, 8 to 22 words, spoken to the player ("you"). Natural, specific, surprising — not generic filler.`,
-    `- Every dare can be done on camera or microphone, alone, right now, with things found at home. Nothing involving people outside the game, posting online, messaging anyone, spending money, or anything risky or hurtful.`,
-    `- Nothing hateful, nothing about self-harm, nothing that humiliates someone who is not playing.`,
-    `- Do not repeat or lightly reword these recent cards: ${avoid.slice(0, 30).join(' | ') || 'none'}`,
-    ``,
-    `Answer as JSON: {"cards":[{"deck":"<deck id>","kind":"truth"|"dare","text":"..."}]}`,
+  return [
+    'Write truth-or-dare cards for a room of friends, couples or a group in India, often on a video call.',
+    'Write exactly ' + PER_KIND + ' truths and ' + PER_KIND + ' dares for ' + deck + ' (' + DECK_LABELS[deck] + ').',
+    'DECK VOICE: ' + brief.voice,
+    'Explore these angles this time: ' + topics.slice(0, 4).join('; ') + '. Give each card a different situation.',
+    'Style examples only; do not copy or lightly reword their situations:',
+    'Truth: ' + CARDS[deck].truth[0],
+    'Truth: ' + CARDS[deck].truth[12],
+    'Dare: ' + CARDS[deck].dare[0],
+    'Dare: ' + CARDS[deck].dare[8],
+    'Rules:',
+    '- A card should make someone laugh, hesitate, admit something specific, or feel properly noticed. Write as someone at this table would speak.',
+    '- One clear ask, usually 8–28 words and never more than 170 characters. A real moment, actual wording, a contradiction or a room dynamic makes a better hook than a vague preference.',
+    '- Truths ask something personal. Dares ask for a performance or a small social risk the player can complete on camera or microphone now, usually in 20–45 seconds.',
+    '- Do not fill slots with favourite colours, generic dream dates, motivational speeches, imaginary appliances, cartoon voices or harmless-object pickup lines.',
+    '- No outside people, messaging, posting, purchases, drinking tasks, injury, private photos or reading private messages. Nobody is forced to answer, touch someone or join a dare; any interaction with another player is opt-in.',
+    '- No graphic sexual content, hateful humiliation, self-harm or demands for traumatic details. Keep non-Spicy decks free of sexual content.',
+    '- Do not repeat or lightly reword these recent cards: ' + (avoid.slice(0, 30).join(' | ') || 'none'),
+    'Return JSON only: {"cards":[{"deck":"' + deck + '","kind":"truth"|"dare","text":"..."}]}',
   ].join('\n')
+}
 
+const idFor = (deck: Deck, kind: Kind, text: string) => 'ai:' + deck + ':' + kind + ':' + createHash('sha1').update(cardTextKey(text)).digest('hex').slice(0, 10)
+
+/** Each selected deck gets its own brief and request. Never holds up the game. */
+async function askFor(deck: Deck, avoid: string[]): Promise<FreshCard[]> {
+  if (!azure.configured()) return []
+  const known = new Set([...CARDS[deck].truth, ...CARDS[deck].dare, ...avoid].map(cardTextKey))
   try {
-    const reply = await Promise.race([
-      azure.chatJson<{ cards?: { deck?: unknown; kind?: unknown; text?: unknown }[] }>(
-        [
-          { role: 'system', content: 'You write party game cards. You are witty, warm and safe. You only answer with JSON.' },
-          { role: 'user', content: prompt },
-        ],
-        { temperature: 1, maxTokens: 2200 },
-      ),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), DEADLINE_MS)),
-    ])
+    const reply = await azure.chatJson<{ cards?: { deck?: unknown; kind?: unknown; text?: unknown }[] }>(
+      [
+        { role: 'system', content: 'You write sharp, personal party-game cards with a different voice for each deck. Follow the deck brief. Answer with JSON only.' },
+        { role: 'user', content: cardPrompt(deck, avoid) },
+      ],
+      { temperature: 1, maxTokens: 2200, signal: AbortSignal.timeout(DEADLINE_MS) },
+    )
     const out: FreshCard[] = []
-    for (const raw of reply?.cards ?? []) {
-      /* The model sometimes writes the deck's name ("Funny") for its id. */
+    for (const raw of Array.isArray(reply?.cards) ? reply.cards : []) {
+      if (!raw || typeof raw !== 'object') continue
       const deckName = typeof raw.deck === 'string' ? raw.deck.trim().toLowerCase() : ''
-      const deck = wanted.find((d) => d === deckName || DECK_LABELS[d].toLowerCase() === deckName) as Deck
       const kind = (typeof raw.kind === 'string' ? raw.kind.trim().toLowerCase() : '') as Kind
       const text = typeof raw.text === 'string' ? raw.text.replace(/\s+/g, ' ').trim() : ''
-      if (!wanted.includes(deck) || (kind !== 'truth' && kind !== 'dare')) continue
-      if (text.length < 12 || text.length > 170) continue
-      const key = text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-      if (known.has(key)) continue
+      if (deckName !== deck && deckName !== DECK_LABELS[deck].toLowerCase()) continue
+      if (kind !== 'truth' && kind !== 'dare') continue
+      if (text.length < 12 || text.length > 170 || out.filter((card) => card.kind === kind).length >= PER_KIND) continue
+      const key = cardTextKey(text)
+      if (!key || known.has(key)) continue
       known.add(key)
       out.push({ id: idFor(deck, kind, text), deck, kind, text, custom: false, fresh: true })
     }
     return out
-  } catch {
-    return []
-  }
+  } catch { return [] }
 }
 
-/**
- * New cards for each deck, asked for in parallel — one request per deck is
- * several times faster than one request for all of them.
- */
-export async function freshCards(decks: Deck[], avoid: string[]): Promise<FreshCard[]> {
-  const batches = await Promise.all(decks.slice(0, 4).map((deck) => askFor([deck], avoid)))
+export async function freshCards(decks: Deck[], avoid: string[], generate = askFor): Promise<FreshCard[]> {
+  const wanted = [...new Set(decks)].filter((deck) => DECKS.includes(deck))
+  const batches = await Promise.all(wanted.map((deck) => generate(deck, avoid)))
   return batches.flat()
 }
 

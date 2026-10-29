@@ -9,7 +9,7 @@ import { PUBLIC_BANK } from '../src/games/trivia.public.js'
 import { knowMe, type KnowMe } from '../src/games/knowme.js'
 import { QUESTIONS } from '../src/games/knowme.questions.js'
 import { truthDare, type TruthDare } from '../src/games/truthdare.js'
-import { CARDS, DECKS } from '../src/games/truthdare.cards.js'
+import { bankCardId, CARDS, DECKS } from '../src/games/truthdare.cards.js'
 import { songItems, songQuiz, type Song } from '../src/games/songquiz.js'
 import { freshSongPool } from '../src/services/songQuizCatalog.service.js'
 import { SONG_CATEGORIES, songIdentityKey, type SongIdentity } from '../src/services/songQuizPacks.js'
@@ -133,7 +133,7 @@ describe('large game catalogues and repeat protection', () => {
     assert.deepEqual(byFreshness(['question-0', 'new-question', 'question-1'], (key) => key, ctx(seen)), ['new-question', 'question-1', 'question-0'])
   })
   it('offers the final unseen Truth or Dare cards before recycling the oldest ones', () => {
-    const cards = CARDS.funny.truth.map((_, i) => `funny:truth:${i}`)
+    const cards = CARDS.funny.truth.map((text) => bankCardId('funny', 'truth', text))
     let state = truthDare.start([a, b], { decks: ['funny'], recent: cards.slice(0, -2), fresh: [] }, ctx())
     for (const [by, action, payload] of [[a, 'spin', {}], [b, 'choose', { kind: 'truth' }]] as const) {
       const next = truthDare.act(state, by, action, payload, ctx())

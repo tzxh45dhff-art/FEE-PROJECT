@@ -45,11 +45,11 @@ export type TruthDareView = {
 }
 
 const MODES = [
-  { id: 'funny', label: 'Funny', blurb: 'Silly, harmless and loud. Laughs guaranteed.', icon: Laugh, tone: 'from-amber-400/35 via-orange-500/15', glow: '#f59e0b' },
-  { id: 'friends', label: 'Friends', blurb: 'Secrets, roasts and loyalty tests.', icon: Users, tone: 'from-sky-400/35 via-blue-600/15', glow: '#38bdf8' },
-  { id: 'couples', label: 'Couples', blurb: 'Sweet, curious and a little teasing.', icon: Heart, tone: 'from-pink-400/35 via-rose-500/15', glow: '#f472b6' },
-  { id: 'deep', label: 'Deep', blurb: 'The real stuff. Honest, never cruel.', icon: Moon, tone: 'from-violet-400/35 via-purple-600/15', glow: '#a78bfa' },
-  { id: 'spicy', label: 'Spicy', blurb: 'Flirty and bold. For adults only.', icon: Flame, tone: 'from-red-500/40 via-fuchsia-600/15', glow: '#f43f5e' },
+  { id: 'funny', label: 'Funny', blurb: 'Bad decisions, petty confessions and roasting yourself.', icon: Laugh, tone: 'from-amber-400/35 via-orange-500/15', glow: '#f59e0b' },
+  { id: 'friends', label: 'Friends', blurb: 'Inside jokes, honest opinions and calling each other out.', icon: Users, tone: 'from-sky-400/35 via-blue-600/15', glow: '#38bdf8' },
+  { id: 'couples', label: 'Couples', blurb: 'Chemistry, jealousy and things left unsaid.', icon: Heart, tone: 'from-pink-400/35 via-rose-500/15', glow: '#f472b6' },
+  { id: 'deep', label: 'Deep', blurb: 'Ego, insecurities and the things you dodge.', icon: Moon, tone: 'from-violet-400/35 via-purple-600/15', glow: '#a78bfa' },
+  { id: 'spicy', label: 'Spicy', blurb: 'Turn-ons, risky confessions and obvious tension. 18+.', icon: Flame, tone: 'from-red-500/40 via-fuchsia-600/15', glow: '#f43f5e' },
 ] as const
 
 const REACTIONS = ['😂', '🔥', '😳', '💀', '👏', '🥺', '😍', '🙈'] as const
@@ -132,9 +132,9 @@ export function TruthDareSetup({
         {/* The poster. */}
         <div className="flex flex-col items-center text-center">
           <NeonTitle />
-          <p className="mt-5 text-[1rem] font-medium text-white/85 sm:text-[1.1rem]">Secrets. Challenges. Zero limits.</p>
+          <p className="mt-5 text-[1rem] font-medium text-white/85 sm:text-[1.1rem]">Secrets. Tension. Your turn.</p>
           <p className="mt-2 max-w-sm text-pretty text-[0.85rem] leading-relaxed text-mist">
-            The game deals the cards — new ones every time. Play side by side, or apart on a call: type your truth, snap your dare.
+            Pick your decks. Roast yourself, call out a friend, or say the thing you keep turning into a joke.
           </p>
           <span className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3.5 py-1.5 text-[0.78rem] text-chalk backdrop-blur">
             <Users aria-hidden className="size-3.5 text-violet-300" /> {people} {people === 1 ? 'person' : 'people'} in the room

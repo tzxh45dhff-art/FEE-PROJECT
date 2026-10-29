@@ -7,9 +7,9 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import type { Ctx } from '../src/games/engine.js'
-import { CARDS } from '../src/games/truthdare.cards.js'
+import { bankCardId, cardTextKey, CARDS, DECKS } from '../src/games/truthdare.cards.js'
 import { truthDare, type TruthDare } from '../src/games/truthdare.js'
-import type { FreshCard } from '../src/games/truthdare.fresh.js'
+import { freshCards, type FreshCard } from '../src/games/truthdare.fresh.js'
 
 const ctx: Ctx = { now: () => 0, random: () => 0, schedule: () => undefined, clearSchedule: () => undefined }
 const a = { id: 'a', name: 'Aditi' }
@@ -31,8 +31,37 @@ function toPick(s: TruthDare, kind: 'truth' | 'dare') {
 }
 
 describe('truth or dare stays new', () => {
+  it('rewritten cards get fresh identities while punctuation and deck ordering do not reset history', () => {
+    const text = 'What did you actually want to say?'
+    const id = bankCardId('deep', 'truth', text)
+    assert.equal(bankCardId('deep', 'truth', 'WHAT did you actually want to say!'), id)
+    assert.notEqual(bankCardId('deep', 'truth', 'What did you pretend you wanted to say?'), id)
+    const cards = CARDS.deep.truth.slice(0, 5)
+    const before = new Set(cards.map((card) => bankCardId('deep', 'truth', card)))
+    assert.deepEqual(new Set(cards.reverse().map((card) => bankCardId('deep', 'truth', card))), before)
+  })
+
+  it('keeps all 400 cards distinct and short enough to read on a call', () => {
+    const cards = DECKS.flatMap((deck) => [...CARDS[deck].truth, ...CARDS[deck].dare])
+    assert.equal(cards.length, 400)
+    assert.equal(new Set(cards.map(cardTextKey)).size, 400)
+    for (const card of cards) assert.ok(card.length <= 170, card)
+  })
+
+  it('writes for all five selected decks, including Spicy, instead of dropping the fifth', async () => {
+    const called: string[] = []
+    const result = await freshCards([...DECKS, 'spicy'], ['Already played'], async (deck, avoid) => {
+      called.push(deck)
+      assert.deepEqual(avoid, ['Already played'])
+      return [{ id: `test:${deck}`, deck, kind: 'truth', text: `A new card for ${deck}`, custom: false, fresh: true }]
+    })
+    assert.deepEqual(called, [...DECKS])
+    assert.equal(result.length, 5)
+    assert.equal(result.at(-1)!.deck, 'spicy')
+  })
+
   it('cards the room saw in recent games are not offered again while others remain', () => {
-    const recent = CARDS.funny.truth.slice(0, CARDS.funny.truth.length - 3).map((_, i) => `funny:truth:${i}`)
+    const recent = CARDS.funny.truth.slice(0, CARDS.funny.truth.length - 3).map((text) => bankCardId('funny', 'truth', text))
     let s = truthDare.start([a, r], { decks: ['funny'], recent, fresh: [] }, ctx)
     s = toPick(s, 'truth')
     for (const card of s.offered) assert.ok(!recent.includes(card.id), `${card.id} was used recently`)

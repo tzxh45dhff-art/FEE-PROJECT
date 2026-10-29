@@ -1,4 +1,4 @@
-import { CARDS, DECKS, type Deck, type Kind } from './truthdare.cards.js'
+import { bankCardId, CARDS, DECKS, type Deck, type Kind } from './truthdare.cards.js'
 import { shuffle, text, type Ctx, type GameDef, type Player } from './engine.js'
 import { freshCards, keepSpares, recentlyUsed, takeSpares, type FreshCard } from './truthdare.fresh.js'
 import { seenFor } from '../services/seen.service.js'
@@ -60,7 +60,7 @@ const OFFER = 3
 
 function draw(state: TruthDare, kind: Kind, ctx: Ctx, avoid: string[] = []): Card[] {
   const bank: Card[] = state.decks.flatMap((deck) =>
-    CARDS[deck][kind].map((t, i) => ({ id: `${deck}:${kind}:${i}`, deck, kind, text: t, custom: false })),
+    CARDS[deck][kind].map((t) => ({ id: bankCardId(deck, kind, t), deck, kind, text: t, custom: false })),
   )
   const fresh = state.fresh.filter((c) => c.kind === kind)
   const available = [...bank, ...fresh].filter((c) => !avoid.includes(c.id))
