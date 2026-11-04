@@ -1,3 +1,4 @@
+import { fightKaroRoutes } from './fightkaro.routes.js'
 import { Router } from 'express'
 
 import * as watchController from '../controllers/watch.controller.js'
@@ -23,3 +24,5 @@ apiRoutes.get('/ice', requireAuth, asyncHandler(watchController.ice))
 
 apiRoutes.use('/auth', authRoutes)
 apiRoutes.use('/rooms', roomRoutes)
+
+apiRoutes.use('/fightkaro', fightKaroRoutes)
