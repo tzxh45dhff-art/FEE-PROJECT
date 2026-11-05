@@ -3,6 +3,13 @@
  * Static markup; the motion lives in `gamePicker.css` and wakes on hover.
  */
 export const PICKER_ART: Record<string, string> = {
+  fightkaro: `<svg viewBox="0 0 240 200">
+    <path d="M127 8 98 91l29-5-21 106 57-125-32 7 31-66z" fill="#ffbd59" opacity=".8"/>
+    <circle cx="66" cy="106" r="57" fill="#ffbd59" opacity=".12"/><circle cx="180" cy="106" r="57" fill="#ff7344" opacity=".12"/>
+    <image href="/fightkaro/faces/modi.png" x="4" y="35" width="116" height="142"/>
+    <image href="/fightkaro/faces/trump.png" x="123" y="35" width="116" height="142"/>
+    <text x="120" y="178" text-anchor="middle" fill="#ffe5af" font-size="27" font-family="sans-serif" font-weight="900" font-style="italic">VS</text>
+  </svg>`,
   geo: `<svg viewBox="0 0 200 200">
 <circle cx="100" cy="100" r="84" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.28)" stroke-width="1.5"/>
 <circle cx="100" cy="100" r="72" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="7" stroke-dasharray="1.6 17.25"/>

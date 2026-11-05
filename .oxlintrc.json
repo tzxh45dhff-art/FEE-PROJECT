@@ -16,6 +16,7 @@
   },
   "ignorePatterns": [
     "src/vendor/**",
-    "extension/src/socket-lib.js"
+    "extension/src/socket-lib.js",
+    "public/fightkaro/assets/**"
   ]
 }

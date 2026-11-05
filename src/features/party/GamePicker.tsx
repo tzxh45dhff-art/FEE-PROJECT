@@ -14,7 +14,7 @@ import './gamePicker.css'
  * at the top so anyone walking in can jump straight in.
  */
 
-export type GameId = 'mafia' | 'truthdare' | 'draw' | 'knowme' | 'trivia' | 'songquiz' | 'penfight' | 'geo'
+export type GameId = 'mafia' | 'truthdare' | 'draw' | 'knowme' | 'trivia' | 'songquiz' | 'penfight' | 'geo' | 'fightkaro'
 
 type Entry = {
   id: GameId
@@ -30,6 +30,7 @@ type Entry = {
 }
 
 const GAMES: Entry[] = [
+  { id: 'fightkaro', title: 'FightKaro', line: 'Sansad Showdown. Pick your politician. Settle it in the ring.', lo: 1, hi: 2, label: 'Solo · 2 players', accent: '#FFBD59', rgb: '255,189,89', bg: 'linear-gradient(150deg,#843c14 0%,#3c190f 55%,#170b09 100%)', cls: 'gp-c7 wide' },
   { id: 'mafia', title: 'Mafia', line: 'Bombay, 1956. Someone here works for the Family. Find them before morning.', lo: 1, hi: 12, label: '1–12 players', accent: '#FF4D5E', rgb: '255,77,94', bg: 'linear-gradient(165deg,#5e1022 0%,#2c0a14 52%,#12050b 100%)', cls: 'gp-c7 gp-r2 big' },
   { id: 'geo', title: 'Somewhere', line: 'A street, a sign, a feeling. Find your place in the world.', lo: 1, hi: 12, label: '1–12 players', accent: '#6FE3D0', rgb: '111,227,208', bg: 'linear-gradient(150deg,#45301f 0%,#2a1a15 55%,#170e12 100%)', cls: 'gp-c5' },
   { id: 'truthdare', title: 'Truth or dare', line: 'The game picks the questions. You pick how spicy.', lo: 2, hi: 99, label: '2+ players', accent: '#FF6F91', rgb: '255,111,145', bg: 'linear-gradient(155deg,#661a3f 0%,#34102a 55%,#190a1d 100%)', cls: 'gp-c5' },

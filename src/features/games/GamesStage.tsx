@@ -18,6 +18,7 @@ import type { MafiaOptions, MafiaView } from '@/features/party/mafia/types'
 import type { useMeshCall } from '@/features/room-panel/useMeshCall'
 import type { Character } from '@/lib/characters'
 import { EndGameButton } from '@/features/party/EndGameButton'
+import { FightKaroStage } from '@/features/fightkaro/FightKaroStage'
 import { GameDock } from './GameDock'
 import { cn } from '@/lib/utils'
 import { lazyChunk } from '@/lib/lazyChunk'
@@ -51,8 +52,12 @@ export function GamesStage({
   unread = 0,
   origin,
   call = null,
+  initialGame,
+  onFightActive,
 }: {
   roomId: string
+  initialGame?: string | null
+  onFightActive?: (active: boolean) => void
   selfId: string | undefined
   members: GameCandidate[]
   onClose: () => void
@@ -67,7 +72,8 @@ export function GamesStage({
 }) {
   const { snapshot, connected, error: penError, send } = useGameSession(roomId, true)
   const party = useParty(roomId)
-  const [screen, setScreen] = useState<GameId | 'picker'>('picker')
+  const [screen, setScreen] = useState<GameId | 'picker'>(initialGame === 'fightkaro' ? 'fightkaro' : 'picker')
+  useEffect(() => { onFightActive?.(screen === 'fightkaro'); return () => onFightActive?.(false) }, [screen, onFightActive])
   const [songQuizStarting, setSongQuizStarting] = useState(false)
   const [geoStarting, setGeoStarting] = useState(false)
   const startGeo = async (options: GeoOptions) => {
@@ -83,13 +89,13 @@ export function GamesStage({
   const lastGame = useRef<string | null>(null)
   useEffect(() => {
     const game = party.party?.game ?? null
-    if (game && game !== lastGame.current) setScreen(game as GameId)
+    if (game && game !== lastGame.current) setScreen(current => current === 'fightkaro' ? current : game as GameId)
     lastGame.current = game
   }, [party.party?.game])
 
   const lastPen = useRef<number | null>(null)
   useEffect(() => {
-    if (snapshot && snapshot.epoch !== lastPen.current) setScreen('penfight')
+    if (snapshot && snapshot.epoch !== lastPen.current) setScreen(current => current === 'fightkaro' ? current : 'penfight')
     lastPen.current = snapshot?.epoch ?? null
   }, [snapshot])
 
@@ -144,7 +150,7 @@ export function GamesStage({
         connected={connected}
         status={screen === 'penfight' && snapshot ? (spectating ? 'Watching' : 'Playing') : null}
         onAllGames={screen !== 'picker' ? () => setScreen('picker') : undefined}
-        endGame={penRunning ? (
+        endGame={screen === 'fightkaro' ? null : penRunning ? (
             <EndGameButton
               key={`pen-${snapshot.epoch}`}
               label="Pen fight"
@@ -176,7 +182,7 @@ export function GamesStage({
       />
 
       {/* Marked so the page's smooth scrolling hands the wheel to this panel. */}
-      <div data-lenis-prevent className={cn('relative z-10 min-h-0 flex-1', screen === 'penfight' || (screen === 'geo' && party.party?.game === 'geo') || (screen === 'draw' && party.party?.game === 'draw') ? 'overflow-hidden' : 'overflow-y-auto')}>
+      <div data-lenis-prevent className={cn('relative z-10 min-h-0 flex-1', screen === 'fightkaro' || screen === 'penfight' || (screen === 'geo' && party.party?.game === 'geo') || (screen === 'draw' && party.party?.game === 'draw') ? 'overflow-hidden' : 'overflow-y-auto')}>
         {screen === 'picker' && (
           <GamePicker
             live={party.party?.game ?? null}
@@ -186,6 +192,8 @@ export function GamesStage({
             onPick={setScreen}
           />
         )}
+
+        {screen === 'fightkaro' && <FightKaroStage roomId={roomId} onClose={() => setScreen('picker')} />}
 
         {screen === 'geo' && <Suspense fallback={<div className="grid h-full place-items-center text-mist"><Loader2 className="size-6 animate-spin" /></div>}>
           {party.party?.game === 'geo' ? <GeoTable

@@ -114,6 +114,7 @@ export function DashboardPage() {
    * Listen again clears it and rejoins wherever the room has reached.
    */
   const [leftMusic, setLeftMusic] = useState(false)
+  const [fightActive, setFightActive] = useState(false)
   /* Whether a song is loaded, reported from inside the music session. */
   const [musicLoaded, setMusicLoaded] = useState(false)
   useEffect(() => {
@@ -143,6 +144,8 @@ export function DashboardPage() {
           if (id) next.set('room', id)
           else next.delete('room')
           next.delete('activity')
+          next.delete('game')
+          next.delete('fightRoom')
           return next
         },
         { replace: false },
@@ -158,6 +161,8 @@ export function DashboardPage() {
           const next = new URLSearchParams(previous)
           if (id) next.set('activity', id)
           else next.delete('activity')
+          next.delete('game')
+          next.delete('fightRoom')
           return next
         },
         { replace: false },
@@ -262,7 +267,7 @@ export function DashboardPage() {
   }, [])
   const inset = sideOpen && sideBySide ? panelRem : 0
   /* Mirrors MusicDock's own rule for showing itself on the hub. */
-  const musicDockShown = musicLoaded && activity !== 'music' && activity !== 'watch' && !leftMusic
+  const musicDockShown = musicLoaded && activity !== 'music' && activity !== 'watch' && !fightActive && !leftMusic
 
   /*
    * Presence follows the room you are *standing in*, not every room you belong
@@ -543,10 +548,10 @@ export function DashboardPage() {
   return (
     <MusicProvider
       roomId={activeRoom?.id ?? null}
-      /* A film brings its own soundtrack, and someone who closed the dock has
+      /* A film or fighting game brings its own soundtrack, and someone who closed the dock has
          asked to be left out — both pause this client without touching the
          room, so the queue and everyone else's playback survive. */
-      enabled={activity !== 'watch' && !leftMusic}
+      enabled={activity !== 'watch' && !fightActive && !leftMusic}
     >
     {/* Not visible, and not optional: this is the only surface the browser
         extension and this page can both see. See ExtensionBridge. */}
@@ -781,6 +786,8 @@ export function DashboardPage() {
             )}
           >
             <GamesStage
+              initialGame={params.get('game')}
+              onFightActive={setFightActive}
               roomId={activeRoom.id}
               selfId={user?.id}
               members={everyone.map((member) => ({
@@ -844,7 +851,7 @@ export function DashboardPage() {
       <MusicLoaded onChange={setMusicLoaded} />
       {activeRoom && (
         <MusicDock
-          visible={activity !== 'music' && activity !== 'watch' && !leftMusic}
+          visible={activity !== 'music' && activity !== 'watch' && !fightActive && !leftMusic}
           onOpen={(from) => {
             setMusicOrigin(from ?? null)
             setActivity('music')
