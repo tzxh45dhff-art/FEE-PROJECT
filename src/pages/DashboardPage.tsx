@@ -559,7 +559,7 @@ export function DashboardPage() {
       transition={{ duration: 0.7, ease: EASE }}
     >
       <SceneBackdrop scene={scene} tilt={tilt} />
-      <Fireflies className="pointer-events-none absolute inset-0 size-full" />
+      <Fireflies className="pointer-events-none absolute inset-0 size-full" paused={activity !== null} />
 
       {revealed && (
         <>

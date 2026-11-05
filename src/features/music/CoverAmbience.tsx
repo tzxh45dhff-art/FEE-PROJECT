@@ -64,8 +64,10 @@ export function CoverAmbience({
         translucent
           ? /* Dark enough to hold white text against whatever backdrop the
                room happens to be wearing, blurred enough that none of it
-               competes for attention. */
-            'bg-void/80 backdrop-blur-xl [@media(pointer:coarse)]:bg-void/88 [@media(pointer:coarse)]:backdrop-blur-md'
+               competes for attention. On a phone, solid: a full-screen blur
+               is the most expensive thing a phone can be asked to paint every
+               frame, and the hub showing through was only clutter there. */
+            'bg-void/80 backdrop-blur-xl [@media(pointer:coarse)]:bg-void [@media(pointer:coarse)]:backdrop-blur-none'
           : 'bg-void',
       )}
     >

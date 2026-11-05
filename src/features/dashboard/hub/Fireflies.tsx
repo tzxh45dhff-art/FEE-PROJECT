@@ -40,12 +40,12 @@ function seed(width: number, height: number): Mote[] {
  * Canvas rather than DOM nodes: fifty independently-animated elements is fifty
  * composited layers, and this has to share the frame with a 3D canvas.
  */
-export function Fireflies({ className }: { className?: string }) {
+export function Fireflies({ className, paused = false }: { className?: string; /** Something covers the hub — stop drawing what nobody can see. */ paused?: boolean }) {
   const reduced = usePrefersReducedMotion()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
-    if (reduced) return
+    if (reduced || paused) return
 
     const canvas = canvasRef.current
     if (!canvas) return
@@ -153,7 +153,7 @@ export function Fireflies({ className }: { className?: string }) {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerleave', onLeave)
     }
-  }, [reduced])
+  }, [reduced, paused])
 
   if (reduced) return null
 

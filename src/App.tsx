@@ -1,17 +1,26 @@
+import { Suspense, useEffect } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Header } from '@/components/layout/Header'
 import { LiquidGlassFilter } from '@/components/layout/LiquidGlassFilter'
 import { SignInPage, SignUpPage } from '@/pages/AuthPages'
-import { DashboardPage } from '@/pages/DashboardPage'
 import { LandingPage } from '@/pages/LandingPage'
 import { RequireAuth } from '@/pages/RequireAuth'
 import { useLiquidPointer } from '@/hooks/useLiquidPointer'
 import { useSmoothScroll } from '@/hooks/useSmoothScroll'
+import { lazyChunk } from '@/lib/lazyChunk'
+
+/*
+ * The hub is the whole app — the 3D room, every activity — and a visitor
+ * reading the landing page or typing a password needs none of it. Loaded on
+ * its own, so those pages arrive in a fraction of the bytes; fetched quietly
+ * while someone is signing in, so it is already here when they finish.
+ */
+const loadDashboard = () => import('@/pages/DashboardPage').then((module) => ({ default: module.DashboardPage }))
+const DashboardPage = lazyChunk(loadDashboard)
 
 export default function App() {
-  useSmoothScroll()
   /* One listener for every liquid-glass control on the page. */
   useLiquidPointer()
   const { pathname } = useLocation()
@@ -22,6 +31,18 @@ export default function App() {
    * with the hub's own canvas and particle field.
    */
   const onHub = pathname === '/dashboard'
+
+  /* Smooth scrolling is for the pages that scroll. The hub is a fixed screen,
+     and an animation loop running every frame behind it — for nothing — is
+     battery and dropped frames on a phone. */
+  useSmoothScroll(!onHub)
+
+  const signingIn = pathname === '/signin' || pathname === '/signup'
+  useEffect(() => {
+    if (!signingIn) return
+    const idle = window.requestIdleCallback ?? ((run: () => void) => window.setTimeout(run, 1200))
+    idle(() => void loadDashboard().catch(() => undefined))
+  }, [signingIn])
 
   /*
    * Everything that is not the hub is dark now.
@@ -76,6 +97,7 @@ export default function App() {
           </div>
         )}
       >
+      <Suspense fallback={<div className="min-h-svh bg-void" />}>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/signin" element={<SignInPage />} />
@@ -90,6 +112,7 @@ export default function App() {
         />
         <Route path="*" element={<LandingPage />} />
       </Routes>
+      </Suspense>
       </ErrorBoundary>
     </div>
   )

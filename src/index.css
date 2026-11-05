@@ -1492,3 +1492,22 @@ body[data-panel-resizing] {
 body[data-panel-resizing] * {
   transition-duration: 0s !important;
 }
+
+/*
+ * Frosted glass at a phone's price.
+ *
+ * A backdrop blur is recomputed every frame that anything behind it moves —
+ * the hub's scene, a video, the visualiser — and its cost grows with both the
+ * radius and the area. The large blurs (full-height panels, whole-screen
+ * stages) were what dropped frames on phones and took the music page down on
+ * a foldable. Behind a pane that is already 80–90% opaque, 8px reads the same
+ * as 24px; only the bill is different.
+ */
+@media (pointer: coarse) {
+  :root {
+    --blur-lg: 8px;
+    --blur-xl: 8px;
+    --blur-2xl: 10px;
+    --blur-3xl: 12px;
+  }
+}

@@ -4,15 +4,15 @@ import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { createLenis, destroyLenis } from '@/lib/smoothScroll'
 
 /**
- * Mounts Lenis for the lifetime of the app. Skipped entirely when the user
+ * Mounts Lenis while `enabled` (the pages that scroll). Skipped entirely when the user
  * prefers reduced motion — native scrolling is the accessible default, and
  * hijacking it is exactly what that preference asks us not to do.
  */
-export function useSmoothScroll() {
+export function useSmoothScroll(enabled = true) {
   const reduced = usePrefersReducedMotion()
 
   useEffect(() => {
-    if (reduced) return
+    if (reduced || !enabled) return
 
     const lenis = createLenis()
     let frame = 0
@@ -27,5 +27,5 @@ export function useSmoothScroll() {
       cancelAnimationFrame(frame)
       destroyLenis()
     }
-  }, [reduced])
+  }, [reduced, enabled])
 }
