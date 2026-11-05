@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io'
 
 import * as messageModel from '../models/message.model.js'
 import { socketUser } from './presence.gateway.js'
+import { tokenBucket } from '../utils/limiter.js'
 import { roomGuard } from './roomAuth.js'
 import { petHearsSorry } from './pet.gateway.js'
 
@@ -35,7 +36,11 @@ export function attachChatGateway(io: Server) {
       })
     })
 
+    /* Fast typing gets through; a flood that would bury the room (and fill the database) does not. */
+    const allowSend = tokenBucket(8, 10_000)
+
     socket.on('chat:send', async (raw: unknown) => {
+      if (!allowSend()) return
       const body = (raw ?? {}) as { roomId?: unknown; body?: unknown }
       const roomId = await may(body.roomId)
       if (!roomId) return

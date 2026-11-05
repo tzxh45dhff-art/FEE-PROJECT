@@ -14,6 +14,7 @@ import { truthDare } from '../games/truthdare.js'
 import { prisma } from '../models/prisma.js'
 import { presenceFor } from '../services/presence.service.js'
 import { socketUser } from './presence.gateway.js'
+import { tokenBucket } from '../utils/limiter.js'
 import { roomGuard } from './roomAuth.js'
 
 /**
@@ -156,20 +157,6 @@ async function settle(roomId: string, session: Session) {
     .catch(() => undefined)
 }
 
-/** At most `burst` moves per `windowMs` from one connection, refilling smoothly. */
-function actLimiter(burst: number, windowMs: number) {
-  let tokens = burst
-  let refilled = Date.now()
-  return () => {
-    const now = Date.now()
-    tokens = Math.min(burst, tokens + ((now - refilled) / windowMs) * burst)
-    refilled = now
-    if (tokens < 1) return false
-    tokens -= 1
-    return true
-  }
-}
-
 /** Whatever slow work this state asks for, applied when it is done — if the same game is still on. */
 function followUp(io: Server, roomId: string, session: Session) {
   const work = session.game.after?.(roomId, session.state)
@@ -203,9 +190,9 @@ export function attachPartyGateway(io: Server) {
     const self: Player = { id: state.userId, name: state.name }
     const may = roomGuard(socket, self.id)
     /* A person taps a few times a second at most; a flood is a bug or abuse, and must not take the server down. */
-    const allowAct = actLimiter(20, 4_000)
-    const allowGeoPing = actLimiter(8, 4_000)
-    const allowFill = actLimiter(4, 1_000)
+    const allowAct = tokenBucket(20, 4_000)
+    const allowGeoPing = tokenBucket(8, 4_000)
+    const allowFill = tokenBucket(4, 1_000)
     socket.on('geo:ping', (raw: unknown) => {
       const sent = (raw as { sent?: unknown } | null)?.sent
       if (typeof sent === 'number' && Number.isFinite(sent) && allowGeoPing()) socket.emit('geo:pong', { sent, serverTime: Date.now() })
