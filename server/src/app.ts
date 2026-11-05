@@ -8,6 +8,24 @@ import { errorHandler, notFound } from './middleware/errorHandler.js'
 import { apiRoutes } from './routes/index.js'
 import { UPLOAD_DIR, UPLOAD_ROUTE } from './services/upload.service.js'
 
+/*
+ * Only sound and pictures-that-move leave the uploads folder.
+ *
+ * The same folder holds study documents, which are read on the server and
+ * never linked to — and some of those are HTML. Served from here, an HTML
+ * upload would run as a page on the API's own address, where the session
+ * cookie lives, and could act as whoever opened the link. So the route serves
+ * the media the app actually plays, and nothing else exists as far as a
+ * browser is concerned.
+ */
+const MEDIA = /\.(mp4|webm|ogg|ogv|mov|m4v|mp3|m4a|aac|oga|opus|wav|flac)$/i
+const onlyMedia: express.RequestHandler = (req, res, next) => {
+  if (MEDIA.test(req.path)) return next()
+  res.status(404).end()
+}
+/* A file is what its name says it is — never sniffed into something that runs. */
+const noSniffing = (res: express.Response) => res.setHeader('X-Content-Type-Options', 'nosniff')
+
 /**
  * The Express application, with no server attached — so tests can import this
  * without opening a port. `server.ts` is what actually listens.
@@ -52,7 +70,7 @@ export function createApp() {
    * needs in order to seek — without them, scrubbing would re-download from
    * the top every time.
    */
-  app.use(UPLOAD_ROUTE, express.static(UPLOAD_DIR, { maxAge: '1h' }))
+  app.use(UPLOAD_ROUTE, onlyMedia, express.static(UPLOAD_DIR, { maxAge: '1h', dotfiles: 'ignore', setHeaders: noSniffing }))
 
   app.use('/api', apiRoutes)
   app.use('/api', notFound)

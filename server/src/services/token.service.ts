@@ -6,6 +6,7 @@ type TokenPayload = { sub: string }
 
 export function signSession(userId: string) {
   return jwt.sign({ sub: userId } satisfies TokenPayload, env.jwtSecret, {
+    algorithm: 'HS256',
     expiresIn: SESSION_TTL,
   })
 }
@@ -37,7 +38,8 @@ export function tokenFrom(source: {
 export function readSession(token: string | undefined): string | null {
   if (!token) return null
   try {
-    const payload = jwt.verify(token, env.jwtSecret) as TokenPayload
+    /* Pinned, so a token can never talk the server into a different algorithm. */
+    const payload = jwt.verify(token, env.jwtSecret, { algorithms: ['HS256'] }) as TokenPayload
     return payload.sub ?? null
   } catch {
     return null

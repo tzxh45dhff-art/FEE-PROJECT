@@ -5,7 +5,9 @@ import * as studyController from '../controllers/study.controller.js'
 import * as roomController from '../controllers/room.controller.js'
 import * as watchController from '../controllers/watch.controller.js'
 import { asyncHandler } from '../middleware/asyncHandler.js'
+import { byUser, rateLimit } from '../middleware/rateLimit.js'
 import { requireAuth } from '../middleware/requireAuth.js'
+import { assertMembership } from '../services/room.service.js'
 import { receiveDocument, receiveAudio, receiveVideo } from '../services/upload.service.js'
 
 export const roomRoutes = Router()
@@ -13,11 +15,23 @@ export const roomRoutes = Router()
 // Everything below the room API needs a session.
 roomRoutes.use(requireAuth)
 
+/* Before an upload, not after: otherwise anyone signed in could stream two
+   gigabytes onto the server's disk only to be told they aren't in the room. */
+const memberFirst = asyncHandler(async (req, _res, next) => {
+  await assertMembership(req.userId!, req.params.id!)
+  next()
+})
+
 roomRoutes.get('/', asyncHandler(roomController.list))
 roomRoutes.post('/', asyncHandler(roomController.create))
 /* Before `/:id`, or Express reads "join" as a room id. */
 roomRoutes.get('/discover', asyncHandler(roomController.discover))
-roomRoutes.post('/join', asyncHandler(roomController.joinByCode))
+/* A room code is the key to a private room, so it can't be guessed at speed. */
+roomRoutes.post(
+  '/join',
+  rateLimit({ max: 30, windowMs: 10 * 60 * 1000, key: byUser, message: 'Too many room codes tried. Wait a few minutes and try again.' }),
+  asyncHandler(roomController.joinByCode),
+)
 roomRoutes.get('/:id', asyncHandler(roomController.show))
 roomRoutes.patch('/:id', asyncHandler(roomController.update))
 roomRoutes.post('/:id/join', asyncHandler(roomController.join))
@@ -26,7 +40,7 @@ roomRoutes.post('/:id/join', asyncHandler(roomController.join))
 roomRoutes.get('/:id/watch', asyncHandler(watchController.capabilities))
 roomRoutes.get('/:id/watch/search', asyncHandler(watchController.search))
 roomRoutes.post('/:id/watch/resolve', asyncHandler(watchController.resolve))
-roomRoutes.post('/:id/watch/upload', receiveVideo, asyncHandler(watchController.upload))
+roomRoutes.post('/:id/watch/upload', memberFirst, receiveVideo, asyncHandler(watchController.upload))
 roomRoutes.get('/:id/watch/library', asyncHandler(watchController.library))
 /* Encoded, because a film's name is arbitrary — spaces, brackets, dots. */
 roomRoutes.delete('/:id/watch/library/:file', asyncHandler(watchController.removeFromLibrary))
@@ -40,7 +54,7 @@ roomRoutes.delete('/:id/watch/queue/:itemId', asyncHandler(watchController.remov
 roomRoutes.get('/:id/music', asyncHandler(musicController.capabilities))
 roomRoutes.get('/:id/music/search', asyncHandler(musicController.search))
 roomRoutes.post('/:id/music/resolve', asyncHandler(musicController.resolve))
-roomRoutes.post('/:id/music/upload', receiveAudio, asyncHandler(musicController.upload))
+roomRoutes.post('/:id/music/upload', memberFirst, receiveAudio, asyncHandler(musicController.upload))
 roomRoutes.get('/:id/music/library', asyncHandler(musicController.library))
 roomRoutes.get('/:id/music/lyrics', asyncHandler(musicController.lyrics))
 roomRoutes.get('/:id/music/queue', asyncHandler(musicController.queue))
@@ -78,6 +92,7 @@ roomRoutes.delete('/:id/study/subjects/:subjectId', asyncHandler(studyController
 roomRoutes.get('/:id/study/resources', asyncHandler(studyController.listResources))
 roomRoutes.post(
   '/:id/study/resources',
+  memberFirst,
   receiveDocument,
   asyncHandler(studyController.uploadResource),
 )

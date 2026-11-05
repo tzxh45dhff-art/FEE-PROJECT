@@ -1,4 +1,16 @@
-/** `Movie Night` → `movie-night-x7f2`. Suffixed so room names can repeat. */
+import { randomInt } from 'node:crypto'
+
+const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'
+
+/**
+ * `Movie Night` → `movie-night-x7f2ka`.
+ *
+ * Suffixed so room names can repeat — and the suffix is the lock on a private
+ * room, since the code is how you get in. Six characters from an alphabet
+ * that reads aloud cleanly (no 0/o or 1/l/i to mix up over a call) give about
+ * 900 million codes per name, drawn from a cryptographic source rather than
+ * Math.random.
+ */
 export function slugify(name: string) {
   const base =
     name
@@ -7,5 +19,7 @@ export function slugify(name: string) {
       .replace(/^-+|-+$/g, '')
       .slice(0, 32) || 'room'
 
-  return `${base}-${Math.random().toString(36).slice(2, 6)}`
+  let suffix = ''
+  for (let i = 0; i < 6; i++) suffix += ALPHABET[randomInt(ALPHABET.length)]
+  return `${base}-${suffix}`
 }
