@@ -8,6 +8,12 @@ export function description(value: unknown, kind: 'offer' | 'answer'): Descripti
   if (!v || v.type !== kind || typeof v.sdp !== 'string' || !v.sdp.startsWith('v=0') || v.sdp.length > 65000) throw new FightError(400, 'Invalid connection description')
   return { type: kind, sdp: v.sdp }
 }
+/**
+ * How long a room's match holds the arena without word from a fighter. Open
+ * game screens renew it (`touch`), so a closed laptop or a crashed tab frees
+ * the room in minutes rather than blocking everyone else for two hours.
+ */
+export const LOBBY_LEASE = 120000
 /** Ephemeral signalling only. Combat remains peer-to-peer; no database writes. */
 export class FightRooms {
   private sessions = new Map<string, Session>()
@@ -37,6 +43,12 @@ export class FightRooms {
     this.lobbies.delete(huddleRoom)
     if (match) match.closed = true
   }
+  touch(huddleRoom: string, user: string) {
+    const lobby = this.lobbies.get(huddleRoom)
+    if (!lobby?.code || lobby.expires <= this.now()) return
+    const match = [...this.sessions.values()].find(s => s.code === lobby.code && s.huddleRoom === huddleRoom)
+    if (lobby.owner === user || match?.guest === user) lobby.expires = this.now() + LOBBY_LEASE
+  }
   requireRoom(code: string, huddleRoom?: string) {
     const match = this.room(code)
     if (match.huddleRoom && match.huddleRoom !== huddleRoom) throw new FightError(403, 'Join from the same Huddle room')
@@ -54,7 +66,7 @@ export class FightRooms {
     do { code = Array.from({ length: 4 }, () => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[randomInt(31)]).join('') } while (occupied.has(code))
     const secret = randomBytes(24).toString('hex')
     this.sessions.set(secret, { huddleRoom, code, secret, owner, offer, expires: this.now() + 600000, closed: false, signals: new Map() })
-    if (huddleRoom) this.lobbies.set(huddleRoom, { owner, code, expires: this.now() + 7200000 })
+    if (huddleRoom) this.lobbies.set(huddleRoom, { owner, code, expires: this.now() + LOBBY_LEASE })
     return { code, secret }
   }
   private room(code: string) {

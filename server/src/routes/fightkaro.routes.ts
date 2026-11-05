@@ -8,8 +8,9 @@ export const fightKaroRoutes = Router()
 const rooms = new FightRooms()
 fightKaroRoutes.use(requireAuth)
 fightKaroRoutes.use(async (req, res, next) => {
+  /* Every match belongs to a Huddle room, so a code can't be guessed from outside one. */
   const room = req.query.huddleRoom
-  if (!room) { next(); return }
+  if (!room) { res.status(400).json({ error: 'Choose a Huddle room first' }); return }
   if (typeof room !== 'string' || room.length > 100) { res.status(400).json({ error: 'Invalid Huddle room' }); return }
   try {
     if (!await findMembership(req.userId!, room)) { res.status(403).json({ error: 'Join this Huddle room first' }); return }
@@ -17,10 +18,10 @@ fightKaroRoutes.use(async (req, res, next) => {
   } catch (error) { next(error) }
 })
 fightKaroRoutes.all('/lobby', (req, res) => {
-  const room = req.query.huddleRoom as string | undefined
-  if (!room) { res.status(400).json({ error: 'Choose a Huddle room first' }); return }
+  const room = req.query.huddleRoom as string
   try {
     if (req.method === 'POST') res.json(rooms.claim(room, req.userId!))
+    else if (req.method === 'PUT') { rooms.touch(room, req.userId!); res.json({ ok: true }) }
     else if (req.method === 'DELETE') { rooms.release(room, req.userId!); res.json({ ok: true }) }
     else res.status(405).json({ error: 'Method not allowed' })
   } catch (error) {
@@ -33,7 +34,7 @@ fightKaroRoutes.get('/ice', async (_req, res, next) => {
 })
 fightKaroRoutes.all('/room', async (req, res, next) => {
   const user = req.userId!
-  const huddleRoom = req.query.huddleRoom as string | undefined
+  const huddleRoom = req.query.huddleRoom as string
   const code = String(req.query.code ?? '').toUpperCase()
   const secret = String(req.query.secret ?? '')
   try {

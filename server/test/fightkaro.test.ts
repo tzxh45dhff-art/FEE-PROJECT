@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { FightRooms, description } from '../src/services/fightkaro.service.js'
+import { FightRooms, LOBBY_LEASE, description } from '../src/services/fightkaro.service.js'
 const offer = description({ type: 'offer', sdp: 'v=0\r\nhost' }, 'offer')
 const answer = description({ type: 'answer', sdp: 'v=0\r\nguest' }, 'answer')
 test('room lifecycle, retries, ownership and third-player rejection', () => {
@@ -54,4 +54,22 @@ test('Huddle room matching is atomic, scoped and freed when a player leaves', ()
   assert.deepEqual(rooms.claim('room', 'third'), { role: 'host' })
   now += 30001
   assert.deepEqual(rooms.claim('room', 'fourth'), { role: 'host' })
+})
+
+test('a match nobody is holding frees the room, while open screens keep it', () => {
+  let now = 0
+  const rooms = new FightRooms(() => now)
+  rooms.claim('room', 'host')
+  const { code, secret } = rooms.create('host', offer, 'room')
+  rooms.claim('room', 'guest')
+  rooms.answer(code, 'guest', answer)
+  rooms.close(code, secret, 'host')
+  now += LOBBY_LEASE - 1000
+  rooms.touch('room', 'third')
+  rooms.touch('room', 'guest')
+  now += LOBBY_LEASE - 1000
+  assert.throws(() => rooms.claim('room', 'third'), /already fighting/)
+  /* Both tabs crashed: no more word from either fighter. */
+  now += LOBBY_LEASE
+  assert.deepEqual(rooms.claim('room', 'third'), { role: 'host' })
 })

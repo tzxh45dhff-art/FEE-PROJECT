@@ -13,11 +13,22 @@ export function FightKaroStage({ onClose, roomId }: { onClose: () => void; roomI
   useEffect(() => {
     const requests = new Map<number, AbortController>()
     const timeout = window.setTimeout(() => setFailed(true), 45000)
+    const lobby = (method: 'PUT' | 'DELETE', keepalive = false) => {
+      const token = getToken()
+      return fetch(`${API_BASE}/api/fightkaro/lobby?huddleRoom=${encodeURIComponent(roomId)}`, {
+        method, credentials: 'include', keepalive,
+        headers: { ...API_HEADERS, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      }).catch(() => {})
+    }
+    /* Keeps this room's match held while the screen is open; a closed tab lets it go within two minutes. */
+    const heartbeat = window.setInterval(() => void lobby('PUT'), 30000)
+    let ready = false
     const receive = async (event: MessageEvent) => {
       if (event.origin !== location.origin || event.source !== frame.current?.contentWindow) return
       const message = event.data
-      if (message?.type === 'fight:loaded') { clearTimeout(timeout); setLoaded(true); return }
-      if (message?.type === 'fight:error') { setFailed(true); return }
+      if (message?.type === 'fight:loaded') { ready = true; clearTimeout(timeout); setLoaded(true); return }
+      /* Only a failure to start is fatal; a stray error mid-fight (a blocked sound, say) must not cover the match. */
+      if (message?.type === 'fight:error') { if (!ready) setFailed(true); return }
       if (message?.type === 'fight:abort') { requests.get(message.id)?.abort(); return }
       if (message?.type !== 'fight:request' || !Number.isSafeInteger(message.id)) return
       if (typeof message.path !== 'string' || !/^\/api\/fightkaro\/(ice|room|lobby)(\?[^#]*)?$/.test(message.path)) return
@@ -40,18 +51,14 @@ export function FightKaroStage({ onClose, roomId }: { onClose: () => void; roomI
     }
     window.addEventListener('message', receive)
     return () => {
-      clearTimeout(timeout); window.removeEventListener('message', receive); requests.forEach(r => r.abort())
-      const token = getToken()
-      void fetch(`${API_BASE}/api/fightkaro/lobby?huddleRoom=${encodeURIComponent(roomId)}`, {
-        method: 'DELETE', credentials: 'include', keepalive: true,
-        headers: { ...API_HEADERS, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      }).catch(() => {})
+      clearTimeout(timeout); clearInterval(heartbeat); window.removeEventListener('message', receive); requests.forEach(r => r.abort())
+      void lobby('DELETE', true)
     }
   }, [attempt, roomId])
   const [src] = useState(() => `/fightkaro/index.html${window.matchMedia('(max-width: 639px)').matches ? '?mobile=1' : ''}`)
   return (
     <section ref={shell} aria-label="FightKaro" className="relative h-full flex flex-col bg-[#160d08] text-[#fff3d0]" data-lenis-prevent>
-      <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-amber-200/15 bg-[#160d08] px-3 pt-[env(safe-area-inset-top)] sm:px-5">
+      <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-amber-200/15 bg-[#160d08] px-3 pt-[env(safe-area-inset-top)] sm:px-5">
         <button onClick={onClose} className="flex min-h-10 items-center gap-2 rounded px-2 text-sm hover:bg-white/10 focus-visible:outline-2" aria-label="Back to all games"><ArrowLeft size={18} /><span>All games</span></button>
         <span className="truncate font-display text-sm font-bold tracking-widest">FIGHTKARO</span>
         <button className="grid size-10 place-items-center rounded hover:bg-white/10 focus-visible:outline-2" aria-label="Fullscreen game" onClick={() => { setFullscreenError(false); if (!shell.current?.requestFullscreen) setFullscreenError(true); else void shell.current.requestFullscreen().catch(() => setFullscreenError(true)) }}><Maximize size={18} /></button>

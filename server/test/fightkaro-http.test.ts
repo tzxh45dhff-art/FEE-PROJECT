@@ -21,7 +21,8 @@ test('authenticated Huddle members pair, exchange descriptions and release the r
   const answer = { type: 'answer', sdp: 'v=0\r\nguest' }
   const match = await api<{ code: string; secret: string }>(server.base, host, `/fightkaro/room?huddleRoom=${room.id}`, { body: { offer } })
   assert.deepEqual(await api(server.base, guest, lobby, { method: 'POST' }), { role: 'guest', code: match.code })
-  await assert.rejects(api(server.base, outsider, `/fightkaro/room?code=${match.code}`), /403/)
+  await assert.rejects(api(server.base, outsider, `/fightkaro/room?code=${match.code}&huddleRoom=${room.id}`), /403/)
+  await assert.rejects(api(server.base, guest, `/fightkaro/room?code=${match.code}`), /400/)
   const path = `/fightkaro/room?code=${match.code}&huddleRoom=${room.id}`
   assert.deepEqual(await api(server.base, guest, path), { offer })
   const pending = api(server.base, host, `${path}&secret=${match.secret}&wait=3`)
