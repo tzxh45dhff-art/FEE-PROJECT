@@ -1,6 +1,6 @@
 export type WatchSource = 'youtube' | 'file' | 'external'
 
-export type WatchAction = 'load' | 'play' | 'pause' | 'seek' | 'rate' | 'advance' | 'open'
+export type WatchAction = 'load' | 'play' | 'pause' | 'seek' | 'rate' | 'advance' | 'open' | 'upgrade'
 
 /** One WebVTT subtitle track published alongside a video. */
 export type SubtitleTrack = { language: string; label: string; url: string }

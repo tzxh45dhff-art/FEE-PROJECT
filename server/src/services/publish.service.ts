@@ -134,6 +134,34 @@ export const isPublishing = (file: string) => inFlight.has(file)
  * the local file still plays; losing the faster path is a degradation, not an
  * outage.
  */
+/** Told when a film's CDN version is ready, so anything already playing it can switch over. */
+const listeners = new Set<(file: string, entry: PublishedEntry) => void>()
+export function onPublished(listener: (file: string, entry: PublishedEntry) => void) {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
+/**
+ * The best place to play a queued upload from: its CDN version once one
+ * exists, the file on this machine until then.
+ *
+ * Asked at the moment of playing rather than stored in the queue, so an item
+ * queued straight after uploading — which is nearly always — is played from
+ * the CDN once publishing has finished, instead of over this machine's home
+ * upload line for the whole film.
+ */
+export async function playableRef(ref: string) {
+  const local = /^\/uploads\/([^/]+)$/.exec(ref)
+  if (!local) return ref
+  let file: string
+  try {
+    file = decodeURIComponent(local[1]!)
+  } catch {
+    return ref
+  }
+  return (await publishedFor(file))?.url ?? ref
+}
+
 export function publishInBackground(file: string) {
   if (inFlight.has(file)) return
   inFlight.add(file)
@@ -141,6 +169,7 @@ export function publishInBackground(file: string) {
   void publish(file)
     .then((entry) => {
       console.log(`  published ${file} -> ${entry.url}`)
+      for (const listener of listeners) listener(file, entry)
     })
     .catch((cause: unknown) => {
       console.error(

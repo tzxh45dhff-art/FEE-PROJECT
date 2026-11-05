@@ -33,6 +33,7 @@ export const WATCH_ACTIONS = [
   'rate',
   'advance',
   'open',
+  'upgrade',
 ] as const
 export type WatchAction = (typeof WATCH_ACTIONS)[number]
 
@@ -147,6 +148,11 @@ function distinctViewers(state: Session) {
   return new Set([...state.viewers.values()].map((viewer) => viewer.userId)).size
 }
 
+/** Rooms whose current item is this one — for switching them to a better copy of it. */
+export function roomsShowing(matches: (item: WatchItem) => boolean): string[] {
+  return [...sessions.entries()].filter(([, state]) => state.item && matches(state.item)).map(([roomId]) => roomId)
+}
+
 export function isWatching(roomId: string) {
   const state = sessions.get(roomId)
   return state ? distinctViewers(state) > 0 : false
@@ -220,6 +226,8 @@ export type WatchControl =
   | { action: 'rate'; rate: number }
   | { action: 'advance'; item: WatchItem | null }
   | { action: 'open' }
+  /** The same film, from a faster place — its CDN version, once it is published. */
+  | { action: 'upgrade'; ref: string; subtitles: WatchItem['subtitles'] }
 
 const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
@@ -287,6 +295,15 @@ export function apply(
       state.position = project(state)
       state.rate = nearest
       state.at = now
+      break
+    }
+
+    case 'upgrade': {
+      /* Same item, same moment, same play or pause — only where the bytes come from changes. */
+      if (!state.item) break
+      state.position = project(state)
+      state.at = now
+      state.item = { ...state.item, ref: control.ref, subtitles: control.subtitles }
       break
     }
 

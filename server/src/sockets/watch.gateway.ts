@@ -1,7 +1,7 @@
 import type { Server, Socket } from 'socket.io'
 
 import * as queueModel from '../models/queue.model.js'
-import { subtitlesForRef } from '../services/publish.service.js'
+import { onPublished, playableRef, subtitlesForRef } from '../services/publish.service.js'
 import { assertMembership } from '../services/room.service.js'
 import * as watch from '../services/watch.service.js'
 import { socketUser } from './presence.gateway.js'
@@ -45,7 +45,19 @@ function toItem(row: {
  */
 async function toItemWithTracks(row: Parameters<typeof toItem>[0]): Promise<watch.WatchItem> {
   const item = toItem(row)
-  return { ...item, subtitles: await subtitlesForRef(item.ref) }
+  /* An upload plays from the CDN once it has been published there — see `playableRef`. */
+  const ref = item.source === 'file' ? await playableRef(item.ref) : item.ref
+  return { ...item, ref, subtitles: await subtitlesForRef(ref) }
+}
+
+/** Whether a queued upload's ref points at this file in the uploads folder. */
+const isLocalCopyOf = (file: string) => (item: watch.WatchItem) => {
+  if (item.source !== 'file') return false
+  try {
+    return decodeURIComponent(item.ref) === `/uploads/${file}`
+  } catch {
+    return false
+  }
 }
 
 function roomIdFrom(raw: unknown): string | null {
@@ -60,6 +72,20 @@ function numberFrom(raw: unknown, key: string): number | undefined {
 }
 
 export function attachWatchGateway(io: Server) {
+  /*
+   * A film finishes publishing while a room is already watching it from this
+   * machine: switch them over where they are. One short rebuffer at the swap,
+   * then the rest of the film from the CDN instead of a home upload line.
+   */
+  onPublished((file, entry) => {
+    for (const roomId of watch.roomsShowing(isLocalCopyOf(file))) {
+      io.to(stageRoom(roomId)).emit(
+        'watch:state',
+        watch.apply(roomId, { id: 'huddle', name: '' }, { action: 'upgrade', ref: entry.url, subtitles: entry.subtitles ?? [] }),
+      )
+    }
+  })
+
   io.on('connection', (socket: Socket) => {
     const state = socketUser(socket)
     if (!state) return

@@ -20,6 +20,12 @@ import type { AudioTrackInfo, PlayerHandle, SubtitleTrack } from '@/features/wat
 
 const isHls = (src: string) => /\.m3u8(\?|$)/i.test(src)
 
+/** A phone, a small tablet, or anything short on memory — where buffer quotas are tight. */
+const smallDevice = () => {
+  const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory
+  return (memory !== undefined && memory <= 4) || window.matchMedia('(max-width: 900px), (pointer: coarse)').matches
+}
+
 /*
  * `HTMLMediaElement.audioTracks` — Safari's own multi-audio API for native
  * HLS. It never made it into a finished standard, so TypeScript's DOM types
@@ -75,6 +81,8 @@ export function FilePlayer({
      one still fires a last `pause`, and that is not anybody asking the room
      to stop. */
   const alive = useRef(true)
+  /** Until when pauses are the player's own doing (a source swap), not a person's. */
+  const quietUntil = useRef(0)
   useEffect(() => {
     alive.current = true
     return () => {
@@ -115,6 +123,9 @@ export function FilePlayer({
   useEffect(() => {
     const element = video.current
     if (!element) return
+    /* Swapping the source can fire a pause the room never asked for — one the
+       room must not hear, or switching to the CDN copy would pause everyone. */
+    quietUntil.current = performance.now() + 2000
 
     if (!isHls(src)) {
       element.src = src
@@ -164,15 +175,22 @@ export function FilePlayer({
        * How far ahead it actually reaches is
        *   min(max(8 · maxBufferSize / bitrate, maxBufferLength), maxMaxBufferLength)
        * so `maxBufferSize` is the real lever and the seconds are its bounds.
-       * 400MB is deliberately past what any browser will grant: MSE enforces
-       * its own quota (Chrome allows on the order of 150MB of video) and
-       * hls.js backs off when it is refused, so this reads as "take whatever
-       * you can get" rather than as a literal allocation.
+       *
+       * Sized to what the browser will actually grant, not past it. Asking for
+       * more than the quota (Chrome allows roughly 150MB of video on a
+       * computer, far less on a phone) is not free: the append is refused,
+       * hls.js flushes part of the buffer and refetches it, and that churn is
+       * exactly the stutter it was meant to prevent — worst on a phone, where
+       * memory is also what the rest of the page needs.
        */
       startFragPrefetch: true,
       maxBufferLength: 60,
-      maxBufferSize: 400 * 1000 * 1000,
-      maxMaxBufferLength: 1800,
+      maxBufferSize: (smallDevice() ? 50 : 140) * 1000 * 1000,
+      maxMaxBufferLength: 600,
+      /* A phone screen has no use for the full-resolution copy, and decoding one
+         is what makes a small device drop frames. Pick the rung that fits the
+         player; the picture is the same at that size. */
+      capLevelToPlayerSize: true,
       /* Behind the playhead, though, a long buffer only costs memory — the
          room decides where playback is, and nobody scrubs backwards far. */
       backBufferLength: 30,
@@ -363,7 +381,7 @@ export function FilePlayer({
        */
       onPause={() => {
         buffering.current = false
-        if (alive.current) onIntentRef.current?.(false)
+        if (alive.current && performance.now() > quietUntil.current) onIntentRef.current?.(false)
       }}
       onPlay={() => {
         if (alive.current) onIntentRef.current?.(true)
