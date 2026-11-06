@@ -2,7 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-
+    <script>
+      // Keep a returning Huddle player's opening notice hidden before the first paint.
+      try {
+        if (localStorage.getItem('huddle-fightkaro:legal-v1') === '1') {
+          document.documentElement.classList.add('legal-accepted');
+        }
+      } catch (e) {}
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -13,10 +20,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Teko:wght@500;700&display=swap" rel="stylesheet" />
     <script src="/fightkaro/bridge.js"></script>
-    <script type="module" crossorigin src="/fightkaro/assets/main-B8x0sGzM.js"></script>
+    <script type="module" crossorigin src="/fightkaro/assets/main-CfQ2THv5.js"></script>
     <link rel="modulepreload" crossorigin href="/fightkaro/assets/rooms-CRfnBsqC.js">
-    <link rel="modulepreload" crossorigin href="/fightkaro/assets/three-BbEF-ZsN.js">
-    <link rel="stylesheet" crossorigin href="/fightkaro/assets/main-BR0bCJab.css">
+    <link rel="modulepreload" crossorigin href="/fightkaro/assets/three-CJyKo-TQ.js">
+    <link rel="stylesheet" crossorigin href="/fightkaro/assets/main-C4DN45Lw.css">
   </head>
   <body>
     <canvas id="game"></canvas>
@@ -65,13 +72,16 @@
     </div>
     <div id="announce"></div>
 
-    <div id="peace-meter"><b>☮</b><span>SHANTI</span><div class="track"><i></i></div></div>
+    <button id="budget-meter" type="button" aria-label="Use the budget"><span class="hint" aria-hidden="true"><span class="hint-key">PRESS <kbd>B</kbd></span><span class="hint-touch">TAP 📕</span> FOR NIRMALA'S BUDGET!</span><b>📕</b><span class="label">BUDGET</span><div class="track"><i></i></div><span class="key">B</span></button>
 
     <div id="cinema">
+      <video id="portal-video" muted playsinline preload="none" disablepictureinpicture></video>
+      <div id="cine-fade"></div>
       <div class="cine-bar top"></div>
       <div class="cine-bar bottom"></div>
       <p id="cine-caption"></p>
       <div id="cine-title"><small></small><h1></h1></div>
+      <div id="cine-stamps"></div>
       <button id="cine-skip" type="button">SKIP ›</button>
     </div>
     <div id="super-banner"></div>
@@ -83,6 +93,8 @@
         <button data-touch="super" class="super">SUPER</button>
         <button data-touch="punch" class="punch">PUNCH</button>
         <button data-touch="kick" class="kick">KICK</button>
+        <!-- Only in a match against the CPU's Mbapu: sits right above SUPER, calls in the budget once its meter is full. -->
+        <button id="touch-budget" class="touch-budget" type="button" hidden aria-label="Use the budget">📕<small>BUDGET</small></button>
       </div>
     </div>
 
@@ -105,6 +117,7 @@
     <div id="title" class="screen hidden">
       <div class="logo">SANSAD <span>SHOWDOWN</span></div>
       <div class="tag">THE GREAT KURSI FIGHT</div>
+      <div id="portal-banner"><i class="gem"></i><span>Beat Mbapu to open the portal 🔒</span></div>
       <div class="press">PRESS ENTER / CLICK TO START</div>
       <div class="press-touch">TAP TO START</div>
       <div class="disclaimer">Political satire and parody. Not connected to or endorsed by any person or party.</div>
@@ -173,33 +186,43 @@
         <div id="bapu-quest" class="hidden"></div>
         <div class="grid">
           <button class="tile" type="button" data-tile="modi" style="--accent: #ff9933">
-            <img data-portrait="modi" src="/faces/modi.png?v=20261101_smooth" alt="MitraMan" />
+            <img data-portrait="modi" src="/fightkaro/faces/modi.webp?v=20261101_smooth" alt="MitraMan" />
             <span class="tile-name">MITRAMAN</span>
             <i class="cur p1">1P</i><i class="cur p2">CPU</i>
           </button>
           <button class="tile" type="button" data-tile="rahul" style="--accent: #2e9bff">
-            <img data-portrait="rahul" src="/faces/rahul.png?v=20261101_smooth" alt="Yatra Boy" />
+            <img data-portrait="rahul" src="/fightkaro/faces/rahul.webp?v=20261101_smooth" alt="Yatra Boy" />
             <span class="tile-name">YATRA BOY</span>
             <i class="cur p1">1P</i><i class="cur p2">CPU</i>
           </button>
           <button class="tile" type="button" data-tile="didi" style="--accent: #22b35e">
-            <img data-portrait="didi" src="/faces/didi.png?v=20261101_smooth" alt="Deedee" />
+            <img data-portrait="didi" src="/fightkaro/faces/didi.webp?v=20261101_smooth" alt="Deedee" />
             <span class="tile-name">DEEDEE</span>
             <i class="cur p1">1P</i><i class="cur p2">CPU</i>
           </button>
           <button class="tile" type="button" data-tile="trump" style="--accent: #e0262f">
-            <img data-portrait="trump" src="/faces/trump.png?v=20261101_smooth" alt="Tariff Taau" />
+            <img data-portrait="trump" src="/fightkaro/faces/trump.webp?v=20261101_smooth" alt="Tariff Taau" />
             <span class="tile-name">TARIFF TAAU</span>
             <i class="cur p1">1P</i><i class="cur p2">CPU</i>
           </button>
           <button class="tile" type="button" data-tile="yogi" style="--accent: #f05a00">
-            <img data-portrait="yogi" src="/faces/yogi.png?v=20261101_smooth" alt="Dozer Dada" />
+            <img data-portrait="yogi" src="/fightkaro/faces/yogi.webp?v=20261101_smooth" alt="Dozer Dada" />
             <span class="tile-name">DOZER DADA</span>
             <i class="cur p1">1P</i><i class="cur p2">CPU</i>
           </button>
           <button class="tile" type="button" data-tile="nitin" style="--accent: #ff9a1f">
-            <img data-portrait="nitin" src="/faces/nitin.png?v=20261101_smooth" alt="Toll Man" />
+            <img data-portrait="nitin" src="/fightkaro/faces/nitin.webp?v=20261101_smooth" alt="Toll Man" />
             <span class="tile-name">TOLL MAN</span>
+            <i class="cur p1">1P</i><i class="cur p2">CPU</i>
+          </button>
+          <button class="tile" type="button" data-tile="ravi" style="--accent: #8b5cf6">
+            <img data-portrait="ravi" src="/fightkaro/faces/ravi.webp?v=20261104_face" alt="Sutti Babu" />
+            <span class="tile-name">SUTTI BABU</span>
+            <i class="cur p1">1P</i><i class="cur p2">CPU</i>
+          </button>
+          <button class="tile" type="button" data-tile="lalu" style="--accent: #16a34a">
+            <img data-portrait="lalu" src="/fightkaro/faces/lalu.webp?v=20261104_face" alt="Rail Raja" />
+            <span class="tile-name">RAIL RAJA</span>
             <i class="cur p1">1P</i><i class="cur p2">CPU</i>
           </button>
           <button class="tile boss" type="button" data-tile="mbapu" style="--accent: #ffd700">
@@ -211,7 +234,7 @@
               </svg>
               <b>?</b>
             </span>
-            <img data-portrait="mbapu" src="/faces/mbapu.png?v=20261101_smooth" alt="Mbapu" />
+            <img data-portrait="mbapu" src="/fightkaro/faces/mbapu.webp?v=20261101_smooth" alt="Mbapu" />
             <span class="tile-name">MBAPU</span>
             <i class="cur p2">BOSS</i>
           </button>
@@ -323,7 +346,7 @@
           <p>शिकायत, आपत्ति या सामग्री हटाने के अनुरोध के लिए हमसे संपर्क करें: <a href="mailto:shivmbuilds@gmail.com">shivmbuilds@gmail.com</a></p>
           <p class="legal-agree">आगे बढ़ने का अर्थ है कि आप समझते हैं कि यह एक व्यंग्यात्मक खेल है।</p>
         </div>
-        <button id="legal-ok" type="button" disabled>SCROLL DOWN TO CONTINUE ↓</button>
+        <button id="legal-ok" type="button" class="ready">I UNDERSTAND · CONTINUE</button>
       </div>
     </div>
 

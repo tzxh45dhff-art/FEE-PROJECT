@@ -1,7 +1,22 @@
 {
   "source": "https://fightkaro.com",
-  "captured": "2026-11-04",
+  "captured": "2026-11-06",
+  "upstreamEntry": "assets/main-CfQ2THv5.js",
+  "upstreamRuntimeSha256": "d4abb87dd91b8dc67417d33ebe04a8b8ab194ffff63c1f7f355fb266f4cc208d",
+  "notes": "Runtime, index and signalling adapter patched for Huddle. Original downloaded asset hashes below; local patched hashes recorded separately.",
   "assets": [
+    {
+      "path": "art/mobile/nirmala.webp",
+      "source": "https://fightkaro.com/art/mobile/nirmala.webp?v=20261104",
+      "sha256": "90895839f9077083f721f5826de8411971e18bf0bb422470cad23ad00cb15f21",
+      "bytes": 46488
+    },
+    {
+      "path": "art/nirmala.webp",
+      "source": "https://fightkaro.com/art/nirmala.webp?v=20261104",
+      "sha256": "2d06f18af895fc084e6a2b0ec9ad1f3f6d657ae6eb2d134e45fc603c61ce07c6",
+      "bytes": 117078
+    },
     {
       "path": "assets/aloolelo-BopBNjJr.mp3",
       "source": "https://fightkaro.com/assets/aloolelo-BopBNjJr.mp3",
@@ -45,6 +60,18 @@
       "bytes": 43928
     },
     {
+      "path": "assets/bell-DW1wbKh0.mp3",
+      "source": "https://fightkaro.com/assets/bell-DW1wbKh0.mp3",
+      "sha256": "dff311f3da3f7655e32fbc81d93c5178c0132bf259edc1d93b20e1802d1faeb3",
+      "bytes": 24886
+    },
+    {
+      "path": "assets/bomb-1fSoTLVm.mp3",
+      "source": "https://fightkaro.com/assets/bomb-1fSoTLVm.mp3",
+      "sha256": "f8c5366bac33c3f4e6b0e0c750f8c7d8c3ef91d0d5f55faf3d67db11292e241a",
+      "bytes": 9003
+    },
+    {
       "path": "assets/boom-Brg2wdT5.mp3",
       "source": "https://fightkaro.com/assets/boom-Brg2wdT5.mp3",
       "sha256": "e4faf7eeee3077bb750bca448c4913f36efcf4f3dd1579652e03c76eac929055",
@@ -69,10 +96,10 @@
       "bytes": 56258
     },
     {
-      "path": "assets/charkha-BxjP7rEd.mp3",
-      "source": "https://fightkaro.com/assets/charkha-BxjP7rEd.mp3",
-      "sha256": "5163a505b45234ec6317a9ce43a29cc5a70b860a4bb9805e35cd01fd01d10cc5",
-      "bytes": 14802
+      "path": "assets/charkha-ze2BHoz_.mp3",
+      "source": "https://fightkaro.com/assets/charkha-ze2BHoz_.mp3",
+      "sha256": "e63e0788886c807973ff13f2bb72a553410c2a1d6a9ca3d366d48ec3403472af",
+      "bytes": 51034
     },
     {
       "path": "assets/coins-DVYyL0Kv.mp3",
@@ -105,6 +132,12 @@
       "bytes": 315448
     },
     {
+      "path": "assets/drone-DhDpKSwO.mp3",
+      "source": "https://fightkaro.com/assets/drone-DhDpKSwO.mp3",
+      "sha256": "b1d7bfa27c09433891ed0379a468f3c6e84780cd7ab107eab9e0df5908ae1516",
+      "bytes": 37921
+    },
+    {
       "path": "assets/drumroll-BzHoJfte.mp3",
       "source": "https://fightkaro.com/assets/drumroll-BzHoJfte.mp3",
       "sha256": "4bb85eb27860e9c605092bbb1d5ee50c50213b59b7a254fd22c73360dfa3e4eb",
@@ -135,10 +168,10 @@
       "bytes": 12964
     },
     {
-      "path": "assets/gulaam-LQ1Mylmz.mp3",
-      "source": "https://fightkaro.com/assets/gulaam-LQ1Mylmz.mp3",
-      "sha256": "daafe64a94e13c42a1ea7654995dd5970c7ff4c717cb314210f47fd58fa8471e",
-      "bytes": 17020
+      "path": "assets/gulaam-BnDUPSAr.mp3",
+      "source": "https://fightkaro.com/assets/gulaam-BnDUPSAr.mp3",
+      "sha256": "69e5b6923bc84c8063132e17a737fd74b502073222828286100231236b839411",
+      "bytes": 19320
     },
     {
       "path": "assets/horn_long-dLtoq4Pf.mp3",
@@ -177,6 +210,24 @@
       "bytes": 149014
     },
     {
+      "path": "assets/lalu-vVsgGZuo.mp3",
+      "source": "https://fightkaro.com/assets/lalu-vVsgGZuo.mp3",
+      "sha256": "7a07ec69815019c3f004954a0d673d20fcb66d42b009be204a0a689274d30672",
+      "bytes": 276160
+    },
+    {
+      "path": "assets/main-C4DN45Lw.css",
+      "source": "https://fightkaro.com/assets/main-C4DN45Lw.css",
+      "sha256": "533652acfe953896390ba30a3468bcab6dbfeb7eb47cd5d4c5d644ff9c4f5b69",
+      "bytes": 64742
+    },
+    {
+      "path": "assets/main-CfQ2THv5.js",
+      "source": "https://fightkaro.com/assets/main-CfQ2THv5.js",
+      "sha256": "d4abb87dd91b8dc67417d33ebe04a8b8ab194ffff63c1f7f355fb266f4cc208d",
+      "bytes": 520103
+    },
+    {
       "path": "assets/mbapu-D85PVY1T.mp3",
       "source": "https://fightkaro.com/assets/mbapu-D85PVY1T.mp3",
       "sha256": "70efebad45f084f501e852bd1f05887c6612204a0470cdaec48b6138225ba5fd",
@@ -213,10 +264,22 @@
       "bytes": 8193
     },
     {
+      "path": "assets/nirmala-Dq7cz8UN.mp3",
+      "source": "https://fightkaro.com/assets/nirmala-Dq7cz8UN.mp3",
+      "sha256": "f97744468f6061ab31e814d88af0134b171990ac0f3fe3d75d4f18ab87eabea4",
+      "bytes": 77365
+    },
+    {
       "path": "assets/nitin-B2ZG9HV5.mp3",
       "source": "https://fightkaro.com/assets/nitin-B2ZG9HV5.mp3",
       "sha256": "d84e5eef7ef04d275fd6b078a952489364bea4622040253f2b78680b80776409",
       "bytes": 135043
+    },
+    {
+      "path": "assets/pataka-DtLTRxFJ.mp3",
+      "source": "https://fightkaro.com/assets/pataka-DtLTRxFJ.mp3",
+      "sha256": "d820157a0674de3c63a563d954789ccec69dbb40198778b0c761f666f766efe1",
+      "bytes": 25303
     },
     {
       "path": "assets/pen_scribble-BM1Jp2uD.mp3",
@@ -237,10 +300,28 @@
       "bytes": 4849
     },
     {
+      "path": "assets/portal-voice-CC4H9Es4.mp3",
+      "source": "https://fightkaro.com/assets/portal-voice-CC4H9Es4.mp3",
+      "sha256": "eea72c435c4a5952da100a13edf5e7e36c7348c9721dd0cc17d28502dd4484f9",
+      "bytes": 28514
+    },
+    {
       "path": "assets/rahul-C7Jjp4hs.mp3",
       "source": "https://fightkaro.com/assets/rahul-C7Jjp4hs.mp3",
       "sha256": "7afde5895cee8eb1bffd29576dd3b43d4cfb403ffcf89b77c99fac35c012cc73",
       "bytes": 91158
+    },
+    {
+      "path": "assets/ravi-BUhOMgaW.mp3",
+      "source": "https://fightkaro.com/assets/ravi-BUhOMgaW.mp3",
+      "sha256": "09eead3c58128a8e7a8e8bbe2bdf3b04118500e853e7523c6c57d844024450d0",
+      "bytes": 100353
+    },
+    {
+      "path": "assets/raviwin-Q4j69frZ.mp3",
+      "source": "https://fightkaro.com/assets/raviwin-Q4j69frZ.mp3",
+      "sha256": "37f08c4aaa6013a4a063be32487ce030ed328726b25ea780e01763a5902cba28",
+      "bytes": 58557
     },
     {
       "path": "assets/release_bulldozer-CyubjB_l.mp3",
@@ -273,6 +354,12 @@
       "bytes": 12999
     },
     {
+      "path": "assets/rooms-CRfnBsqC.js",
+      "source": "https://fightkaro.com/assets/rooms-CRfnBsqC.js",
+      "sha256": "20a526c25c999a7e4c5daae1a6dce39f9098dafc422cc39d8cadc13859cd8e03",
+      "bytes": 13147
+    },
+    {
       "path": "assets/round_1-4pTCkOAK.mp3",
       "source": "https://fightkaro.com/assets/round_1-4pTCkOAK.mp3",
       "sha256": "6b6fced6d8e03e3b1fc0268b360eecfda6459146a04f2f9fbd176b4eff64909c",
@@ -285,16 +372,22 @@
       "bytes": 11397
     },
     {
-      "path": "assets/shabash-_bo8HJhK.mp3",
-      "source": "https://fightkaro.com/assets/shabash-_bo8HJhK.mp3",
-      "sha256": "b5b6a598ad3cf388636eaf1d2fcb29fac7b0aa2f0878c85924d981e7f7a317bb",
-      "bytes": 23080
+      "path": "assets/shimmer-XQUc4lgS.mp3",
+      "source": "https://fightkaro.com/assets/shimmer-XQUc4lgS.mp3",
+      "sha256": "897943374e4c3ccee8978b4370e28043f91e79158f7077726f50b219ff755455",
+      "bytes": 5137
     },
     {
       "path": "assets/stamp_slam-CAslQB_C.mp3",
       "source": "https://fightkaro.com/assets/stamp_slam-CAslQB_C.mp3",
       "sha256": "5d37c00ae01efe7c9c38d073c3f3e3cd12dd45cf91dc4905d653ceff67cbc6d2",
       "bytes": 8193
+    },
+    {
+      "path": "assets/three-CJyKo-TQ.js",
+      "source": "https://fightkaro.com/assets/three-CJyKo-TQ.js",
+      "sha256": "18ca6973c5629df1e47bed1b660555184ae67190a803b569de7ce961b289d423",
+      "bytes": 698070
     },
     {
       "path": "assets/thunder-BRWemNyY.mp3",
@@ -345,142 +438,232 @@
       "bytes": 13486
     },
     {
-      "path": "models/modi.glb",
-      "source": "https://fightkaro.com/models/modi.glb?v=20261101_smooth",
-      "sha256": "67c88bc05964ce653c9a52efab4889710e665f2669c6ba4f49527c0e47a46c11",
-      "bytes": 1686436
+      "path": "faces/didi.webp",
+      "source": "https://fightkaro.com/faces/didi.webp?v=20261101_smooth",
+      "sha256": "c0d1f0279a45bb068359bc4feb5705bf4756ed77a6b60c15923ee8244ac4db1a",
+      "bytes": 9720
     },
     {
-      "path": "models/rahul.glb",
-      "source": "https://fightkaro.com/models/rahul.glb?v=20261101_smooth",
-      "sha256": "a8ebf7b6c92445500dccc48201158fb0a558a359e1cba173f037aaa25dd7897d",
-      "bytes": 1672568
+      "path": "faces/lalu.webp",
+      "source": "https://fightkaro.com/faces/lalu.webp?v=20261104_face",
+      "sha256": "e184a22f646187c35fc7c4f10693d4b653131b972e606fa3b03d36e4e0272021",
+      "bytes": 9858
+    },
+    {
+      "path": "faces/mbapu.webp",
+      "source": "https://fightkaro.com/faces/mbapu.webp?v=20261101_smooth",
+      "sha256": "fd16598e39f93ab9ce88cfc74332e7eab27c28b51031ee5197a8f232d7b336fd",
+      "bytes": 8816
+    },
+    {
+      "path": "faces/modi.webp",
+      "source": "https://fightkaro.com/faces/modi.webp?v=20261101_smooth",
+      "sha256": "7445e5e0c45b8463d32e0a714af65b30c32d6be45db0bafbe73b1237a16a0f7b",
+      "bytes": 7078
+    },
+    {
+      "path": "faces/nitin.webp",
+      "source": "https://fightkaro.com/faces/nitin.webp?v=20261101_smooth",
+      "sha256": "ab2fae3a490025f8c276c2349aa78ae025f38f072b74109106dfcad5a234440f",
+      "bytes": 7912
+    },
+    {
+      "path": "faces/rahul.webp",
+      "source": "https://fightkaro.com/faces/rahul.webp?v=20261101_smooth",
+      "sha256": "28eb6f1081708b9b3240faad2037a441d42c0046fa0a0a9c668bdf2bd52d5fb4",
+      "bytes": 7206
+    },
+    {
+      "path": "faces/ravi.webp",
+      "source": "https://fightkaro.com/faces/ravi.webp?v=20261104_face",
+      "sha256": "4a5b94cbb53359f13ad369c468215cf1a7a142ef0ee57960c5ae3e6927551699",
+      "bytes": 9504
+    },
+    {
+      "path": "faces/trump.webp",
+      "source": "https://fightkaro.com/faces/trump.webp?v=20261101_smooth",
+      "sha256": "1cdeea21a8bc5912729ceac1a52d8d4f66946ad071aa658ed5aefc8917cb438b",
+      "bytes": 7320
+    },
+    {
+      "path": "faces/yogi.webp",
+      "source": "https://fightkaro.com/faces/yogi.webp?v=20261101_smooth",
+      "sha256": "f6ed4e22bc0805c1b5f91d0f7c968020c28a56d6cf9cf6fd01fddcb6560eaa95",
+      "bytes": 8082
+    },
+    {
+      "path": "models/bull1.glb",
+      "source": "https://fightkaro.com/models/bull1.glb?v=20261104_webp",
+      "sha256": "c965f39ba7293f0310cafe138097c0fa338fcdf1efbeda54befc3749d41fdd71",
+      "bytes": 1048352
     },
     {
       "path": "models/didi.glb",
-      "source": "https://fightkaro.com/models/didi.glb?v=20261101_smooth",
-      "sha256": "12c2497ad4596605b4cdd29415c65d65b5e4c47cabdf3e5977de29ec20e438df",
-      "bytes": 1460500
+      "source": "https://fightkaro.com/models/didi.glb?v=20261104_webp",
+      "sha256": "929db945772350ebdb3311f60a45c2b126bf58ec41b24f188601863d66e80c61",
+      "bytes": 1085516
     },
     {
-      "path": "models/trump.glb",
-      "source": "https://fightkaro.com/models/trump.glb?v=20261101_smooth",
-      "sha256": "f50c38c2c60b3fcda5157e7f60e3479501311c957ba959b83e3f791c9f308d13",
-      "bytes": 1150464
-    },
-    {
-      "path": "models/yogi.glb",
-      "source": "https://fightkaro.com/models/yogi.glb?v=20261101_smooth",
-      "sha256": "b556c9d619c0ffc130d787c7098850a99e0c8754cb9e1d71a25de3576a8e9bdd",
-      "bytes": 1243796
-    },
-    {
-      "path": "models/nitin.glb",
-      "source": "https://fightkaro.com/models/nitin.glb?v=20261101_smooth",
-      "sha256": "63fe80866086b4aa19395e8ccf98b3e67fcea8b0c7d1073c05dc5c5d6b96f65e",
-      "bytes": 1675932
+      "path": "models/lalu.glb",
+      "source": "https://fightkaro.com/models/lalu.glb?v=20261104_webp",
+      "sha256": "d86cd4f5320aeb858b89ee8c8fad7fbb1ea297577dfedaf1628ec6da482037b9",
+      "bytes": 1041728
     },
     {
       "path": "models/mbapu.glb",
-      "source": "https://fightkaro.com/models/mbapu.glb?v=20261101_smooth",
+      "source": "https://fightkaro.com/models/mbapu.glb?v=20261104_webp",
       "sha256": "cd17347ce852c59646c23d4f82c5ac538abc25879dfc146954c68c2ae1710fb7",
       "bytes": 2004316
     },
     {
-      "path": "models/bull1.glb",
-      "source": "https://fightkaro.com/models/bull1.glb?v=20261101_smooth",
-      "sha256": "2e4fb6d42e4a60467d33e49aa1eba11a75cad1198d23208caa0d79c2b37928aa",
-      "bytes": 1881360
-    },
-    {
-      "path": "models/mobile/modi.glb",
-      "source": "https://fightkaro.com/models/mobile/modi.glb?v=20261101_smooth",
-      "sha256": "7872e4544de0d6500857efb1314ce75fc843639d3d84828c08d439f008bc1cbf",
-      "bytes": 898584
-    },
-    {
-      "path": "models/mobile/rahul.glb",
-      "source": "https://fightkaro.com/models/mobile/rahul.glb?v=20261101_smooth",
-      "sha256": "f4ce7969e5c7063da285bbb55aa00ec419852a7098b07b5d900d7e595e655855",
-      "bytes": 901080
+      "path": "models/mobile/bull1.glb",
+      "source": "https://fightkaro.com/models/mobile/bull1.glb?v=20261104_webp",
+      "sha256": "35dfd5f4cbdde11d359e8cfb1e71a43c3797f6ae73445523a2c2e6d6581a37f3",
+      "bytes": 831632
     },
     {
       "path": "models/mobile/didi.glb",
-      "source": "https://fightkaro.com/models/mobile/didi.glb?v=20261101_smooth",
-      "sha256": "d51950d35ca779a7f00df1d5de6cc8c65df7ac7819fc2bb7d4da3dc6403b85e1",
-      "bytes": 825492
+      "source": "https://fightkaro.com/models/mobile/didi.glb?v=20261104_webp",
+      "sha256": "b6e6c7fc92cdf4efed12d4dc49912c57e2611ab5e6787636d3593f3f74dbc2ef",
+      "bytes": 851908
     },
     {
-      "path": "models/mobile/trump.glb",
-      "source": "https://fightkaro.com/models/mobile/trump.glb?v=20261101_smooth",
-      "sha256": "80ee0d6676bac3e3d6b1457ffe5a31ebdb825527f9102546c825f2ddedecc6d9",
-      "bytes": 972988
-    },
-    {
-      "path": "models/mobile/yogi.glb",
-      "source": "https://fightkaro.com/models/mobile/yogi.glb?v=20261101_smooth",
-      "sha256": "7214754a99bbfa5c850f92d398e32c4a8614d4733ce4912dbd8fd63af392a164",
-      "bytes": 748436
-    },
-    {
-      "path": "models/mobile/nitin.glb",
-      "source": "https://fightkaro.com/models/mobile/nitin.glb?v=20261101_smooth",
-      "sha256": "ef317aaecfcb756800f0fc310e82f51a508945cf5f5ae57b01a65a2c6182a1fb",
-      "bytes": 932832
+      "path": "models/mobile/lalu.glb",
+      "source": "https://fightkaro.com/models/mobile/lalu.glb?v=20261104_webp",
+      "sha256": "7c2a23d258f42610022b17cca69ffbebde16ad7b0fb4e27bb6e78a3a0c9e025d",
+      "bytes": 732720
     },
     {
       "path": "models/mobile/mbapu.glb",
-      "source": "https://fightkaro.com/models/mobile/mbapu.glb?v=20261101_smooth",
+      "source": "https://fightkaro.com/models/mobile/mbapu.glb?v=20261104_webp",
       "sha256": "caafc7cdae0ffd76664a9baafbe93ff93591675f2e4c4df4844ac3f9fa36b866",
       "bytes": 1912552
     },
     {
-      "path": "models/mobile/bull1.glb",
-      "source": "https://fightkaro.com/models/mobile/bull1.glb?v=20261101_smooth",
-      "sha256": "2e4fb6d42e4a60467d33e49aa1eba11a75cad1198d23208caa0d79c2b37928aa",
-      "bytes": 1881360
+      "path": "models/mobile/modi.glb",
+      "source": "https://fightkaro.com/models/mobile/modi.glb?v=20261104_webp",
+      "sha256": "ec1b74132d76dd53e63bf5e91afa25c245698049b12a075dd07f88754fe606b4",
+      "bytes": 877196
     },
     {
-      "path": "faces/modi.png",
-      "source": "https://fightkaro.com/faces/modi.png?v=20261101_smooth",
-      "sha256": "33cbe7d620017c97210f2fe7362323ee006e30c8a956fdaf73577abf4d6b58f6",
-      "bytes": 73005
+      "path": "models/mobile/nitin.glb",
+      "source": "https://fightkaro.com/models/mobile/nitin.glb?v=20261104_webp",
+      "sha256": "84d1332150cfa8745f73240f8ab6824289579b5fc7e6822839fe31b573d065dc",
+      "bytes": 1039552
     },
     {
-      "path": "faces/rahul.png",
-      "source": "https://fightkaro.com/faces/rahul.png?v=20261101_smooth",
-      "sha256": "399e745beebe13d8f7e7ebcbb08dbf3faaaba4ef9be2378be8dfbb12e4a30f86",
-      "bytes": 77575
+      "path": "models/mobile/rahul.glb",
+      "source": "https://fightkaro.com/models/mobile/rahul.glb?v=20261104_webp",
+      "sha256": "269409629591ad9d4dcac8abf4a3f3667eb4de0e6968d22bdbc46ae4d881ca03",
+      "bytes": 927328
     },
     {
-      "path": "faces/didi.png",
-      "source": "https://fightkaro.com/faces/didi.png?v=20261101_smooth",
-      "sha256": "3cedf2be331ceeb32c7b3d92cd2468c4fe05e065a4ed85784ebd97a96187e2f3",
-      "bytes": 92780
+      "path": "models/mobile/ravi.glb",
+      "source": "https://fightkaro.com/models/mobile/ravi.glb?v=20261104_webp",
+      "sha256": "70b666421274eff3712d5501934a6cd6c6e9b67c5dc642677697f665d690be9a",
+      "bytes": 1110156
     },
     {
-      "path": "faces/trump.png",
-      "source": "https://fightkaro.com/faces/trump.png?v=20261101_smooth",
-      "sha256": "ba1b4fe87318e700f4facb4c3f73a5148b3fed0b52c443528528daeb339905b4",
-      "bytes": 89688
+      "path": "models/mobile/trump.glb",
+      "source": "https://fightkaro.com/models/mobile/trump.glb?v=20261104_webp",
+      "sha256": "99e98ba57210abddc01045a8ee8c3bd445d248695109c4433eab3b132bec94db",
+      "bytes": 1160212
     },
     {
-      "path": "faces/yogi.png",
-      "source": "https://fightkaro.com/faces/yogi.png?v=20261101_smooth",
-      "sha256": "172eaa45ab2205a25bee289b3694b90a9e58e0c4e3d0d54d5a12b2875a4c8755",
-      "bytes": 86592
+      "path": "models/mobile/yogi.glb",
+      "source": "https://fightkaro.com/models/mobile/yogi.glb?v=20261104_webp",
+      "sha256": "cab2a84a3b7928577dbdabaaadf10ea1fd299605b30cfb76b430de96949b8bad",
+      "bytes": 862116
     },
     {
-      "path": "faces/nitin.png",
-      "source": "https://fightkaro.com/faces/nitin.png?v=20261101_smooth",
-      "sha256": "5c4229873f4d8b83cfe8e96efc5008955dfd1fd01e77c8d025759d80b70c87b0",
-      "bytes": 101715
+      "path": "models/modi.glb",
+      "source": "https://fightkaro.com/models/modi.glb?v=20261104_webp",
+      "sha256": "f2a9647c8c58c223e123b7a86861371cc1ecc8e601f97d7fc9e310bff9fb83f2",
+      "bytes": 1220500
     },
     {
-      "path": "faces/mbapu.png",
-      "source": "https://fightkaro.com/faces/mbapu.png?v=20261101_smooth",
-      "sha256": "8856a42a03766274971af0c67aaa41d2df133544b27a498a90501c0c06be8283",
-      "bytes": 90649
+      "path": "models/nitin.glb",
+      "source": "https://fightkaro.com/models/nitin.glb?v=20261104_webp",
+      "sha256": "8370177981ac3e96401bb3b771e7dacd77f01dce018c3f67411c549b88d098ab",
+      "bytes": 1323408
+    },
+    {
+      "path": "models/rahul.glb",
+      "source": "https://fightkaro.com/models/rahul.glb?v=20261104_webp",
+      "sha256": "8e701066d68862d82c215e0295968cbc9df10a087008e206fc3291310975d510",
+      "bytes": 1270440
+    },
+    {
+      "path": "models/ravi.glb",
+      "source": "https://fightkaro.com/models/ravi.glb?v=20261104_webp",
+      "sha256": "cd2373773f972bc5720981ad1ff6e85258c81066095be46be4d121961e89ad0e",
+      "bytes": 1776848
+    },
+    {
+      "path": "models/trump.glb",
+      "source": "https://fightkaro.com/models/trump.glb?v=20261104_webp",
+      "sha256": "445b5ef494bb70ff91acb974126096997ef014149ae266a5b1fd6834c49252bf",
+      "bytes": 1216808
+    },
+    {
+      "path": "models/yogi.glb",
+      "source": "https://fightkaro.com/models/yogi.glb?v=20261104_webp",
+      "sha256": "a04b66c33b65d39410ce6cbf4663ac97f7843f420c2483aee9d4dbaa3502290e",
+      "bytes": 1082976
+    },
+    {
+      "path": "video/portal-mobile.mp4",
+      "source": "https://fightkaro.com/video/portal-mobile.mp4?v=20261104",
+      "sha256": "3103e26e85ad2e5a8c881d572953d242f04f79d9c4d4754c1502fb9312449eda",
+      "bytes": 1091057
+    },
+    {
+      "path": "video/portal.mp4",
+      "source": "https://fightkaro.com/video/portal.mp4?v=20261104",
+      "sha256": "8b53dfbc6d7f6c96f6ce1143906e6517a59e094d7ccc7accfbc29d2c979c7600",
+      "bytes": 2784868
+    },
+    {
+      "path": "assets/draco_decoder-C32yEggz.wasm",
+      "source": "https://fightkaro.com/assets/draco_decoder-C32yEggz.wasm",
+      "sha256": "c55a594e8ffd18426d36b27fea9618af3df5e173640a3e56d46f09d76f0574f2",
+      "bytes": 285747
+    },
+    {
+      "path": "assets/draco_decoder-Z1_iN-Ht.wasm",
+      "source": "https://fightkaro.com/assets/draco_decoder-Z1_iN-Ht.wasm",
+      "sha256": "a680d927bed9cb864ddbd63521868891af2bfbe755092761b4837487618df8ac",
+      "bytes": 192420
+    },
+    {
+      "path": "assets/draco_decoder-fzg4nYZr.js",
+      "source": "https://fightkaro.com/assets/draco_decoder-fzg4nYZr.js",
+      "sha256": "30e4d486fa020737af10e3c56197693e5b904bdc05b8bfa5d7b06751dec6da04",
+      "bytes": 719410
+    },
+    {
+      "path": "assets/draco_wasm_wrapper-DxJM36Ib.js",
+      "source": "https://fightkaro.com/assets/draco_wasm_wrapper-DxJM36Ib.js",
+      "sha256": "e8049906ef3f8f75d3456c22a3f31bfdfe5b5b5bd09ccdec613b9e9a49d554d8",
+      "bytes": 58763
+    },
+    {
+      "path": "assets/draco_wasm_wrapper-fZCQGLGb.js",
+      "source": "https://fightkaro.com/assets/draco_wasm_wrapper-fZCQGLGb.js",
+      "sha256": "8bb2952d2ba7d67e1414f8df819410cb0434a666be53f671fff75f68843d76f6",
+      "bytes": 58456
+    },
+    {
+      "path": "art/upi-qr.png",
+      "source": "https://fightkaro.com/art/upi-qr.png",
+      "sha256": "1c59e389f371f2b3e66dfc517b387af62de6770e3416e129b7467040a4861716",
+      "bytes": 899
     }
-  ]
+  ],
+  "localPatched": {
+    "index.html": "4088395c78a7de1eed103a8c834d19372fed2c9673e94dffe334a03012baf8ce",
+    "assets/main-CfQ2THv5.js": "42e00728dd24bfc52596ebf5b4b74955c45778265940325f685610b010bfd62b",
+    "assets/rooms-CRfnBsqC.js": "01c0b13f2eded45cedf699cb11275924685702df061d0d7277104e1bfba5951d",
+    "assets/three-CJyKo-TQ.js": "9be83458ddc041a9e8d98e2bf1e23ef4af88a12a675ede56d50d8c5b48fb3f34"
+  }
 }
